@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import axios from 'axios'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { BulkUploader } from './components/BulkUploader'
 
 // API base URL
 const API_BASE = 'http://localhost:3000'
@@ -246,6 +247,9 @@ function App() {
             High-Throughput Solar Data Ingestion Platform - MVP
           </p>
         </header>
+
+        {/* Bulk Uploader */}
+        <BulkUploader onUploadComplete={fetchMeasurements} />
 
         {/* Status Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">

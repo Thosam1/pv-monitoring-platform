@@ -185,15 +185,13 @@ export class IngestionService {
 
     try {
       // Convert to plain objects for TypeORM insert
-
-      const values = batch.map((m) => ({
+      const values: QueryDeepPartialEntity<Measurement>[] = batch.map((m) => ({
         timestamp: m.timestamp,
         loggerId: m.loggerId,
         activePowerWatts: m.activePowerWatts,
         energyDailyKwh: m.energyDailyKwh,
         irradiance: m.irradiance,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        metadata: m.metadata as any,
+        metadata: m.metadata as QueryDeepPartialEntity<Measurement>['metadata'],
       }));
 
       // Use upsert to handle duplicates gracefully
@@ -202,8 +200,7 @@ export class IngestionService {
         .createQueryBuilder()
         .insert()
         .into(Measurement)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        .values(values as any)
+        .values(values)
         .orUpdate(
           ['activePowerWatts', 'energyDailyKwh', 'irradiance', 'metadata'],
           ['loggerId', 'timestamp'],
