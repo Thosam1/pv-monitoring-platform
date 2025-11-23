@@ -85,7 +85,7 @@ export class IngestionController {
     let errorCount = 0;
     let totalRecordsInserted = 0;
 
-    // Process files sequentially (synchronous for now)
+    // Process files sequentially (errors are caught per-file, not thrown)
     for (const file of files) {
       this.logger.log(
         `Processing file: ${file.originalname}, size=${file.size} bytes`,
@@ -119,6 +119,7 @@ export class IngestionController {
           `File ${file.originalname}: ${result.recordsInserted}/${result.recordsProcessed} records in ${result.durationMs}ms`,
         );
       } catch (error) {
+        // Catch errors per-file and add to results (don't throw)
         errorCount++;
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
@@ -138,6 +139,7 @@ export class IngestionController {
       `Bulk ingestion complete: ${successCount} succeeded, ${errorCount} failed, ${totalRecordsInserted} total records`,
     );
 
+    // Always return 201 with the results (even if all files failed)
     return {
       successCount,
       errorCount,
