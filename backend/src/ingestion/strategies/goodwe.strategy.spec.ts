@@ -1,5 +1,6 @@
 import { GoodWeParser } from './goodwe.strategy';
 import { collectDTOs } from '../../../test/utils/test-helpers';
+import { createCsvBuffer } from '../../../test/utils/csv-builder';
 
 /**
  * Interface exposing private methods for testing
@@ -133,7 +134,7 @@ describe('GoodWeParser', () => {
         '20251001T100000,LOGGER001,E_Day,5.5',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);
@@ -154,7 +155,7 @@ describe('GoodWeParser', () => {
         '20251001T110000,LOGGER001,e_day,4.1',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       // Should have 2 measurements (grouped by timestamp)
@@ -184,7 +185,7 @@ describe('GoodWeParser', () => {
         '20251001T100000,LOGGER_B,pac,600',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(2);
@@ -200,7 +201,7 @@ describe('GoodWeParser', () => {
         '20251001T100000,LOGGER001,irradiance,-',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);
@@ -216,7 +217,7 @@ describe('GoodWeParser', () => {
         '20251001T100000,LOGGER001,pac,1500',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);
@@ -230,7 +231,7 @@ describe('GoodWeParser', () => {
         '20251001T100000,LOGGER001,temperature,45',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);

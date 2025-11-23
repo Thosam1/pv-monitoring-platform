@@ -1,5 +1,6 @@
 import { LtiParser } from './lti.strategy';
 import { collectDTOs } from '../../../test/utils/test-helpers';
+import { createCsvBuffer } from '../../../test/utils/csv-builder';
 
 describe('LtiParser', () => {
   let parser: LtiParser;
@@ -46,7 +47,7 @@ describe('LtiParser', () => {
         '2025-10-01 11:00:00;1800;6.2',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(2);
@@ -63,7 +64,7 @@ describe('LtiParser', () => {
         '2025-10-01 10:00:00;1000',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);
@@ -78,7 +79,7 @@ describe('LtiParser', () => {
         '2025-10-01 10:00:00;COLUMN_SERIAL;1000',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);
@@ -92,7 +93,7 @@ describe('LtiParser', () => {
         '2025-10-01 10:00:00;ADDRESS_123;1000',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);
@@ -106,7 +107,7 @@ describe('LtiParser', () => {
         '2025-10-01 12:00:00;2500;8.3;380;6.5',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);
@@ -124,7 +125,7 @@ describe('LtiParser', () => {
         '2025-10-01 11:00:00;1500;',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(2);
@@ -142,7 +143,7 @@ describe('LtiParser', () => {
         '2025-10-01 10:00:00;1500',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);
@@ -156,7 +157,7 @@ describe('LtiParser', () => {
         '2025-10-01 10:00:00;1000;50.02;45.5',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);
@@ -174,7 +175,7 @@ describe('LtiParser', () => {
         '2025-10-01 14:30:45;1000',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);
@@ -190,7 +191,7 @@ describe('LtiParser', () => {
         '2025-10-01T10:00:00.000Z;1000',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(1);
@@ -208,7 +209,7 @@ describe('LtiParser', () => {
         '2025-10-01 10:00:00;1234',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results[0].activePowerWatts).toBe(1234);
@@ -221,7 +222,7 @@ describe('LtiParser', () => {
         '2025-10-01 10:00:00;12.5',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results[0].energyDailyKwh).toBe(12.5);
@@ -234,7 +235,7 @@ describe('LtiParser', () => {
         '2025-10-01 10:00:00;850',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results[0].irradiance).toBe(850);
@@ -258,7 +259,7 @@ describe('LtiParser', () => {
         'timestamp;P_AC',
       ].join('\n');
 
-      const buffer = Buffer.from(csvContent, 'utf-8');
+      const buffer = createCsvBuffer(csvContent.split('\n'));
 
       await expect(collectDTOs(parser.parse(buffer))).rejects.toThrow(
         'No valid data rows found',
