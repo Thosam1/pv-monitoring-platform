@@ -70,54 +70,74 @@ export class LtiParser implements IParser {
    * - State B (CSV): Parse semicolon-delimited CSV
    */
   async *parse(fileBuffer: Buffer): AsyncGenerator<UnifiedMeasurementDTO> {
-    // Ensure this is an async generator (required by interface)
     await Promise.resolve();
 
-    const content = fileBuffer.toString('utf-8');
-    const lines = content.split('\n');
+    const lines = fileBuffer.toString('utf-8').split('\n');
+    this.validateFileLength(lines);
 
-    if (lines.length < 2) {
-      throw new ParserError(
-        this.name,
-        'File is empty or has insufficient data',
-      );
-    }
-
-    // State machine variables
-    let state: 'HEADER' | 'CSV_HEADER' | 'CSV_DATA' = 'HEADER';
-    let headerSerial: string | null = null;
-    let csvHeaders: string[] = [];
+    const context = { state: 'HEADER' as const, serial: null as string | null, headers: [] as string[] };
     let dataRowCount = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
 
-      if (state === 'HEADER') {
-        const result = this.processHeaderLine(line, i);
-        if (result.serial) headerSerial = result.serial;
-        if (result.transition) state = 'CSV_HEADER';
-      } else if (state === 'CSV_HEADER') {
-        csvHeaders = line.split(';').map((h) => h.trim().toLowerCase());
-        this.logger.debug(`CSV headers: ${csvHeaders.join(', ')}`);
-        state = 'CSV_DATA';
-      } else {
-        const dto = this.parseCsvDataRow(line, csvHeaders, headerSerial, i);
-        if (dto) {
-          dataRowCount++;
-          yield dto;
-        }
+      const result = this.processLine(line, i, context);
+      if (result) {
+        dataRowCount++;
+        yield result;
       }
     }
 
     this.logger.log(`Parsed ${dataRowCount} data rows from LTI file`);
+    this.validateDataRowCount(dataRowCount);
+  }
 
-    if (dataRowCount === 0) {
-      throw new ParserError(
-        this.name,
-        'No valid data rows found. Check file format.',
-      );
+  private validateFileLength(lines: string[]): void {
+    if (lines.length < 2) {
+      throw new ParserError(this.name, 'File is empty or has insufficient data');
     }
+  }
+
+  private validateDataRowCount(count: number): void {
+    if (count === 0) {
+      throw new ParserError(this.name, 'No valid data rows found. Check file format.');
+    }
+  }
+
+  private processLine(
+    line: string,
+    lineNum: number,
+    context: { state: string; serial: string | null; headers: string[] },
+  ): UnifiedMeasurementDTO | null {
+    if (context.state === 'HEADER') {
+      return this.handleHeaderState(line, lineNum, context);
+    }
+    if (context.state === 'CSV_HEADER') {
+      return this.handleCsvHeaderState(line, context);
+    }
+    return this.parseCsvDataRow(line, context.headers, context.serial, lineNum);
+  }
+
+  private handleHeaderState(
+    line: string,
+    lineNum: number,
+    context: { state: string; serial: string | null },
+  ): null {
+    const result = this.processHeaderLine(line, lineNum);
+    if (result.serial) context.serial = result.serial;
+    if (result.transition) context.state = 'CSV_HEADER';
+    return null;
+  }
+
+  private handleCsvHeaderState(
+    line: string,
+    context: { state: string; headers: string[] },
+  ): null {
+    context.headers = line.split(';').map((h) => h.trim().toLowerCase());
+    this.logger.debug(`CSV headers: ${context.headers.join(', ')}`);
+    context.state = 'CSV_DATA';
+    return null;
   }
 
   /**
