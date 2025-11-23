@@ -507,7 +507,7 @@ export class GoodWeParser implements IParser {
     }
 
     // Try removing spaces (e.g., "active power" -> "activepower")
-    const noSpaces = normalizedKey.replace(/\s+/g, '');
+    const noSpaces = normalizedKey.replaceAll(/\s+/g, '');
     if (this.fieldMappings[noSpaces]) {
       return this.fieldMappings[noSpaces];
     }
@@ -566,7 +566,7 @@ export class GoodWeParser implements IParser {
 
     // Remove common units and thousands separators
     const cleaned = str
-      .replace(/[,\s]/g, '') // Remove commas and spaces
+      .replaceAll(/[,\s]/g, '') // Remove commas and spaces
       .replace(/[a-zA-Z%°]+$/, '') // Remove trailing units
       .trim();
 
