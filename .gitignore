@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Claude Code local settings
+.claude/
+
+# Build outputs
+dist/
+
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+
+# Sensitive data
+raw_pv_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Cache
+.cache/
+.turbo/
+
+# TypeScript
+*.tsbuildinfo
+
+# Test coverage
+coverage/
