@@ -30,8 +30,15 @@ export function createLtiCsv(opts: {
  * Create GoodWe-format EAV CSV buffer (timestamp,loggerId,key,value)
  */
 export function createGoodWeCsv(
-  rows: Array<{ timestamp: string; loggerId: string; key: string; value: string }>,
+  rows: Array<{
+    timestamp: string;
+    loggerId: string;
+    key: string;
+    value: string;
+  }>,
 ): Buffer {
-  const lines = rows.map((r) => `${r.timestamp},${r.loggerId},${r.key},${r.value}`);
+  const lines = rows.map(
+    (r) => `${r.timestamp},${r.loggerId},${r.key},${r.value}`,
+  );
   return createCsvBuffer(lines);
 }

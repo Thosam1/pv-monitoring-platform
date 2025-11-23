@@ -75,7 +75,11 @@ export class LtiParser implements IParser {
     const lines = fileBuffer.toString('utf-8').split('\n');
     this.validateFileLength(lines);
 
-    const context = { state: 'HEADER' as const, serial: null as string | null, headers: [] as string[] };
+    const context = {
+      state: 'HEADER' as const,
+      serial: null as string | null,
+      headers: [] as string[],
+    };
     let dataRowCount = 0;
 
     for (let i = 0; i < lines.length; i++) {
@@ -95,13 +99,19 @@ export class LtiParser implements IParser {
 
   private validateFileLength(lines: string[]): void {
     if (lines.length < 2) {
-      throw new ParserError(this.name, 'File is empty or has insufficient data');
+      throw new ParserError(
+        this.name,
+        'File is empty or has insufficient data',
+      );
     }
   }
 
   private validateDataRowCount(count: number): void {
     if (count === 0) {
-      throw new ParserError(this.name, 'No valid data rows found. Check file format.');
+      throw new ParserError(
+        this.name,
+        'No valid data rows found. Check file format.',
+      );
     }
   }
 
