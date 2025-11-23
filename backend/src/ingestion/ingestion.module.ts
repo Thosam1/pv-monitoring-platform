@@ -4,6 +4,7 @@ import { Measurement } from '../database/entities/measurement.entity';
 import { IngestionController } from './ingestion.controller';
 import { IngestionService } from './ingestion.service';
 import { GoodWeParser } from './strategies/goodwe.strategy';
+import { LtiParser } from './strategies/lti.strategy';
 
 /**
  * IngestionModule
@@ -14,6 +15,7 @@ import { GoodWeParser } from './strategies/goodwe.strategy';
  * - IngestionController: REST API for file uploads
  * - IngestionService: Orchestrates parsing and database insertion
  * - GoodWeParser: Strategy for GoodWe/SEMS CSV files
+ * - LtiParser: Strategy for LTI ReEnergy sectioned CSV files
  *
  * Future Expansion:
  * - Add SMAParser for SMA Sunny Portal exports
@@ -23,7 +25,7 @@ import { GoodWeParser } from './strategies/goodwe.strategy';
 @Module({
   imports: [TypeOrmModule.forFeature([Measurement])],
   controllers: [IngestionController],
-  providers: [IngestionService, GoodWeParser],
+  providers: [IngestionService, GoodWeParser, LtiParser],
   exports: [IngestionService],
 })
 export class IngestionModule {}

@@ -22,14 +22,18 @@ describe('IngestionController (e2e)', () => {
     createQueryBuilder: jest.Mock;
   };
 
-  // Path to test fixture
+  // Path to test fixtures
   const fixturesPath = path.join(__dirname, 'fixtures');
-  const sampleCsvPath = path.join(fixturesPath, 'sample-goodwe.csv');
+  const sampleGoodweCsvPath = path.join(fixturesPath, 'sample-goodwe.csv');
+  const sampleLtiCsvPath = path.join(fixturesPath, 'sample-lti.csv');
 
   beforeAll(() => {
-    // Verify fixture file exists
-    if (!fs.existsSync(sampleCsvPath)) {
-      throw new Error(`Test fixture not found: ${sampleCsvPath}`);
+    // Verify fixture files exist
+    if (!fs.existsSync(sampleGoodweCsvPath)) {
+      throw new Error(`Test fixture not found: ${sampleGoodweCsvPath}`);
+    }
+    if (!fs.existsSync(sampleLtiCsvPath)) {
+      throw new Error(`Test fixture not found: ${sampleLtiCsvPath}`);
     }
   });
 
@@ -70,7 +74,7 @@ describe('IngestionController (e2e)', () => {
       it('should accept multipart file upload and return 201', async () => {
         const response = await request(app.getHttpServer())
           .post('/ingest/goodwe')
-          .attach('files', sampleCsvPath)
+          .attach('files', sampleGoodweCsvPath)
           .expect(201);
 
         expect(response.body).toHaveProperty('successCount');
@@ -82,7 +86,7 @@ describe('IngestionController (e2e)', () => {
       it('should return successCount >= 1 for valid CSV', async () => {
         const response = await request(app.getHttpServer())
           .post('/ingest/goodwe')
-          .attach('files', sampleCsvPath)
+          .attach('files', sampleGoodweCsvPath)
           .expect(201);
 
         const body = response.body as BulkIngestionResponse;
@@ -93,7 +97,7 @@ describe('IngestionController (e2e)', () => {
       it('should return correct response structure with BulkIngestionResponse', async () => {
         const response = await request(app.getHttpServer())
           .post('/ingest/goodwe')
-          .attach('files', sampleCsvPath)
+          .attach('files', sampleGoodweCsvPath)
           .expect(201);
 
         const body = response.body as BulkIngestionResponse;
@@ -117,7 +121,7 @@ describe('IngestionController (e2e)', () => {
       it('should include recordsProcessed in file results', async () => {
         const response = await request(app.getHttpServer())
           .post('/ingest/goodwe')
-          .attach('files', sampleCsvPath)
+          .attach('files', sampleGoodweCsvPath)
           .expect(201);
 
         const body = response.body as BulkIngestionResponse;
@@ -130,8 +134,8 @@ describe('IngestionController (e2e)', () => {
       it('should handle bulk upload with multiple files', async () => {
         const response = await request(app.getHttpServer())
           .post('/ingest/goodwe')
-          .attach('files', sampleCsvPath)
-          .attach('files', sampleCsvPath) // Same file twice for testing
+          .attach('files', sampleGoodweCsvPath)
+          .attach('files', sampleGoodweCsvPath) // Same file twice for testing
           .expect(201);
 
         const body = response.body as BulkIngestionResponse;
@@ -155,7 +159,7 @@ describe('IngestionController (e2e)', () => {
       it('should accept different loggerType parameter', async () => {
         const response = await request(app.getHttpServer())
           .post('/ingest/sma')
-          .attach('files', sampleCsvPath)
+          .attach('files', sampleGoodweCsvPath)
           .expect(201);
 
         const body = response.body as BulkIngestionResponse;
@@ -181,12 +185,68 @@ describe('IngestionController (e2e)', () => {
       expect(body.results[0].filename).toBe('inline-test.csv');
     });
   });
+
+  describe('POST /ingest/lti (LTI ReEnergy)', () => {
+    it('should accept LTI sectioned CSV file upload', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/ingest/lti')
+        .attach('files', sampleLtiCsvPath)
+        .expect(201);
+
+      const body = response.body as BulkIngestionResponse;
+      expect(body.successCount).toBeGreaterThanOrEqual(1);
+      expect(body.totalRecordsInserted).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should parse LTI file with correct parser', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/ingest/lti')
+        .attach('files', sampleLtiCsvPath)
+        .expect(201);
+
+      const body = response.body as BulkIngestionResponse;
+      expect(body.results[0].success).toBe(true);
+      expect(body.results[0].parserUsed).toBe('lti');
+    });
+
+    it('should extract records from LTI sectioned CSV', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/ingest/lti')
+        .attach('files', sampleLtiCsvPath)
+        .expect(201);
+
+      const body = response.body as BulkIngestionResponse;
+      // Sample file has 3 data rows
+      expect(body.results[0].recordsProcessed).toBe(3);
+    });
+
+    it('should accept LTI content as inline buffer', async () => {
+      const csvContent = [
+        '[header]',
+        'serial=INLINE_LTI_TEST',
+        '[data]',
+        'timestamp;P_AC;E_DAY',
+        '2025-10-01 12:00:00;2500;10.5',
+        '2025-10-01 12:05:00;2600;10.8',
+      ].join('\n');
+
+      const response = await request(app.getHttpServer())
+        .post('/ingest/lti')
+        .attach('files', Buffer.from(csvContent), 'lti-inline-test.csv')
+        .expect(201);
+
+      const body = response.body as BulkIngestionResponse;
+      expect(body.successCount).toBeGreaterThanOrEqual(1);
+      expect(body.results[0].parserUsed).toBe('lti');
+      expect(body.results[0].recordsProcessed).toBe(2);
+    });
+  });
 });
 
 describe('IngestionController (e2e) - Repository Failure', () => {
   let app: INestApplication<App>;
   const fixturesPath = path.join(__dirname, 'fixtures');
-  const sampleCsvPath = path.join(fixturesPath, 'sample-goodwe.csv');
+  const sampleGoodweCsvPath = path.join(fixturesPath, 'sample-goodwe.csv');
 
   beforeEach(async () => {
     // Mock repository that simulates database failure
@@ -220,7 +280,7 @@ describe('IngestionController (e2e) - Repository Failure', () => {
   it('should handle database errors gracefully', async () => {
     const response = await request(app.getHttpServer())
       .post('/ingest/goodwe')
-      .attach('files', sampleCsvPath)
+      .attach('files', sampleGoodweCsvPath)
       .expect(201); // Service catches error, returns success response with failure report
 
     const body = response.body as BulkIngestionResponse;

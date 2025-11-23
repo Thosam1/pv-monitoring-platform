@@ -1,0 +1,10 @@
+[header]
+serial=LTI_TEST_001
+model=LTi5000
+firmware=2.1.0
+location=TestSite
+[data]
+timestamp;P_AC;E_DAY;voltage;current;temperature
+2025-10-01 10:00:00;1500;5.5;380;4.0;45.2
+2025-10-01 10:05:00;1600;5.7;382;4.2;45.5
+2025-10-01 10:10:00;1700;5.9;385;4.4;45.8

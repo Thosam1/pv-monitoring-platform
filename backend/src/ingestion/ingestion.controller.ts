@@ -16,6 +16,7 @@ import { IngestionService, IngestionResult } from './ingestion.service';
 export interface FileIngestionResult {
   filename: string;
   success: boolean;
+  parserUsed?: string;
   recordsInserted?: number;
   recordsProcessed?: number;
   error?: string;
@@ -112,6 +113,7 @@ export class IngestionController {
         results.push({
           filename: file.originalname,
           success: result.success,
+          parserUsed: result.parserUsed,
           recordsInserted: result.recordsInserted,
           recordsProcessed: result.recordsProcessed,
           error: result.errors.length > 0 ? result.errors[0] : undefined,
