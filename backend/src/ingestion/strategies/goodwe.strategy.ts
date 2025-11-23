@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Readable } from 'stream';
+import { Readable } from 'node:stream';
 import csvParser from 'csv-parser';
 import { IParser, ParserError } from '../interfaces/parser.interface';
 import { UnifiedMeasurementDTO } from '../dto/unified-measurement.dto';
@@ -285,7 +285,7 @@ export class GoodWeParser implements IParser {
 
     // Try ISO format
     const isoDate = new Date(trimmed);
-    if (!isNaN(isoDate.getTime())) {
+    if (!Number.isNaN(isoDate.getTime())) {
       return isoDate;
     }
 
@@ -323,21 +323,25 @@ export class GoodWeParser implements IParser {
     pattern: RegExp,
     yearFirst: boolean,
   ): Date | null {
-    const match = value.match(pattern);
+    const match = pattern.exec(value);
     if (!match) {
       return null;
     }
 
-    const hour = parseInt(match[4], 10);
-    const minute = parseInt(match[5], 10);
-    const second = match[6] ? parseInt(match[6], 10) : 0;
+    const hour = Number.parseInt(match[4], 10);
+    const minute = Number.parseInt(match[5], 10);
+    const second = match[6] ? Number.parseInt(match[6], 10) : 0;
 
-    const year = yearFirst ? parseInt(match[1], 10) : parseInt(match[3], 10);
-    const month = parseInt(match[2], 10) - 1;
-    const day = yearFirst ? parseInt(match[3], 10) : parseInt(match[1], 10);
+    const year = yearFirst
+      ? Number.parseInt(match[1], 10)
+      : Number.parseInt(match[3], 10);
+    const month = Number.parseInt(match[2], 10) - 1;
+    const day = yearFirst
+      ? Number.parseInt(match[3], 10)
+      : Number.parseInt(match[1], 10);
 
     const date = new Date(Date.UTC(year, month, day, hour, minute, second));
-    return isNaN(date.getTime()) ? null : date;
+    return Number.isNaN(date.getTime()) ? null : date;
   }
 
   /**
@@ -352,17 +356,17 @@ export class GoodWeParser implements IParser {
    */
   private parseGoodWeCompactDate(raw: string): Date | null {
     // Match format: YYYYMMDDTHHmmss (15 chars with T separator)
-    const match = raw.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/);
+    const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/.exec(raw);
     if (!match) {
       return null;
     }
 
-    const year = parseInt(match[1], 10); // chars 0-3
-    const month = parseInt(match[2], 10); // chars 4-5
-    const day = parseInt(match[3], 10); // chars 6-7
-    const hour = parseInt(match[4], 10); // chars 9-10 (after T)
-    const minute = parseInt(match[5], 10); // chars 11-12
-    const second = parseInt(match[6], 10); // chars 13-14
+    const year = Number.parseInt(match[1], 10); // chars 0-3
+    const month = Number.parseInt(match[2], 10); // chars 4-5
+    const day = Number.parseInt(match[3], 10); // chars 6-7
+    const hour = Number.parseInt(match[4], 10); // chars 9-10 (after T)
+    const minute = Number.parseInt(match[5], 10); // chars 11-12
+    const second = Number.parseInt(match[6], 10); // chars 13-14
 
     // Validate ranges
     if (
@@ -384,7 +388,7 @@ export class GoodWeParser implements IParser {
     const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
 
     // Final validation
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       return null;
     }
 
@@ -469,8 +473,7 @@ export class GoodWeParser implements IParser {
       } else {
         // Store in metadata
         const parsedValue = this.parseNumber(value);
-        metadata[this.normalizeFieldName(key)] =
-          parsedValue !== null ? parsedValue : value;
+        metadata[this.normalizeFieldName(key)] = parsedValue ?? value;
       }
     }
 
@@ -498,7 +501,7 @@ export class GoodWeParser implements IParser {
     }
 
     // Try removing underscores and spaces (e.g., "active_power" -> "activepower")
-    const noUnderscores = normalizedKey.replace(/_/g, '');
+    const noUnderscores = normalizedKey.replaceAll('_', '');
     if (this.fieldMappings[noUnderscores]) {
       return this.fieldMappings[noUnderscores];
     }
@@ -510,7 +513,7 @@ export class GoodWeParser implements IParser {
     }
 
     // Try replacing underscores with spaces (e.g., "active_power" -> "active power")
-    const withSpaces = normalizedKey.replace(/_/g, ' ');
+    const withSpaces = normalizedKey.replaceAll('_', ' ');
     if (this.fieldMappings[withSpaces]) {
       return this.fieldMappings[withSpaces];
     }
@@ -553,7 +556,7 @@ export class GoodWeParser implements IParser {
     }
 
     if (typeof value === 'number') {
-      return isNaN(value) ? null : value;
+      return Number.isNaN(value) ? null : value;
     }
 
     const str = this.toSafeString(value).trim();
@@ -567,8 +570,8 @@ export class GoodWeParser implements IParser {
       .replace(/[a-zA-Z%°]+$/, '') // Remove trailing units
       .trim();
 
-    const num = parseFloat(cleaned);
-    return isNaN(num) ? null : num;
+    const num = Number.parseFloat(cleaned);
+    return Number.isNaN(num) ? null : num;
   }
 
   /**
@@ -578,8 +581,8 @@ export class GoodWeParser implements IParser {
   private normalizeFieldName(name: string): string {
     return name
       .trim()
-      .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
-      .replace(/\s+(.)/g, (_, char: string) => char.toUpperCase()) // camelCase
+      .replaceAll(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
+      .replaceAll(/\s+(\S)/g, (_, char: string) => char.toUpperCase()) // camelCase
       .replace(/^\w/, (char) => char.toLowerCase()); // lowercase first
   }
 }

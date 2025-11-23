@@ -425,7 +425,7 @@ describe('GoodWeParser', () => {
     });
 
     it('should return null for NaN', () => {
-      expect(parseNumber(NaN)).toBeNull();
+      expect(parseNumber(Number.NaN)).toBeNull();
     });
   });
 });

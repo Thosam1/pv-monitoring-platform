@@ -60,14 +60,14 @@ export class MeasurementsController {
 
     if (query.start) {
       start = new Date(query.start);
-      if (isNaN(start.getTime())) {
+      if (Number.isNaN(start.getTime())) {
         throw new BadRequestException(`Invalid start date: ${query.start}`);
       }
     }
 
     if (query.end) {
       end = new Date(query.end);
-      if (isNaN(end.getTime())) {
+      if (Number.isNaN(end.getTime())) {
         throw new BadRequestException(`Invalid end date: ${query.end}`);
       }
     }

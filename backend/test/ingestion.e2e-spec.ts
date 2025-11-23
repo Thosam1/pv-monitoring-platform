@@ -3,8 +3,8 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { IngestionModule } from '../src/ingestion/ingestion.module';
 import { Measurement } from '../src/database/entities/measurement.entity';
 import { BulkIngestionResponse } from '../src/ingestion/ingestion.controller';
@@ -42,7 +42,7 @@ describe('IngestionController (e2e)', () => {
         values: jest.fn().mockReturnThis(),
         orUpdate: jest.fn().mockReturnThis(),
         execute: jest.fn().mockResolvedValue({
-          identifiers: Array(3).fill({
+          identifiers: new Array(3).fill({
             loggerId: 'TEST',
             timestamp: new Date(),
           }),

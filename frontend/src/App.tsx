@@ -23,6 +23,10 @@ interface ChartDataPoint {
   energy: number
 }
 
+// Status type aliases
+type BackendStatus = 'loading' | 'connected' | 'error'
+type DataStatus = 'loading' | 'loaded' | 'empty' | 'error'
+
 /**
  * Format timestamp to HH:mm for X-axis
  */
@@ -43,8 +47,8 @@ interface StatusConfig {
   text: string
 }
 
-function getBackendStatusConfig(status: 'loading' | 'connected' | 'error'): StatusConfig {
-  const configs: Record<typeof status, StatusConfig> = {
+function getBackendStatusConfig(status: BackendStatus): StatusConfig {
+  const configs: Record<BackendStatus, StatusConfig> = {
     connected: { color: 'bg-green-500', text: 'Connected' },
     error: { color: 'bg-red-500', text: 'Disconnected' },
     loading: { color: 'bg-yellow-500', text: 'Checking...' }
@@ -52,8 +56,8 @@ function getBackendStatusConfig(status: 'loading' | 'connected' | 'error'): Stat
   return configs[status]
 }
 
-function getDataStatusConfig(status: 'loading' | 'loaded' | 'empty' | 'error', dataCount: number): StatusConfig {
-  const configs: Record<typeof status, StatusConfig> = {
+function getDataStatusConfig(status: DataStatus, dataCount: number): StatusConfig {
+  const configs: Record<DataStatus, StatusConfig> = {
     loaded: { color: 'bg-green-500', text: dataCount.toLocaleString() },
     error: { color: 'bg-red-500', text: 'Error' },
     empty: { color: 'bg-yellow-500', text: 'No Data' },
@@ -65,13 +69,12 @@ function getDataStatusConfig(status: 'loading' | 'loaded' | 'empty' | 'error', d
 /**
  * Chart loading states component
  */
-function ChartContent({
-  dataStatus,
-  chartData
-}: {
-  dataStatus: 'loading' | 'loaded' | 'empty' | 'error'
+interface ChartContentProps {
+  dataStatus: DataStatus
   chartData: ChartDataPoint[]
-}) {
+}
+
+function ChartContent({ dataStatus, chartData }: Readonly<ChartContentProps>) {
   if (dataStatus === 'loading') {
     return (
       <div className="h-64 flex items-center justify-center">
@@ -145,10 +148,10 @@ function ChartContent({
 }
 
 function App() {
-  const [backendStatus, setBackendStatus] = useState<'loading' | 'connected' | 'error'>('loading')
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>('loading')
   const [backendMessage, setBackendMessage] = useState('')
   const [chartData, setChartData] = useState<ChartDataPoint[]>([])
-  const [dataStatus, setDataStatus] = useState<'loading' | 'loaded' | 'empty' | 'error'>('loading')
+  const [dataStatus, setDataStatus] = useState<DataStatus>('loading')
   const [dataCount, setDataCount] = useState(0)
   const [chartDate, setChartDate] = useState<string>('')
 
