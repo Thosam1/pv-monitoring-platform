@@ -35,6 +35,115 @@ function formatTime(timestamp: string): string {
   })
 }
 
+/**
+ * Status indicator configuration
+ */
+interface StatusConfig {
+  color: string
+  text: string
+}
+
+function getBackendStatusConfig(status: 'loading' | 'connected' | 'error'): StatusConfig {
+  const configs: Record<typeof status, StatusConfig> = {
+    connected: { color: 'bg-green-500', text: 'Connected' },
+    error: { color: 'bg-red-500', text: 'Disconnected' },
+    loading: { color: 'bg-yellow-500', text: 'Checking...' }
+  }
+  return configs[status]
+}
+
+function getDataStatusConfig(status: 'loading' | 'loaded' | 'empty' | 'error', dataCount: number): StatusConfig {
+  const configs: Record<typeof status, StatusConfig> = {
+    loaded: { color: 'bg-green-500', text: dataCount.toLocaleString() },
+    error: { color: 'bg-red-500', text: 'Error' },
+    empty: { color: 'bg-yellow-500', text: 'No Data' },
+    loading: { color: 'bg-blue-500', text: 'Loading...' }
+  }
+  return configs[status]
+}
+
+/**
+ * Chart loading states component
+ */
+function ChartContent({
+  dataStatus,
+  chartData
+}: {
+  dataStatus: 'loading' | 'loaded' | 'empty' | 'error'
+  chartData: ChartDataPoint[]
+}) {
+  if (dataStatus === 'loading') {
+    return (
+      <div className="h-64 flex items-center justify-center">
+        <div className="text-gray-500">Loading chart data...</div>
+      </div>
+    )
+  }
+
+  if (dataStatus === 'empty') {
+    return (
+      <div className="h-64 flex items-center justify-center">
+        <div className="text-center text-gray-500">
+          <p className="mb-2">No measurement data available</p>
+          <p className="text-sm">Upload a CSV file via POST /ingest/goodwe</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (dataStatus === 'error') {
+    return (
+      <div className="h-64 flex items-center justify-center">
+        <div className="text-red-500">Failed to load data. Check backend connection.</div>
+      </div>
+    )
+  }
+
+  if (dataStatus === 'loaded' && chartData.length > 0) {
+    return (
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+            <XAxis
+              dataKey="time"
+              stroke="#9CA3AF"
+              tick={{ fontSize: 12 }}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              stroke="#9CA3AF"
+              unit=" W"
+              tick={{ fontSize: 12 }}
+              width={80}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: '#1F2937',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#F9FAFB'
+              }}
+              formatter={(value: number) => [`${value.toFixed(1)} W`, 'Power']}
+              labelFormatter={(label) => `Time: ${label}`}
+            />
+            <Line
+              type="monotone"
+              dataKey="power"
+              stroke="#F59E0B"
+              strokeWidth={2}
+              dot={false}
+              name="Active Power"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    )
+  }
+
+  return null
+}
+
 function App() {
   const [backendStatus, setBackendStatus] = useState<'loading' | 'connected' | 'error'>('loading')
   const [backendMessage, setBackendMessage] = useState('')
@@ -138,13 +247,9 @@ function App() {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
             <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Backend Status</h3>
             <div className="mt-2 flex items-center">
-              <span className={`inline-block w-3 h-3 rounded-full mr-2 ${
-                backendStatus === 'connected' ? 'bg-green-500' :
-                backendStatus === 'error' ? 'bg-red-500' : 'bg-yellow-500'
-              }`}></span>
+              <span className={`inline-block w-3 h-3 rounded-full mr-2 ${getBackendStatusConfig(backendStatus).color}`}></span>
               <span className="text-lg font-semibold text-gray-900 dark:text-white">
-                {backendStatus === 'connected' ? 'Connected' :
-                 backendStatus === 'error' ? 'Disconnected' : 'Checking...'}
+                {getBackendStatusConfig(backendStatus).text}
               </span>
             </div>
             <p className="text-xs text-gray-500 mt-1">{backendMessage}</p>
@@ -154,15 +259,9 @@ function App() {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
             <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Data Points</h3>
             <div className="mt-2 flex items-center">
-              <span className={`inline-block w-3 h-3 rounded-full mr-2 ${
-                dataStatus === 'loaded' ? 'bg-green-500' :
-                dataStatus === 'error' ? 'bg-red-500' :
-                dataStatus === 'empty' ? 'bg-yellow-500' : 'bg-blue-500'
-              }`}></span>
+              <span className={`inline-block w-3 h-3 rounded-full mr-2 ${getDataStatusConfig(dataStatus, dataCount).color}`}></span>
               <span className="text-lg font-semibold text-gray-900 dark:text-white">
-                {dataStatus === 'loading' ? 'Loading...' :
-                 dataStatus === 'loaded' ? dataCount.toLocaleString() :
-                 dataStatus === 'empty' ? 'No Data' : 'Error'}
+                {getDataStatusConfig(dataStatus, dataCount).text}
               </span>
             </div>
             <p className="text-xs text-gray-500 mt-1">Logger: {LOGGER_ID}</p>
@@ -214,66 +313,7 @@ function App() {
             </button>
           </div>
 
-          {dataStatus === 'loading' && (
-            <div className="h-64 flex items-center justify-center">
-              <div className="text-gray-500">Loading chart data...</div>
-            </div>
-          )}
-
-          {dataStatus === 'empty' && (
-            <div className="h-64 flex items-center justify-center">
-              <div className="text-center text-gray-500">
-                <p className="mb-2">No measurement data available</p>
-                <p className="text-sm">Upload a CSV file via POST /ingest/goodwe</p>
-              </div>
-            </div>
-          )}
-
-          {dataStatus === 'error' && (
-            <div className="h-64 flex items-center justify-center">
-              <div className="text-red-500">Failed to load data. Check backend connection.</div>
-            </div>
-          )}
-
-          {dataStatus === 'loaded' && chartData.length > 0 && (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis
-                    dataKey="time"
-                    stroke="#9CA3AF"
-                    tick={{ fontSize: 12 }}
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    stroke="#9CA3AF"
-                    unit=" W"
-                    tick={{ fontSize: 12 }}
-                    width={80}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#1F2937',
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: '#F9FAFB'
-                    }}
-                    formatter={(value: number) => [`${value.toFixed(1)} W`, 'Power']}
-                    labelFormatter={(label) => `Time: ${label}`}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="power"
-                    stroke="#F59E0B"
-                    strokeWidth={2}
-                    dot={false}
-                    name="Active Power"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+          <ChartContent dataStatus={dataStatus} chartData={chartData} />
         </div>
 
         {/* Quick Start Instructions */}

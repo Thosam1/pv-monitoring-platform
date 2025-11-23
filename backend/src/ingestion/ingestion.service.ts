@@ -125,13 +125,7 @@ export class IngestionService {
         `Ingestion complete: ${result.recordsInserted}/${result.recordsProcessed} records inserted`,
       );
     } catch (error) {
-      const message =
-        error instanceof ParserError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : String(error);
-
+      const message = this.formatErrorMessage(error);
       result.errors.push(message);
       this.logger.error(`Ingestion failed for ${filename}: ${message}`);
     }
@@ -164,6 +158,19 @@ export class IngestionService {
     measurement.irradiance = dto.irradiance ?? null;
     measurement.metadata = dto.metadata ?? {};
     return measurement;
+  }
+
+  /**
+   * Format error message from unknown error type
+   */
+  private formatErrorMessage(error: unknown): string {
+    if (error instanceof ParserError) {
+      return error.message;
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return String(error);
   }
 
   /**

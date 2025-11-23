@@ -287,47 +287,47 @@ export class GoodWeParser implements IParser {
     }
 
     // Try ISO format
-    let date = new Date(trimmed);
-    if (!isNaN(date.getTime())) {
-      return date;
+    const isoDate = new Date(trimmed);
+    if (!isNaN(isoDate.getTime())) {
+      return isoDate;
     }
 
     // Try common GoodWe formats: "2024-01-15 14:30:00", "15/01/2024 14:30"
-    const formats = [
-      /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):?(\d{2})?$/, // 2024-01-15 14:30:00
-      /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):?(\d{2})?$/, // 15/01/2024 14:30
-      /^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):?(\d{2})?$/, // 15-01-2024 14:30
+    const formats: { pattern: RegExp; yearFirst: boolean }[] = [
+      { pattern: /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):?(\d{2})?$/, yearFirst: true },
+      { pattern: /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):?(\d{2})?$/, yearFirst: false },
+      { pattern: /^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):?(\d{2})?$/, yearFirst: false },
     ];
 
-    for (const format of formats) {
-      const match = trimmed.match(format);
-      if (match) {
-        // Determine year, month, day positions based on format
-        let year: number, month: number, day: number;
-        const hour = parseInt(match[4], 10);
-        const minute = parseInt(match[5], 10);
-        const second = match[6] ? parseInt(match[6], 10) : 0;
-
-        if (match[1].length === 4) {
-          // Year first: YYYY-MM-DD
-          year = parseInt(match[1], 10);
-          month = parseInt(match[2], 10) - 1;
-          day = parseInt(match[3], 10);
-        } else {
-          // Day first: DD/MM/YYYY or DD-MM-YYYY
-          day = parseInt(match[1], 10);
-          month = parseInt(match[2], 10) - 1;
-          year = parseInt(match[3], 10);
-        }
-
-        date = new Date(Date.UTC(year, month, day, hour, minute, second));
-        if (!isNaN(date.getTime())) {
-          return date;
-        }
+    for (const { pattern, yearFirst } of formats) {
+      const result = this.parseCustomFormat(trimmed, pattern, yearFirst);
+      if (result) {
+        return result;
       }
     }
 
     return null;
+  }
+
+  /**
+   * Parse a custom date format using regex pattern
+   */
+  private parseCustomFormat(value: string, pattern: RegExp, yearFirst: boolean): Date | null {
+    const match = value.match(pattern);
+    if (!match) {
+      return null;
+    }
+
+    const hour = parseInt(match[4], 10);
+    const minute = parseInt(match[5], 10);
+    const second = match[6] ? parseInt(match[6], 10) : 0;
+
+    const year = yearFirst ? parseInt(match[1], 10) : parseInt(match[3], 10);
+    const month = parseInt(match[2], 10) - 1;
+    const day = yearFirst ? parseInt(match[3], 10) : parseInt(match[1], 10);
+
+    const date = new Date(Date.UTC(year, month, day, hour, minute, second));
+    return isNaN(date.getTime()) ? null : date;
   }
 
   /**

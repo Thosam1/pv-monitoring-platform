@@ -188,7 +188,7 @@ describe('GoodWeParser', () => {
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(2);
-      expect(results.map((r) => r.loggerId).sort()).toEqual(['LOGGER_A', 'LOGGER_B']);
+      expect(results.map((r) => r.loggerId).sort((a, b) => a.localeCompare(b))).toEqual(['LOGGER_A', 'LOGGER_B']);
     });
 
     it('should handle missing values gracefully', async () => {
