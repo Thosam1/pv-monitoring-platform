@@ -18,11 +18,12 @@ export function createLtiCsv(opts: {
   headers: string[];
   rows: string[][];
 }): Buffer {
-  const lines: string[] = [];
-  if (opts.serial) lines.push(`serial=${opts.serial}`);
-  lines.push('[data]');
-  lines.push(opts.headers.join(';'));
-  lines.push(...opts.rows.map((r) => r.join(';')));
+  const lines = [
+    ...(opts.serial ? [`serial=${opts.serial}`] : []),
+    '[data]',
+    opts.headers.join(';'),
+    ...opts.rows.map((r) => r.join(';')),
+  ];
   return createCsvBuffer(lines);
 }
 
