@@ -1,6 +1,5 @@
 import { GoodWeParser } from './goodwe.strategy';
-import { collectDTOs } from '../../../test/utils/test-helpers';
-import { createCsvBuffer } from '../../../test/utils/csv-builder';
+import { parseAndCollect } from '../../../test/utils/test-helpers';
 
 /**
  * Interface exposing private methods for testing
@@ -129,13 +128,10 @@ describe('GoodWeParser', () => {
   describe('Headerless CSV Parsing', () => {
     it('should pivot EAV rows into UnifiedMeasurementDTO', async () => {
       // CSV format: timestamp, loggerId, key, value
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '20251001T100000,LOGGER001,Active_power percent,1500',
         '20251001T100000,LOGGER001,E_Day,5.5',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
       expect(results[0].loggerId).toBe('LOGGER001');
@@ -147,16 +143,13 @@ describe('GoodWeParser', () => {
     });
 
     it('should group multiple metrics by timestamp+loggerId', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '20251001T100000,LOGGER001,pac,1000',
         '20251001T100000,LOGGER001,e_day,3.2',
         '20251001T100000,LOGGER001,irradiance,850',
         '20251001T110000,LOGGER001,pac,1200',
         '20251001T110000,LOGGER001,e_day,4.1',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       // Should have 2 measurements (grouped by timestamp)
       expect(results).toHaveLength(2);
@@ -180,13 +173,10 @@ describe('GoodWeParser', () => {
     });
 
     it('should handle multiple loggers in same file', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '20251001T100000,LOGGER_A,pac,500',
         '20251001T100000,LOGGER_B,pac,600',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(2);
       expect(
@@ -195,14 +185,11 @@ describe('GoodWeParser', () => {
     });
 
     it('should handle missing values gracefully', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '20251001T100000,LOGGER001,pac,',
         '20251001T100000,LOGGER001,e_day,N/A',
         '20251001T100000,LOGGER001,irradiance,-',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
       // All should be null due to invalid values
@@ -212,27 +199,21 @@ describe('GoodWeParser', () => {
     });
 
     it('should skip rows with invalid timestamps', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         'invalid_timestamp,LOGGER001,pac,1000',
         '20251001T100000,LOGGER001,pac,1500',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
       expect(results[0].activePowerWatts).toBe(1500);
     });
 
     it('should store unmapped fields in metadata', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '20251001T100000,LOGGER001,pac,1000',
         '20251001T100000,LOGGER001,voltage_dc1,350',
         '20251001T100000,LOGGER001,temperature,45',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
       expect(results[0].activePowerWatts).toBe(1000);

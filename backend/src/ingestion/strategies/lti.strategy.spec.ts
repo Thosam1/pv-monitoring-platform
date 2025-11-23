@@ -1,6 +1,5 @@
 import { LtiParser } from './lti.strategy';
-import { collectDTOs } from '../../../test/utils/test-helpers';
-import { createCsvBuffer } from '../../../test/utils/csv-builder';
+import { collectDTOs, parseAndCollect } from '../../../test/utils/test-helpers';
 
 describe('LtiParser', () => {
   let parser: LtiParser;
@@ -35,7 +34,7 @@ describe('LtiParser', () => {
 
   describe('parse - Sectioned CSV Format', () => {
     it('should skip header section and parse data after [data] marker', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '[header]',
         'serial=090250014',
         'model=LTi5000',
@@ -45,10 +44,7 @@ describe('LtiParser', () => {
         'timestamp;P_AC;E_DAY',
         '2025-10-01 10:00:00;1500;5.5',
         '2025-10-01 11:00:00;1800;6.2',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(2);
       expect(results[0].loggerId).toBe('090250014');
@@ -57,58 +53,46 @@ describe('LtiParser', () => {
     });
 
     it('should extract serial from header metadata', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         'serial=TEST_SERIAL_123',
         '[data]',
         'timestamp;P_AC',
         '2025-10-01 10:00:00;1000',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
       expect(results[0].loggerId).toBe('TEST_SERIAL_123');
     });
 
     it('should prefer serial column over header serial', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         'serial=HEADER_SERIAL',
         '[data]',
         'timestamp;serial;P_AC',
         '2025-10-01 10:00:00;COLUMN_SERIAL;1000',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
       expect(results[0].loggerId).toBe('COLUMN_SERIAL');
     });
 
     it('should use "address" column as loggerId if no serial', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '[data]',
         'timestamp;address;P_AC',
         '2025-10-01 10:00:00;ADDRESS_123;1000',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
       expect(results[0].loggerId).toBe('ADDRESS_123');
     });
 
     it('should parse semicolon-delimited CSV correctly', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '[data]',
         'timestamp;P_AC;E_DAY;voltage;current',
         '2025-10-01 12:00:00;2500;8.3;380;6.5',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
       expect(results[0].activePowerWatts).toBe(2500);
@@ -118,15 +102,12 @@ describe('LtiParser', () => {
     });
 
     it('should handle empty values gracefully', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '[data]',
         'timestamp;P_AC;E_DAY',
         '2025-10-01 10:00:00;;5.5',
         '2025-10-01 11:00:00;1500;',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(2);
       expect(results[0].activePowerWatts).toBeNull();
@@ -136,29 +117,23 @@ describe('LtiParser', () => {
     });
 
     it('should skip rows with invalid timestamps', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '[data]',
         'timestamp;P_AC',
         'invalid_timestamp;1000',
         '2025-10-01 10:00:00;1500',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
       expect(results[0].activePowerWatts).toBe(1500);
     });
 
     it('should store unmapped fields in metadata', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '[data]',
         'timestamp;P_AC;grid_frequency;temperature',
         '2025-10-01 10:00:00;1000;50.02;45.5',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
       expect(results[0].activePowerWatts).toBe(1000);
@@ -169,75 +144,53 @@ describe('LtiParser', () => {
 
   describe('Timestamp Parsing', () => {
     it('should parse "YYYY-MM-DD HH:mm:ss" format', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '[data]',
         'timestamp;P_AC',
         '2025-10-01 14:30:45;1000',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
-      expect(results[0].timestamp.toISOString()).toBe(
-        '2025-10-01T14:30:45.000Z',
-      );
+      expect(results[0].timestamp.toISOString()).toBe('2025-10-01T14:30:45.000Z');
     });
 
     it('should parse ISO format as fallback', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '[data]',
         'timestamp;P_AC',
         '2025-10-01T10:00:00.000Z;1000',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
+      ]);
 
       expect(results).toHaveLength(1);
-      expect(results[0].timestamp.toISOString()).toBe(
-        '2025-10-01T10:00:00.000Z',
-      );
+      expect(results[0].timestamp.toISOString()).toBe('2025-10-01T10:00:00.000Z');
     });
   });
 
   describe('Field Mapping', () => {
     it('should map P_AC to activePowerWatts', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '[data]',
         'timestamp;P_AC',
         '2025-10-01 10:00:00;1234',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
-
+      ]);
       expect(results[0].activePowerWatts).toBe(1234);
     });
 
     it('should map E_DAY to energyDailyKwh', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '[data]',
         'timestamp;E_DAY',
         '2025-10-01 10:00:00;12.5',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
-
+      ]);
       expect(results[0].energyDailyKwh).toBe(12.5);
     });
 
     it('should map irradiance field', async () => {
-      const csvContent = [
+      const results = await parseAndCollect(parser, [
         '[data]',
         'timestamp;irradiance',
         '2025-10-01 10:00:00;850',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-      const results = await collectDTOs(parser.parse(buffer));
-
+      ]);
       expect(results[0].irradiance).toBe(850);
     });
   });
@@ -252,18 +205,9 @@ describe('LtiParser', () => {
     });
 
     it('should throw ParserError when no data rows found', async () => {
-      const csvContent = [
-        '[header]',
-        'serial=123',
-        '[data]',
-        'timestamp;P_AC',
-      ].join('\n');
-
-      const buffer = createCsvBuffer(csvContent.split('\n'));
-
-      await expect(collectDTOs(parser.parse(buffer))).rejects.toThrow(
-        'No valid data rows found',
-      );
+      await expect(
+        parseAndCollect(parser, ['[header]', 'serial=123', '[data]', 'timestamp;P_AC']),
+      ).rejects.toThrow('No valid data rows found');
     });
   });
 });
