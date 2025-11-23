@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { Measurement } from '../database/entities/measurement.entity';
 import { IParser, ParserError } from './interfaces/parser.interface';
 import { GoodWeParser } from './strategies/goodwe.strategy';
@@ -182,7 +183,7 @@ export class IngestionService {
 
     try {
       // Convert to plain objects for TypeORM insert
-      const values = batch.map((m) => ({
+      const values: QueryDeepPartialEntity<Measurement>[] = batch.map((m) => ({
         timestamp: m.timestamp,
         loggerId: m.loggerId,
         activePowerWatts: m.activePowerWatts,
@@ -197,8 +198,7 @@ export class IngestionService {
         .createQueryBuilder()
         .insert()
         .into(Measurement)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .values(values as any)
+        .values(values)
         .orUpdate(
           ['activePowerWatts', 'energyDailyKwh', 'irradiance', 'metadata'],
           ['loggerId', 'timestamp'],
@@ -209,7 +209,7 @@ export class IngestionService {
     } catch (error) {
       this.logger.error('Batch insert failed', {
         batchSize: batch.length,
-        error: error instanceof Error ? error.message : error,
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }

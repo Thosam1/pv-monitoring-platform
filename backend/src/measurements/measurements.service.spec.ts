@@ -1,7 +1,22 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { MeasurementsService, MeasurementChartData } from './measurements.service';
+import {
+  MeasurementsService,
+  MeasurementChartData,
+} from './measurements.service';
 import { Measurement } from '../database/entities/measurement.entity';
+
+/**
+ * Interface for typing the find call options in mock assertions
+ */
+interface FindCallOptions {
+  where: {
+    loggerId?: string;
+    timestamp: {
+      _value: [Date, Date];
+    };
+  };
+}
 
 describe('MeasurementsService', () => {
   let service: MeasurementsService;
@@ -55,6 +70,7 @@ describe('MeasurementsService', () => {
         expect(mockRepository.find).toHaveBeenCalledTimes(1);
         expect(mockRepository.find).toHaveBeenCalledWith(
           expect.objectContaining({
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             where: expect.objectContaining({
               loggerId: 'LOGGER001',
             }),
@@ -141,7 +157,10 @@ describe('MeasurementsService', () => {
         await service.getMeasurements(loggerId);
 
         // Verify find was called with full day boundaries
-        const findCall = mockRepository.find.mock.calls[0][0];
+        /* eslint-disable @typescript-eslint/no-unsafe-member-access */
+        const findCall = mockRepository.find.mock
+          .calls[0][0] as FindCallOptions;
+        /* eslint-enable @typescript-eslint/no-unsafe-member-access */
         const whereClause = findCall.where;
 
         // The Between clause should span the full day of Jan 15, 2023 UTC
@@ -191,7 +210,10 @@ describe('MeasurementsService', () => {
         await service.getMeasurements(loggerId);
 
         // Verify find was called with today's boundaries
-        const findCall = mockRepository.find.mock.calls[0][0];
+        /* eslint-disable @typescript-eslint/no-unsafe-member-access */
+        const findCall = mockRepository.find.mock
+          .calls[0][0] as FindCallOptions;
+        /* eslint-enable @typescript-eslint/no-unsafe-member-access */
         const whereClause = findCall.where;
 
         // Check the date (ignoring milliseconds for test stability)
@@ -218,7 +240,10 @@ describe('MeasurementsService', () => {
 
         await service.getMeasurements(loggerId);
 
-        const findCall = mockRepository.find.mock.calls[0][0];
+        /* eslint-disable @typescript-eslint/no-unsafe-member-access */
+        const findCall = mockRepository.find.mock
+          .calls[0][0] as FindCallOptions;
+        /* eslint-enable @typescript-eslint/no-unsafe-member-access */
         const whereClause = findCall.where;
 
         // Should still be July 20th
@@ -264,11 +289,13 @@ describe('MeasurementsService', () => {
     it('should return list of distinct logger IDs', async () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
-        getRawMany: jest.fn().mockResolvedValue([
-          { loggerId: 'LOGGER001' },
-          { loggerId: 'LOGGER002' },
-          { loggerId: 'LOGGER003' },
-        ]),
+        getRawMany: jest
+          .fn()
+          .mockResolvedValue([
+            { loggerId: 'LOGGER001' },
+            { loggerId: 'LOGGER002' },
+            { loggerId: 'LOGGER003' },
+          ]),
       };
       mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
 

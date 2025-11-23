@@ -76,7 +76,7 @@ export class GoodWeParser implements IParser {
     'ac power': 'activePowerWatts',
     acpower: 'activePowerWatts',
     'power(w)': 'activePowerWatts',
-    'ac_power': 'activePowerWatts',
+    ac_power: 'activePowerWatts',
 
     // Daily Energy variations
     e_day: 'energyDailyKwh',
@@ -261,10 +261,7 @@ export class GoodWeParser implements IParser {
   /**
    * Safely get a value from row by key and trim whitespace
    */
-  private safeGetAndTrim(
-    row: Record<string, string>,
-    key: string,
-  ): string {
+  private safeGetAndTrim(row: Record<string, string>, key: string): string {
     const value = row[key];
     if (value === undefined || value === null) {
       return '';
@@ -294,9 +291,18 @@ export class GoodWeParser implements IParser {
 
     // Try common GoodWe formats: "2024-01-15 14:30:00", "15/01/2024 14:30"
     const formats: { pattern: RegExp; yearFirst: boolean }[] = [
-      { pattern: /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):?(\d{2})?$/, yearFirst: true },
-      { pattern: /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):?(\d{2})?$/, yearFirst: false },
-      { pattern: /^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):?(\d{2})?$/, yearFirst: false },
+      {
+        pattern: /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):?(\d{2})?$/,
+        yearFirst: true,
+      },
+      {
+        pattern: /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):?(\d{2})?$/,
+        yearFirst: false,
+      },
+      {
+        pattern: /^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):?(\d{2})?$/,
+        yearFirst: false,
+      },
     ];
 
     for (const { pattern, yearFirst } of formats) {
@@ -312,7 +318,11 @@ export class GoodWeParser implements IParser {
   /**
    * Parse a custom date format using regex pattern
    */
-  private parseCustomFormat(value: string, pattern: RegExp, yearFirst: boolean): Date | null {
+  private parseCustomFormat(
+    value: string,
+    pattern: RegExp,
+    yearFirst: boolean,
+  ): Date | null {
     const match = value.match(pattern);
     if (!match) {
       return null;
@@ -347,20 +357,25 @@ export class GoodWeParser implements IParser {
       return null;
     }
 
-    const year = parseInt(match[1], 10);   // chars 0-3
-    const month = parseInt(match[2], 10);  // chars 4-5
-    const day = parseInt(match[3], 10);    // chars 6-7
-    const hour = parseInt(match[4], 10);   // chars 9-10 (after T)
+    const year = parseInt(match[1], 10); // chars 0-3
+    const month = parseInt(match[2], 10); // chars 4-5
+    const day = parseInt(match[3], 10); // chars 6-7
+    const hour = parseInt(match[4], 10); // chars 9-10 (after T)
     const minute = parseInt(match[5], 10); // chars 11-12
     const second = parseInt(match[6], 10); // chars 13-14
 
     // Validate ranges
     if (
-      month < 1 || month > 12 ||
-      day < 1 || day > 31 ||
-      hour < 0 || hour > 23 ||
-      minute < 0 || minute > 59 ||
-      second < 0 || second > 59
+      month < 1 ||
+      month > 12 ||
+      day < 1 ||
+      day > 31 ||
+      hour < 0 ||
+      hour > 23 ||
+      minute < 0 ||
+      minute > 59 ||
+      second < 0 ||
+      second > 59
     ) {
       return null;
     }
@@ -383,18 +398,34 @@ export class GoodWeParser implements IParser {
   private extractLoggerId(row: Record<string, unknown>): string {
     // Try index-based access first (headerless CSV)
     const indexValue = row['1'];
-    if (indexValue && String(indexValue).trim()) {
-      return String(indexValue).trim();
+    if (indexValue !== null && indexValue !== undefined) {
+      const strValue = this.toSafeString(indexValue);
+      if (strValue.trim()) {
+        return strValue.trim();
+      }
     }
 
     // Fall back to named column access
     for (const field of this.loggerIdFields) {
       const value = row[field];
-      if (value && String(value).trim()) {
-        return String(value).trim();
+      if (value !== null && value !== undefined) {
+        const strValue = this.toSafeString(value);
+        if (strValue.trim()) {
+          return strValue.trim();
+        }
       }
     }
     return 'unknown';
+  }
+
+  /**
+   * Safely convert unknown value to string (handles primitives and objects)
+   */
+  private toSafeString(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean')
+      return String(value);
+    return '';
   }
 
   /**
@@ -453,7 +484,12 @@ export class GoodWeParser implements IParser {
    */
   private findGoldenMetricMapping(
     key: string,
-  ): keyof Pick<UnifiedMeasurementDTO, 'activePowerWatts' | 'energyDailyKwh' | 'irradiance'> | null {
+  ):
+    | keyof Pick<
+        UnifiedMeasurementDTO,
+        'activePowerWatts' | 'energyDailyKwh' | 'irradiance'
+      >
+    | null {
     const normalizedKey = key.toLowerCase().trim();
 
     // Try exact match first
@@ -482,7 +518,7 @@ export class GoodWeParser implements IParser {
     // Try partial matches for known patterns
     // Active power variations
     if (
-      normalizedKey.includes('active') && normalizedKey.includes('power') ||
+      (normalizedKey.includes('active') && normalizedKey.includes('power')) ||
       normalizedKey === 'pac' ||
       normalizedKey.startsWith('pac(')
     ) {
@@ -520,7 +556,7 @@ export class GoodWeParser implements IParser {
       return isNaN(value) ? null : value;
     }
 
-    const str = String(value).trim();
+    const str = this.toSafeString(value).trim();
     if (str === '' || str === '-' || str === 'N/A' || str === 'null') {
       return null;
     }
@@ -543,7 +579,7 @@ export class GoodWeParser implements IParser {
     return name
       .trim()
       .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
-      .replace(/\s+(.)/g, (_, char) => char.toUpperCase()) // camelCase
+      .replace(/\s+(.)/g, (_, char: string) => char.toUpperCase()) // camelCase
       .replace(/^\w/, (char) => char.toLowerCase()); // lowercase first
   }
 }

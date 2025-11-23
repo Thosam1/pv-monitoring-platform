@@ -7,6 +7,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { IngestionModule } from '../src/ingestion/ingestion.module';
 import { Measurement } from '../src/database/entities/measurement.entity';
+import { BulkIngestionResponse } from '../src/ingestion/ingestion.controller';
 
 /**
  * E2E Tests for IngestionController (Bulk Upload API)
@@ -41,7 +42,10 @@ describe('IngestionController (e2e)', () => {
         values: jest.fn().mockReturnThis(),
         orUpdate: jest.fn().mockReturnThis(),
         execute: jest.fn().mockResolvedValue({
-          identifiers: Array(3).fill({ loggerId: 'TEST', timestamp: new Date() }),
+          identifiers: Array(3).fill({
+            loggerId: 'TEST',
+            timestamp: new Date(),
+          }),
         }),
       })),
     };
@@ -81,8 +85,9 @@ describe('IngestionController (e2e)', () => {
           .attach('files', sampleCsvPath)
           .expect(201);
 
-        expect(response.body.successCount).toBeGreaterThanOrEqual(1);
-        expect(response.body.totalRecordsInserted).toBeGreaterThanOrEqual(0);
+        const body = response.body as BulkIngestionResponse;
+        expect(body.successCount).toBeGreaterThanOrEqual(1);
+        expect(body.totalRecordsInserted).toBeGreaterThanOrEqual(0);
       });
 
       it('should return correct response structure with BulkIngestionResponse', async () => {
@@ -91,19 +96,21 @@ describe('IngestionController (e2e)', () => {
           .attach('files', sampleCsvPath)
           .expect(201);
 
+        const body = response.body as BulkIngestionResponse;
+
         // Verify response structure
-        expect(response.body).toMatchObject({
-          successCount: expect.any(Number),
-          errorCount: expect.any(Number),
-          totalRecordsInserted: expect.any(Number),
-          results: expect.any(Array),
+        expect(body).toMatchObject({
+          successCount: expect.any(Number) as number,
+          errorCount: expect.any(Number) as number,
+          totalRecordsInserted: expect.any(Number) as number,
+          results: expect.any(Array) as unknown[],
         });
 
         // Verify results array structure
-        expect(response.body.results.length).toBeGreaterThan(0);
-        expect(response.body.results[0]).toMatchObject({
-          filename: expect.any(String),
-          success: expect.any(Boolean),
+        expect(body.results.length).toBeGreaterThan(0);
+        expect(body.results[0]).toMatchObject({
+          filename: expect.any(String) as string,
+          success: expect.any(Boolean) as boolean,
         });
       });
 
@@ -113,7 +120,8 @@ describe('IngestionController (e2e)', () => {
           .attach('files', sampleCsvPath)
           .expect(201);
 
-        const fileResult = response.body.results[0];
+        const body = response.body as BulkIngestionResponse;
+        const fileResult = body.results[0];
         expect(fileResult.success).toBe(true);
         expect(fileResult.recordsProcessed).toBeGreaterThanOrEqual(0);
         expect(fileResult.recordsInserted).toBeGreaterThanOrEqual(0);
@@ -126,8 +134,9 @@ describe('IngestionController (e2e)', () => {
           .attach('files', sampleCsvPath) // Same file twice for testing
           .expect(201);
 
-        expect(response.body.results).toHaveLength(2);
-        expect(response.body.successCount).toBe(2);
+        const body = response.body as BulkIngestionResponse;
+        expect(body.results).toHaveLength(2);
+        expect(body.successCount).toBe(2);
       });
     });
 
@@ -137,7 +146,8 @@ describe('IngestionController (e2e)', () => {
           .post('/ingest/goodwe')
           .expect(400);
 
-        expect(response.body.message).toContain('No files uploaded');
+        const body = response.body as { message: string };
+        expect(body.message).toContain('No files uploaded');
       });
     });
 
@@ -148,7 +158,8 @@ describe('IngestionController (e2e)', () => {
           .attach('files', sampleCsvPath)
           .expect(201);
 
-        expect(response.body).toHaveProperty('results');
+        const body = response.body as BulkIngestionResponse;
+        expect(body).toHaveProperty('results');
       });
     });
   });
@@ -165,8 +176,9 @@ describe('IngestionController (e2e)', () => {
         .attach('files', Buffer.from(csvContent), 'inline-test.csv')
         .expect(201);
 
-      expect(response.body.successCount).toBeGreaterThanOrEqual(1);
-      expect(response.body.results[0].filename).toBe('inline-test.csv');
+      const body = response.body as BulkIngestionResponse;
+      expect(body.successCount).toBeGreaterThanOrEqual(1);
+      expect(body.results[0].filename).toBe('inline-test.csv');
     });
   });
 });
@@ -184,7 +196,9 @@ describe('IngestionController (e2e) - Repository Failure', () => {
         into: jest.fn().mockReturnThis(),
         values: jest.fn().mockReturnThis(),
         orUpdate: jest.fn().mockReturnThis(),
-        execute: jest.fn().mockRejectedValue(new Error('Database connection failed')),
+        execute: jest
+          .fn()
+          .mockRejectedValue(new Error('Database connection failed')),
       })),
     };
 
@@ -209,9 +223,10 @@ describe('IngestionController (e2e) - Repository Failure', () => {
       .attach('files', sampleCsvPath)
       .expect(201); // Service catches error, returns success response with failure report
 
-    expect(response.body.successCount).toBe(0);
-    expect(response.body.errorCount).toBe(1);
-    expect(response.body.results[0].success).toBe(false);
-    expect(response.body.results[0].error).toContain('Database connection failed');
+    const body = response.body as BulkIngestionResponse;
+    expect(body.successCount).toBe(0);
+    expect(body.errorCount).toBe(1);
+    expect(body.results[0].success).toBe(false);
+    expect(body.results[0].error).toContain('Database connection failed');
   });
 });

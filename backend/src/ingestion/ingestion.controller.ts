@@ -13,7 +13,7 @@ import { IngestionService, IngestionResult } from './ingestion.service';
 /**
  * Result for a single file in bulk upload
  */
-interface FileIngestionResult {
+export interface FileIngestionResult {
   filename: string;
   success: boolean;
   recordsInserted?: number;
@@ -24,7 +24,7 @@ interface FileIngestionResult {
 /**
  * Response DTO for bulk ingestion endpoint
  */
-interface BulkIngestionResponse {
+export interface BulkIngestionResponse {
   successCount: number;
   errorCount: number;
   totalRecordsInserted: number;
@@ -73,7 +73,9 @@ export class IngestionController {
   ): Promise<BulkIngestionResponse> {
     // Validate files presence
     if (!files || files.length === 0) {
-      throw new BadRequestException('No files uploaded. Use form field "files".');
+      throw new BadRequestException(
+        'No files uploaded. Use form field "files".',
+      );
     }
 
     this.logger.log(
@@ -121,7 +123,8 @@ export class IngestionController {
       } catch (error) {
         // Catch errors per-file and add to results (don't throw)
         errorCount++;
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error';
 
         results.push({
           filename: file.originalname,

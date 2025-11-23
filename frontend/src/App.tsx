@@ -223,9 +223,12 @@ function App() {
 
   // Fetch data when backend is connected
   useEffect(() => {
-    if (backendStatus === 'connected') {
-      fetchMeasurements()
+    const loadData = async () => {
+      if (backendStatus === 'connected') {
+        await fetchMeasurements()
+      }
     }
+    void loadData()
   }, [backendStatus, fetchMeasurements])
 
   return (

@@ -6,7 +6,10 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { MeasurementsService, MeasurementChartData } from './measurements.service';
+import {
+  MeasurementsService,
+  MeasurementChartData,
+} from './measurements.service';
 
 /**
  * Query parameters for measurements endpoint
@@ -47,7 +50,9 @@ export class MeasurementsController {
     @Param('loggerId') loggerId: string,
     @Query() query: MeasurementsQuery,
   ): Promise<MeasurementChartData[]> {
-    this.logger.log(`GET /measurements/${loggerId} with query: ${JSON.stringify(query)}`);
+    this.logger.log(
+      `GET /measurements/${loggerId} with query: ${JSON.stringify(query)}`,
+    );
 
     // Parse date parameters
     let start: Date | undefined;

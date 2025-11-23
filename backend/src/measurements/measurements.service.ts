@@ -49,13 +49,18 @@ export class MeasurementsService {
     if (start && end) {
       startDate = start;
       endDate = end;
-      this.logger.debug(`Explicit mode: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+      this.logger.debug(
+        `Explicit mode: ${startDate.toISOString()} to ${endDate.toISOString()}`,
+      );
     } else {
       // Implicit Mode: Auto-detect based on latest data
-      const { startDate: autoStart, endDate: autoEnd } = await this.resolveSmartDateRange(loggerId);
+      const { startDate: autoStart, endDate: autoEnd } =
+        await this.resolveSmartDateRange(loggerId);
       startDate = autoStart;
       endDate = autoEnd;
-      this.logger.debug(`Auto-detected date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+      this.logger.debug(
+        `Auto-detected date range: ${startDate.toISOString()} to ${endDate.toISOString()}`,
+      );
     }
 
     this.logger.debug(
@@ -113,19 +118,29 @@ export class MeasurementsService {
     }
 
     // Calculate day boundaries (UTC)
-    const startDate = new Date(Date.UTC(
-      targetDate.getUTCFullYear(),
-      targetDate.getUTCMonth(),
-      targetDate.getUTCDate(),
-      0, 0, 0, 0
-    ));
+    const startDate = new Date(
+      Date.UTC(
+        targetDate.getUTCFullYear(),
+        targetDate.getUTCMonth(),
+        targetDate.getUTCDate(),
+        0,
+        0,
+        0,
+        0,
+      ),
+    );
 
-    const endDate = new Date(Date.UTC(
-      targetDate.getUTCFullYear(),
-      targetDate.getUTCMonth(),
-      targetDate.getUTCDate(),
-      23, 59, 59, 999
-    ));
+    const endDate = new Date(
+      Date.UTC(
+        targetDate.getUTCFullYear(),
+        targetDate.getUTCMonth(),
+        targetDate.getUTCDate(),
+        23,
+        59,
+        59,
+        999,
+      ),
+    );
 
     return { startDate, endDate };
   }
@@ -151,7 +166,7 @@ export class MeasurementsService {
     const result = await this.measurementRepository
       .createQueryBuilder('m')
       .select('DISTINCT m.loggerId', 'loggerId')
-      .getRawMany();
+      .getRawMany<{ loggerId: string }>();
 
     return result.map((r) => r.loggerId);
   }

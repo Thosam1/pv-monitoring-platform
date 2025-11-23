@@ -1,6 +1,15 @@
 import { GoodWeParser } from './goodwe.strategy';
 import { UnifiedMeasurementDTO } from '../dto/unified-measurement.dto';
 
+/**
+ * Interface exposing private methods for testing
+ */
+interface GoodWeParserPrivate {
+  parseGoodWeCompactDate(raw: string): Date | null;
+  findGoldenMetricMapping(key: string): string | null;
+  parseNumber(value: unknown): number | null;
+}
+
 describe('GoodWeParser', () => {
   let parser: GoodWeParser;
 
@@ -11,7 +20,9 @@ describe('GoodWeParser', () => {
   describe('parseGoodWeCompactDate', () => {
     // Access private method for focused unit testing
     const parseDate = (raw: string): Date | null => {
-      return (parser as any).parseGoodWeCompactDate(raw);
+      return (parser as unknown as GoodWeParserPrivate).parseGoodWeCompactDate(
+        raw,
+      );
     };
 
     describe('valid dates', () => {
@@ -140,7 +151,9 @@ describe('GoodWeParser', () => {
 
       expect(results).toHaveLength(1);
       expect(results[0].loggerId).toBe('LOGGER001');
-      expect(results[0].timestamp.toISOString()).toBe('2025-10-01T10:00:00.000Z');
+      expect(results[0].timestamp.toISOString()).toBe(
+        '2025-10-01T10:00:00.000Z',
+      );
       expect(results[0].activePowerWatts).toBe(1500);
       expect(results[0].energyDailyKwh).toBe(5.5);
     });
@@ -188,7 +201,9 @@ describe('GoodWeParser', () => {
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results).toHaveLength(2);
-      expect(results.map((r) => r.loggerId).sort((a, b) => a.localeCompare(b))).toEqual(['LOGGER_A', 'LOGGER_B']);
+      expect(
+        results.map((r) => r.loggerId).sort((a, b) => a.localeCompare(b)),
+      ).toEqual(['LOGGER_A', 'LOGGER_B']);
     });
 
     it('should handle missing values gracefully', async () => {
@@ -242,7 +257,9 @@ describe('GoodWeParser', () => {
   describe('Golden Metric Mapping (findGoldenMetricMapping)', () => {
     // Access private method for focused unit testing
     const findMapping = (key: string): string | null => {
-      return (parser as any).findGoldenMetricMapping(key);
+      return (parser as unknown as GoodWeParserPrivate).findGoldenMetricMapping(
+        key,
+      );
     };
 
     describe('activePowerWatts mapping', () => {
@@ -344,21 +361,27 @@ describe('GoodWeParser', () => {
     });
 
     it('should return true for content containing "SEMS Portal"', () => {
-      expect(parser.canHandle('data.csv', 'SEMS Portal Export\nTime,Pac')).toBe(true);
+      expect(parser.canHandle('data.csv', 'SEMS Portal Export\nTime,Pac')).toBe(
+        true,
+      );
     });
 
     it('should return true for content containing "Active_Power"', () => {
-      expect(parser.canHandle('data.csv', 'Time,Active_Power,E_Day')).toBe(true);
+      expect(parser.canHandle('data.csv', 'Time,Active_Power,E_Day')).toBe(
+        true,
+      );
     });
 
     it('should return false for unrelated file', () => {
-      expect(parser.canHandle('random_data.csv', 'column1,column2,column3')).toBe(false);
+      expect(
+        parser.canHandle('random_data.csv', 'column1,column2,column3'),
+      ).toBe(false);
     });
   });
 
   describe('parseNumber', () => {
     const parseNumber = (value: unknown): number | null => {
-      return (parser as any).parseNumber(value);
+      return (parser as unknown as GoodWeParserPrivate).parseNumber(value);
     };
 
     it('should parse numeric string "1500" -> 1500', () => {
