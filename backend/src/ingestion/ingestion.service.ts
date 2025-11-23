@@ -6,6 +6,7 @@ import { IParser, ParserError } from './interfaces/parser.interface';
 import { GoodWeParser } from './strategies/goodwe.strategy';
 import { LtiParser } from './strategies/lti.strategy';
 import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 /**
  * Ingestion Result Summary

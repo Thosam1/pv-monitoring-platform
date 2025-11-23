@@ -2,12 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import axios from 'axios'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { BulkUploader } from './components/BulkUploader'
+import { ChevronDown } from 'lucide-react'
 
 // API base URL
 const API_BASE = 'http://localhost:3000'
-
-// Hardcoded logger ID from the ingested data
-const LOGGER_ID = '9250KHTU22BP0338'
 
 // Type for measurement data from API
 interface MeasurementData {
@@ -156,27 +154,60 @@ function App() {
   const [dataCount, setDataCount] = useState(0)
   const [chartDate, setChartDate] = useState<string>('')
 
-  // Check backend connectivity
+  // Logger selection state
+  const [availableLoggers, setAvailableLoggers] = useState<string[]>([])
+  const [selectedLogger, setSelectedLogger] = useState<string | null>(null)
+  const [loggerDropdownOpen, setLoggerDropdownOpen] = useState(false)
+
+  // Fetch available loggers
+  const fetchLoggers = useCallback(async () => {
+    try {
+      const response = await axios.get<{ loggerIds: string[] }>(`${API_BASE}/measurements`)
+      const loggerIds = response.data.loggerIds
+      setAvailableLoggers(loggerIds)
+      // Auto-select first logger if none selected
+      if (loggerIds.length > 0 && !selectedLogger) {
+        setSelectedLogger(loggerIds[0])
+      }
+    } catch (error) {
+      console.error('Failed to fetch loggers:', error)
+    }
+  }, [selectedLogger])
+
+  // Check backend connectivity and fetch loggers on mount
   useEffect(() => {
-    const checkBackend = async () => {
+    const initialize = async () => {
       try {
         const response = await axios.get(API_BASE)
         setBackendMessage(response.data)
         setBackendStatus('connected')
+
+        // Fetch loggers after backend is confirmed connected
+        const loggersResponse = await axios.get<{ loggerIds: string[] }>(`${API_BASE}/measurements`)
+        const loggerIds = loggersResponse.data.loggerIds
+        setAvailableLoggers(loggerIds)
+        if (loggerIds.length > 0) {
+          setSelectedLogger(loggerIds[0])
+        }
       } catch {
         setBackendStatus('error')
         setBackendMessage('Could not connect to backend')
       }
     }
-    checkBackend()
+    void initialize()
   }, [])
 
   // Fetch measurement data
   const fetchMeasurements = useCallback(async () => {
+    if (!selectedLogger) {
+      setDataStatus('empty')
+      return
+    }
+
     setDataStatus('loading')
     try {
       const response = await axios.get<MeasurementData[]>(
-        `${API_BASE}/measurements/${LOGGER_ID}`
+        `${API_BASE}/measurements/${selectedLogger}`
       )
 
       const data = response.data
@@ -223,17 +254,23 @@ function App() {
       console.error('Failed to fetch measurements:', error)
       setDataStatus('error')
     }
-  }, [])
+  }, [selectedLogger])
 
-  // Fetch data when backend is connected
+  // Fetch data when backend is connected and logger is selected
   useEffect(() => {
     const loadData = async () => {
-      if (backendStatus === 'connected') {
+      if (backendStatus === 'connected' && selectedLogger) {
         await fetchMeasurements()
       }
     }
     void loadData()
-  }, [backendStatus, fetchMeasurements])
+  }, [backendStatus, selectedLogger, fetchMeasurements])
+
+  // Handle upload complete - refresh both loggers and measurements
+  const handleUploadComplete = useCallback(async () => {
+    await fetchLoggers()
+    await fetchMeasurements()
+  }, [fetchLoggers, fetchMeasurements])
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
@@ -249,7 +286,7 @@ function App() {
         </header>
 
         {/* Bulk Uploader */}
-        <BulkUploader onUploadComplete={fetchMeasurements} />
+        <BulkUploader onUploadComplete={handleUploadComplete} />
 
         {/* Status Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -274,7 +311,43 @@ function App() {
                 {getDataStatusConfig(dataStatus, dataCount).text}
               </span>
             </div>
-            <p className="text-xs text-gray-500 mt-1">Logger: {LOGGER_ID}</p>
+            {/* Logger Selector */}
+            <div className="relative mt-2">
+              <button
+                type="button"
+                onClick={() => setLoggerDropdownOpen(!loggerDropdownOpen)}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 cursor-pointer transition-colors"
+              >
+                <span>Logger: {selectedLogger ?? 'None'}</span>
+                <ChevronDown className={`w-3 h-3 transition-transform ${loggerDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {loggerDropdownOpen && (
+                <div className="absolute left-0 bottom-full mb-1 w-56 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 overflow-hidden z-20 max-h-48 overflow-y-auto">
+                  {availableLoggers.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-gray-500">No loggers found</div>
+                  ) : (
+                    availableLoggers.map((loggerId) => (
+                      <button
+                        key={loggerId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLogger(loggerId)
+                          setLoggerDropdownOpen(false)
+                        }}
+                        className={`w-full px-3 py-2 text-left text-xs transition-colors cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 ${
+                          selectedLogger === loggerId
+                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                            : 'text-gray-700 dark:text-gray-200'
+                        }`}
+                      >
+                        {loggerId}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Current Power */}
@@ -317,7 +390,7 @@ function App() {
             </div>
             <button
               onClick={fetchMeasurements}
-              className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition"
+              className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition cursor-pointer"
             >
               Refresh
             </button>
