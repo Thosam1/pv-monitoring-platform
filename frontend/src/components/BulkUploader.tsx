@@ -81,8 +81,7 @@ async function getFilesFromDataTransfer(items: DataTransferItemList): Promise<Fi
   const entries: FileSystemEntry[] = []
 
   // Get all entries first
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i]
+  for (const item of Array.from(items)) {
     const entry = item.webkitGetAsEntry?.()
     if (entry) {
       entries.push(entry)
@@ -96,6 +95,45 @@ async function getFilesFromDataTransfer(items: DataTransferItemList): Promise<Fi
   }
 
   return files
+}
+
+/**
+ * Get the appropriate icon for the dropzone based on state
+ */
+function getDropzoneIcon(uploading: boolean, isDragActive: boolean) {
+  if (uploading) {
+    return <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+  }
+  if (isDragActive) {
+    return <FolderOpen className="w-12 h-12 text-blue-500" />
+  }
+  return <Upload className="w-12 h-12 text-gray-400 dark:text-gray-500" />
+}
+
+/**
+ * Get the primary text for the dropzone based on state
+ */
+function getDropzoneText(uploading: boolean, isDragActive: boolean): string {
+  if (uploading) {
+    return 'Uploading files...'
+  }
+  if (isDragActive) {
+    return 'Drop files or folders here'
+  }
+  return 'Drag & drop CSV files or folders'
+}
+
+/**
+ * Get the progress bar color class based on completion state
+ */
+function getProgressBarColor(progress: number, failed: number): string {
+  if (progress === 100 && failed === 0) {
+    return 'bg-green-500'
+  }
+  if (progress === 100 && failed > 0) {
+    return 'bg-amber-500'
+  }
+  return 'bg-blue-500'
 }
 
 export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) {
@@ -201,7 +239,7 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: (acceptedFiles, fileRejections, event) => {
-      void onDrop(acceptedFiles, fileRejections, event as { dataTransfer?: DataTransfer })
+      onDrop(acceptedFiles, fileRejections, event as { dataTransfer?: DataTransfer }).catch(console.error)
     },
     accept: {
       'text/csv': ['.csv']
@@ -292,26 +330,14 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
           )}
         >
           <div className="flex flex-col items-center gap-3">
-            {uploading ? (
-              <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
-            ) : isDragActive ? (
-              <FolderOpen className="w-12 h-12 text-blue-500" />
-            ) : (
-              <Upload className="w-12 h-12 text-gray-400 dark:text-gray-500" />
-            )}
+            {getDropzoneIcon(uploading, isDragActive)}
 
             <div>
               <p className="text-lg font-medium text-gray-700 dark:text-gray-200">
-                {uploading
-                  ? 'Uploading files...'
-                  : isDragActive
-                    ? 'Drop files or folders here'
-                    : 'Drag & drop CSV files or folders'}
+                {getDropzoneText(uploading, isDragActive)}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {uploading
-                  ? `Processing ${queue.length} files`
-                  : 'Or click to select files'}
+                {uploading ? `Processing ${queue.length} files` : 'Or click to select files'}
               </p>
             </div>
           </div>
@@ -345,11 +371,7 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
                 transition={{ duration: 0.3, ease: 'easeOut' }}
                 className={cn(
                   "h-full rounded-full",
-                  progress === 100 && stats.failed === 0
-                    ? "bg-green-500"
-                    : progress === 100 && stats.failed > 0
-                      ? "bg-amber-500"
-                      : "bg-blue-500"
+                  getProgressBarColor(progress, stats.failed)
                 )}
               />
             </div>
