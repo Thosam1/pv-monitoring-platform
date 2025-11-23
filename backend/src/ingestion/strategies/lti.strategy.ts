@@ -91,60 +91,21 @@ export class LtiParser implements IParser {
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-
-      // Skip empty lines
       if (!line) continue;
 
-      switch (state) {
-        case 'HEADER': {
-          // Check for [data] marker to transition to CSV parsing
-          if (line.toLowerCase() === '[data]') {
-            state = 'CSV_HEADER';
-            this.logger.debug(`Found [data] marker at line ${i + 1}`);
-            continue;
-          }
-
-          // Extract serial from header metadata (format: key=value)
-          const serialMatch = /^serial\s*=\s*(.+)$/i.exec(line);
-          if (serialMatch) {
-            headerSerial = serialMatch[1].trim();
-            this.logger.debug(`Extracted header serial: ${headerSerial}`);
-          }
-          break;
-        }
-
-        case 'CSV_HEADER': {
-          // This line is the CSV header row
-          csvHeaders = line.split(';').map((h) => h.trim().toLowerCase());
-          this.logger.debug(`CSV headers: ${csvHeaders.join(', ')}`);
-          state = 'CSV_DATA';
-          break;
-        }
-
-        case 'CSV_DATA': {
-          // Parse data row
-          const values = line.split(';').map((v) => v.trim());
-
-          if (values.length !== csvHeaders.length) {
-            this.logger.warn(
-              `Row ${i + 1}: Column count mismatch (expected ${csvHeaders.length}, got ${values.length})`,
-            );
-            continue;
-          }
-
-          // Build row object
-          const row: Record<string, string> = {};
-          for (let j = 0; j < csvHeaders.length; j++) {
-            row[csvHeaders[j]] = values[j];
-          }
-
-          // Transform to DTO
-          const dto = this.transformRowToDTO(row, headerSerial);
-          if (dto) {
-            dataRowCount++;
-            yield dto;
-          }
-          break;
+      if (state === 'HEADER') {
+        const result = this.processHeaderLine(line, i);
+        if (result.serial) headerSerial = result.serial;
+        if (result.transition) state = 'CSV_HEADER';
+      } else if (state === 'CSV_HEADER') {
+        csvHeaders = line.split(';').map((h) => h.trim().toLowerCase());
+        this.logger.debug(`CSV headers: ${csvHeaders.join(', ')}`);
+        state = 'CSV_DATA';
+      } else {
+        const dto = this.parseCsvDataRow(line, csvHeaders, headerSerial, i);
+        if (dto) {
+          dataRowCount++;
+          yield dto;
         }
       }
     }
@@ -157,6 +118,56 @@ export class LtiParser implements IParser {
         'No valid data rows found. Check file format.',
       );
     }
+  }
+
+  /**
+   * Process a line in HEADER state
+   */
+  private processHeaderLine(
+    line: string,
+    lineNum: number,
+  ): { serial?: string; transition?: boolean } {
+    if (line.toLowerCase() === '[data]') {
+      this.logger.debug(`Found [data] marker at line ${lineNum + 1}`);
+      return { transition: true };
+    }
+
+    const lowerLine = line.toLowerCase();
+    if (lowerLine.startsWith('serial')) {
+      const eqIndex = line.indexOf('=');
+      if (eqIndex !== -1) {
+        const serial = line.substring(eqIndex + 1).trim();
+        this.logger.debug(`Extracted header serial: ${serial}`);
+        return { serial };
+      }
+    }
+    return {};
+  }
+
+  /**
+   * Parse a CSV data row into a DTO
+   */
+  private parseCsvDataRow(
+    line: string,
+    csvHeaders: string[],
+    headerSerial: string | null,
+    lineNum: number,
+  ): UnifiedMeasurementDTO | null {
+    const values = line.split(';').map((v) => v.trim());
+
+    if (values.length !== csvHeaders.length) {
+      this.logger.warn(
+        `Row ${lineNum + 1}: Column count mismatch (expected ${csvHeaders.length}, got ${values.length})`,
+      );
+      return null;
+    }
+
+    const row: Record<string, string> = {};
+    for (let j = 0; j < csvHeaders.length; j++) {
+      row[csvHeaders[j]] = values[j];
+    }
+
+    return this.transformRowToDTO(row, headerSerial);
   }
 
   /**
@@ -277,7 +288,7 @@ export class LtiParser implements IParser {
       return null;
     }
 
-    const cleaned = value.trim().replace(/[,\s]/g, '');
+    const cleaned = value.trim().replaceAll(/[,\s]/g, '');
     const num = Number.parseFloat(cleaned);
     return Number.isNaN(num) ? null : num;
   }
@@ -292,6 +303,6 @@ export class LtiParser implements IParser {
       .toLowerCase()
       .replaceAll(/[^a-z0-9\s_]/g, '')
       .replaceAll(/_([a-z])/g, (_, char: string) => char.toUpperCase())
-      .replaceAll(/\s+([a-z])/g, (_, char: string) => char.toUpperCase());
+      .replaceAll(/\s+(\S)/g, (_, char: string) => char.toUpperCase());
   }
 }

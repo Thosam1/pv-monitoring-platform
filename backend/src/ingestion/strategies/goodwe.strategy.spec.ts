@@ -2,6 +2,19 @@ import { GoodWeParser } from './goodwe.strategy';
 import { UnifiedMeasurementDTO } from '../dto/unified-measurement.dto';
 
 /**
+ * Helper to collect all DTOs from async generator
+ */
+async function collectDTOs(
+  generator: AsyncGenerator<UnifiedMeasurementDTO>,
+): Promise<UnifiedMeasurementDTO[]> {
+  const results: UnifiedMeasurementDTO[] = [];
+  for await (const dto of generator) {
+    results.push(dto);
+  }
+  return results;
+}
+
+/**
  * Interface exposing private methods for testing
  */
 interface GoodWeParserPrivate {
@@ -126,19 +139,6 @@ describe('GoodWeParser', () => {
   });
 
   describe('Headerless CSV Parsing', () => {
-    /**
-     * Helper to collect all DTOs from async generator
-     */
-    async function collectDTOs(
-      generator: AsyncGenerator<UnifiedMeasurementDTO>,
-    ): Promise<UnifiedMeasurementDTO[]> {
-      const results: UnifiedMeasurementDTO[] = [];
-      for await (const dto of generator) {
-        results.push(dto);
-      }
-      return results;
-    }
-
     it('should pivot EAV rows into UnifiedMeasurementDTO', async () => {
       // CSV format: timestamp, loggerId, key, value
       const csvContent = [
