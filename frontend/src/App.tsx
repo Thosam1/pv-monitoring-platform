@@ -435,13 +435,13 @@ function App() {
                     {selectedLogger && availableLoggers.find(l => l.id === selectedLogger)?.type === 'goodwe' && (
                       <span className="inline-flex items-center">
                         <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1.5"></span>
-                        GoodWe
+                        <span>GoodWe</span>
                       </span>
                     )}
                     {selectedLogger && availableLoggers.find(l => l.id === selectedLogger)?.type === 'lti' && (
                       <span className="inline-flex items-center">
                         <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1.5"></span>
-                        LTI ReEnergy
+                        <span>LTI ReEnergy</span>
                       </span>
                     )}
                     {!selectedLogger && 'None'}

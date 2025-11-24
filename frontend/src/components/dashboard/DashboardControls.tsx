@@ -41,10 +41,11 @@ export function DashboardControls({
       <div className="flex flex-wrap items-center gap-6">
         {/* Custom Date Picker */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+          <label htmlFor="custom-date-picker" className="text-xs font-medium text-gray-500 dark:text-gray-400">
             Custom Date
           </label>
           <input
+            id="custom-date-picker"
             type="date"
             value={customDate ?? ''}
             onChange={(e) => onCustomDateChange(e.target.value || null)}
@@ -60,11 +61,12 @@ export function DashboardControls({
 
         {/* Chart Style Dropdown */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+          <label htmlFor="chart-style-button" className="text-xs font-medium text-gray-500 dark:text-gray-400">
             Chart Style
           </label>
           <div className="relative">
             <button
+              id="chart-style-button"
               type="button"
               onClick={() => setStyleDropdownOpen(!styleDropdownOpen)}
               className={cn(
@@ -108,10 +110,10 @@ export function DashboardControls({
         </div>
 
         {/* Metric Toggles */}
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+        <fieldset className="flex flex-col gap-2">
+          <legend className="text-xs font-medium text-gray-500 dark:text-gray-400">
             Overlays
-          </label>
+          </legend>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -132,7 +134,7 @@ export function DashboardControls({
               <span className="text-sm text-gray-700 dark:text-gray-200">Irradiance</span>
             </label>
           </div>
-        </div>
+        </fieldset>
       </div>
     </div>
   )

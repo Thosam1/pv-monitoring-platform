@@ -53,7 +53,7 @@ function extractTemperature(metadata: Record<string, unknown>): number | null {
   const tempKeys = ['temperature', 'T_HS', 'internaltemp', 'temp', 'moduleTemp']
   for (const key of tempKeys) {
     const value = metadata[key]
-    if (typeof value === 'number' && !isNaN(value)) {
+    if (typeof value === 'number' && !Number.isNaN(value)) {
       return value
     }
   }
@@ -74,13 +74,13 @@ export function KPIGrid({ data, isLoading }: Readonly<KPIGridProps>) {
     // Peak Power: max of activePowerWatts
     const powerValues = data
       .map((d) => d.activePowerWatts)
-      .filter((v): v is number => v !== null && !isNaN(v))
+      .filter((v): v is number => v !== null && !Number.isNaN(v))
     const peakPower = powerValues.length > 0 ? Math.max(...powerValues) : null
 
     // Total Energy: last value of energyDailyKwh (cumulative)
     const energyValues = data
       .map((d) => d.energyDailyKwh)
-      .filter((v): v is number => v !== null && !isNaN(v))
+      .filter((v): v is number => v !== null && !Number.isNaN(v))
     const totalEnergy = energyValues.length > 0 ? energyValues[energyValues.length - 1] : null
 
     // Avg Temperature: average of metadata.temperature
@@ -94,7 +94,7 @@ export function KPIGrid({ data, isLoading }: Readonly<KPIGridProps>) {
     // Avg Irradiance
     const irradianceValues = data
       .map((d) => d.irradiance)
-      .filter((v): v is number => v !== null && !isNaN(v))
+      .filter((v): v is number => v !== null && !Number.isNaN(v))
     const avgIrradiance = irradianceValues.length > 0
       ? irradianceValues.reduce((a, b) => a + b, 0) / irradianceValues.length
       : null

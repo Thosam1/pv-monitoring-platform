@@ -9,6 +9,8 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
     <div
       data-slot="table-container"
       className="relative w-full overflow-x-auto"
+      role="region"
+      tabIndex={0}
     >
       <table
         data-slot="table"

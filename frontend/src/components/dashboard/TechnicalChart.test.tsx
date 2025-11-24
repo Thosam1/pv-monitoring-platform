@@ -244,7 +244,7 @@ describe('TechnicalChart', () => {
     })
 
     it('handles NaN values in metadata', () => {
-      const data = [createMeasurementDataPoint({ metadata: { voltage: NaN, temperature: 35 } })]
+      const data = [createMeasurementDataPoint({ metadata: { voltage: Number.NaN, temperature: 35 } })]
       render(<TechnicalChart data={data} />)
       // Should still render because temperature is valid
       expect(screen.queryByText('No technical data available')).not.toBeInTheDocument()

@@ -39,7 +39,7 @@ describe('DashboardControls', () => {
     it('renders chart style dropdown button', () => {
       renderComponent()
 
-      expect(screen.getByRole('button', { name: /area/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /chart style/i })).toBeInTheDocument()
     })
 
     it('renders overlay checkboxes', () => {
@@ -91,13 +91,13 @@ describe('DashboardControls', () => {
     it('shows current chart style', () => {
       renderComponent({ chartStyle: 'line' })
 
-      expect(screen.getByRole('button', { name: /line/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /chart style/i })).toHaveTextContent('Line')
     })
 
     it('opens dropdown on click', async () => {
       renderComponent()
 
-      const button = screen.getByRole('button', { name: /area/i })
+      const button = screen.getByRole('button', { name: /chart style/i })
       await userEvent.click(button)
 
       // Dropdown should show all options (use getAllByRole since trigger button also matches)
@@ -113,7 +113,7 @@ describe('DashboardControls', () => {
       renderComponent({ chartStyle: 'area', onChartStyleChange })
 
       // Open dropdown
-      const button = screen.getByRole('button', { name: /area/i })
+      const button = screen.getByRole('button', { name: /chart style/i })
       await userEvent.click(button)
 
       // Select Line option
@@ -127,7 +127,7 @@ describe('DashboardControls', () => {
       renderComponent()
 
       // Open dropdown
-      const button = screen.getByRole('button', { name: /area/i })
+      const button = screen.getByRole('button', { name: /chart style/i })
       await userEvent.click(button)
 
       // Select option

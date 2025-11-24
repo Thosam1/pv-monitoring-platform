@@ -89,7 +89,9 @@ describe('App', () => {
     })
 
     it('shows loading state initially', async () => {
-      mockedAxios.get.mockImplementation(() => new Promise(() => {})) // Never resolves
+      // Create a promise that never resolves to simulate pending state
+      const pendingPromise = new Promise(() => {})
+      mockedAxios.get.mockReturnValue(pendingPromise)
 
       render(<App />)
 

@@ -39,14 +39,14 @@ function extractVoltage(metadata: Record<string, unknown>): number | null {
   // Try GoodWe keys first
   for (const key of GOODWE_VOLTAGE_KEYS) {
     const value = metadata[key]
-    if (typeof value === 'number' && !isNaN(value)) {
+    if (typeof value === 'number' && !Number.isNaN(value)) {
       return value
     }
   }
   // Try LTI keys
   for (const key of LTI_VOLTAGE_KEYS) {
     const value = metadata[key]
-    if (typeof value === 'number' && !isNaN(value)) {
+    if (typeof value === 'number' && !Number.isNaN(value)) {
       return value
     }
   }
@@ -59,7 +59,7 @@ function extractVoltage(metadata: Record<string, unknown>): number | null {
 function extractTemperature(metadata: Record<string, unknown>): number | null {
   for (const key of TEMP_KEYS) {
     const value = metadata[key]
-    if (typeof value === 'number' && !isNaN(value)) {
+    if (typeof value === 'number' && !Number.isNaN(value)) {
       return value
     }
   }
