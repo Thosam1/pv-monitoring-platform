@@ -109,10 +109,15 @@ jobs:
         run: npm run test:cov
         continue-on-error: true
 
-      # Install frontend for analysis
+      # Install and generate coverage for frontend
       - name: Install Frontend Dependencies
         working-directory: ./frontend
         run: npm ci
+
+      - name: Generate Frontend Coverage
+        working-directory: ./frontend
+        run: npm run test:cov
+        continue-on-error: true
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
