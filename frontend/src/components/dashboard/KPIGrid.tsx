@@ -1,5 +1,6 @@
 import { Zap, Battery, Thermometer, Sun } from 'lucide-react'
 import { useMemo } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export interface MeasurementDataPoint {
   timestamp: Date
@@ -24,20 +25,24 @@ interface KPICardProps {
 
 function KPICard({ title, value, unit, icon, color }: Readonly<KPICardProps>) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className={`text-2xl font-bold ${color}`}>{value}</span>
-            <span className="text-sm text-gray-500 dark:text-gray-400">{unit}</span>
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            {title}
+          </CardTitle>
+          <div className={`p-2 rounded-full bg-opacity-10 ${color.replace('text-', 'bg-')}`}>
+            {icon}
           </div>
         </div>
-        <div className={`p-3 rounded-full bg-opacity-10 ${color.replace('text-', 'bg-')}`}>
-          {icon}
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="flex items-baseline gap-1">
+          <span className={`text-2xl font-bold ${color}`}>{value}</span>
+          <span className="text-sm text-muted-foreground">{unit}</span>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -106,10 +111,14 @@ export function KPIGrid({ data, isLoading }: Readonly<KPIGridProps>) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 animate-pulse">
-            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-20 mb-2" />
-            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-24" />
-          </div>
+          <Card key={i}>
+            <CardHeader className="pb-2">
+              <div className="h-4 bg-muted rounded w-20 animate-pulse" />
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="h-8 bg-muted rounded w-24 animate-pulse" />
+            </CardContent>
+          </Card>
         ))}
       </div>
     )

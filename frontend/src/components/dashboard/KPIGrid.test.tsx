@@ -22,8 +22,9 @@ describe('KPIGrid', () => {
     it('renders loading skeleton when isLoading is true', () => {
       const { container } = render(<KPIGrid data={[]} isLoading={true} />)
 
+      // Each Card has 2 animate-pulse divs (header and content), 4 cards total = 8
       const skeletons = container.querySelectorAll('.animate-pulse')
-      expect(skeletons.length).toBe(4)
+      expect(skeletons.length).toBe(8)
     })
 
     it('displays units for each KPI', () => {

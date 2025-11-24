@@ -10,7 +10,15 @@ import {
   type ChartStyle,
   type MeasurementDataPoint
 } from './components/dashboard'
-import { ChevronDown } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   calculateDateBounds,
   formatDateForInput,
@@ -64,7 +72,6 @@ function App() {
   // Logger selection state
   const [availableLoggers, setAvailableLoggers] = useState<LoggerInfo[]>([])
   const [selectedLogger, setSelectedLogger] = useState<string | null>(null)
-  const [loggerDropdownOpen, setLoggerDropdownOpen] = useState(false)
 
   // Dashboard controls state
   const [dateRange, setDateRange] = useState<DateRange>('day')
@@ -287,83 +294,54 @@ function App() {
                   </span>
                 </div>
                 {/* Logger Selector */}
-                <div className="relative mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setLoggerDropdownOpen(!loggerDropdownOpen)}
-                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 cursor-pointer transition-colors"
+                <div className="mt-2">
+                  <Select
+                    value={selectedLogger ?? ""}
+                    onValueChange={(value) => setSelectedLogger(value || null)}
                   >
-                    <span className="truncate max-w-[120px]">Logger: {selectedLogger ?? 'None'}</span>
-                    <ChevronDown className={`w-3 h-3 transition-transform flex-shrink-0 ${loggerDropdownOpen ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  {loggerDropdownOpen && (
-                    <div className="absolute left-0 bottom-full mb-1 w-64 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 overflow-hidden z-20 max-h-64 overflow-y-auto">
+                    <SelectTrigger className="h-7 text-xs w-full">
+                      <SelectValue placeholder="Select Logger" />
+                    </SelectTrigger>
+                    <SelectContent>
                       {availableLoggers.length === 0 ? (
-                        <div className="px-3 py-2 text-xs text-gray-500">No loggers found</div>
+                        <div className="px-3 py-2 text-xs text-muted-foreground">
+                          No loggers found
+                        </div>
                       ) : (
                         <>
                           {/* GoodWe Section */}
                           {availableLoggers.some(l => l.type === 'goodwe') && (
-                            <div>
-                              <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
-                                GoodWe
-                              </div>
+                            <SelectGroup>
+                              <SelectLabel>GoodWe</SelectLabel>
                               {availableLoggers
                                 .filter(l => l.type === 'goodwe')
                                 .sort((a, b) => a.id.localeCompare(b.id))
                                 .map((logger) => (
-                                  <button
-                                    key={logger.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedLogger(logger.id)
-                                      setLoggerDropdownOpen(false)
-                                    }}
-                                    className={`w-full px-3 py-2 text-left text-xs transition-colors cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 ${
-                                      selectedLogger === logger.id
-                                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                                        : 'text-gray-700 dark:text-gray-200'
-                                    }`}
-                                  >
+                                  <SelectItem key={logger.id} value={logger.id}>
                                     {logger.id}
-                                  </button>
+                                  </SelectItem>
                                 ))}
-                            </div>
+                            </SelectGroup>
                           )}
 
                           {/* LTI ReEnergy Section */}
                           {availableLoggers.some(l => l.type === 'lti') && (
-                            <div>
-                              <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
-                                LTI ReEnergy
-                              </div>
+                            <SelectGroup>
+                              <SelectLabel>LTI ReEnergy</SelectLabel>
                               {availableLoggers
                                 .filter(l => l.type === 'lti')
                                 .sort((a, b) => a.id.localeCompare(b.id))
                                 .map((logger) => (
-                                  <button
-                                    key={logger.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedLogger(logger.id)
-                                      setLoggerDropdownOpen(false)
-                                    }}
-                                    className={`w-full px-3 py-2 text-left text-xs transition-colors cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 ${
-                                      selectedLogger === logger.id
-                                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                                        : 'text-gray-700 dark:text-gray-200'
-                                    }`}
-                                  >
+                                  <SelectItem key={logger.id} value={logger.id}>
                                     {logger.id}
-                                  </button>
+                                  </SelectItem>
                                 ))}
-                            </div>
+                            </SelectGroup>
                           )}
                         </>
                       )}
-                    </div>
-                  )}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

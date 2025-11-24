@@ -8,11 +8,13 @@ afterEach(() => {
 })
 
 // Mock ResizeObserver (used by Recharts)
-globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn()
-}))
+class ResizeObserverMock {
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
+}
+
+globalThis.ResizeObserver = ResizeObserverMock
 
 // Mock matchMedia (used by some UI components)
 Object.defineProperty(window, 'matchMedia', {
