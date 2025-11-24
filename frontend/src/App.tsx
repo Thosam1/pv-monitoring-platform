@@ -11,6 +11,15 @@ import {
   type MeasurementDataPoint
 } from './components/dashboard'
 import { ChevronDown } from 'lucide-react'
+import {
+  calculateDateBounds,
+  formatDateForInput,
+  formatDateLabel,
+  getBackendStatusConfig,
+  getDataStatusConfig,
+  type BackendStatus,
+  type DataStatus
+} from './lib/date-utils'
 
 // API base URL
 const API_BASE = 'http://localhost:3000'
@@ -36,96 +45,6 @@ interface DataDateRange {
   latest: Date
 }
 
-/**
- * Calculate start and end dates based on dateRange and customDate
- */
-function calculateDateBounds(
-  dateRange: 'today' | 'week' | 'month',
-  customDate: string | null
-): { start: Date; end: Date } {
-  const now = new Date()
-
-  // If custom date is set, use that day
-  if (customDate) {
-    const date = new Date(customDate)
-    const start = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0))
-    const end = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999))
-    return { start, end }
-  }
-
-  // Calculate based on range
-  if (dateRange === 'today') {
-    const start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0))
-    const end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999))
-    return { start, end }
-  }
-
-  if (dateRange === 'week') {
-    const end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999))
-    const start = new Date(end)
-    start.setUTCDate(start.getUTCDate() - 7)
-    start.setUTCHours(0, 0, 0, 0)
-    return { start, end }
-  }
-
-  // month
-  const end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999))
-  const start = new Date(end)
-  start.setUTCDate(start.getUTCDate() - 30)
-  start.setUTCHours(0, 0, 0, 0)
-  return { start, end }
-}
-
-/**
- * Format a date to YYYY-MM-DD for the date input
- */
-function formatDateForInput(date: Date): string {
-  return date.toISOString().split('T')[0]
-}
-
-/**
- * Format a date for display in chart titles
- */
-function formatDateLabel(date: Date): string {
-  return date.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  })
-}
-
-// Status type aliases
-type BackendStatus = 'loading' | 'connected' | 'error'
-type DataStatus = 'loading' | 'loaded' | 'empty' | 'error'
-
-/**
- * Status indicator configuration
- */
-interface StatusConfig {
-  color: string
-  text: string
-}
-
-function getBackendStatusConfig(status: BackendStatus): StatusConfig {
-  const configs: Record<BackendStatus, StatusConfig> = {
-    connected: { color: 'bg-green-500', text: 'Connected' },
-    error: { color: 'bg-red-500', text: 'Disconnected' },
-    loading: { color: 'bg-yellow-500', text: 'Checking...' }
-  }
-  return configs[status]
-}
-
-function getDataStatusConfig(status: DataStatus, dataCount: number): StatusConfig {
-  const configs: Record<DataStatus, StatusConfig> = {
-    loaded: { color: 'bg-green-500', text: dataCount.toLocaleString() },
-    error: { color: 'bg-red-500', text: 'Error' },
-    empty: { color: 'bg-yellow-500', text: 'No Data' },
-    loading: { color: 'bg-blue-500', text: 'Loading...' }
-  }
-  return configs[status]
-}
-
 function App() {
   // Backend and data status
   const [backendStatus, setBackendStatus] = useState<BackendStatus>('loading')
@@ -142,7 +61,7 @@ function App() {
   const [loggerDropdownOpen, setLoggerDropdownOpen] = useState(false)
 
   // Dashboard controls state
-  const [dateRange, setDateRange] = useState<DateRange>('today')
+  const [dateRange, setDateRange] = useState<DateRange>('day')
   const [customDate, setCustomDate] = useState<string | null>(null)
   const [chartStyle, setChartStyle] = useState<ChartStyle>('area')
   const [showEnergy, setShowEnergy] = useState(false)
@@ -229,7 +148,7 @@ function App() {
       let url = `${API_BASE}/measurements/${selectedLogger}`
 
       // Only pass date params if not doing initial smart sync
-      if (!useSmartSync && (customDate || dateRange !== 'today')) {
+      if (!useSmartSync && (customDate || dateRange !== 'day')) {
         const { start, end } = calculateDateBounds(dateRange, customDate)
         const params = new URLSearchParams()
         params.append('start', start.toISOString())
@@ -263,7 +182,7 @@ function App() {
       if (useSmartSync && transformed.length > 0) {
         const firstDataDate = transformed[0].timestamp
         setCustomDate(formatDateForInput(firstDataDate))
-        setDateRange('today')
+        setDateRange('day')
         setIsInitialSync(false)
       }
 
@@ -436,8 +355,6 @@ function App() {
           {/* Dashboard Controls - Full Width */}
           <div className="lg:col-span-4">
             <DashboardControls
-              dateRange={dateRange}
-              onDateRangeChange={setDateRange}
               customDate={customDate}
               onCustomDateChange={setCustomDate}
               chartStyle={chartStyle}

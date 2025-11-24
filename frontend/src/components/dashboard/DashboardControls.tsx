@@ -2,12 +2,10 @@ import { cn } from '../../lib/cn'
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 
-export type DateRange = 'today' | 'week' | 'month'
+export type DateRange = 'day'
 export type ChartStyle = 'area' | 'line' | 'bar'
 
 interface DashboardControlsProps {
-  dateRange: DateRange
-  onDateRangeChange: (range: DateRange) => void
   customDate: string | null
   onCustomDateChange: (date: string | null) => void
   chartStyle: ChartStyle
@@ -18,12 +16,6 @@ interface DashboardControlsProps {
   onShowIrradianceChange: (show: boolean) => void
 }
 
-const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
-  { value: 'today', label: 'Day' },
-  { value: 'week', label: 'Week' },
-  { value: 'month', label: 'Month' }
-]
-
 const CHART_STYLE_OPTIONS: { value: ChartStyle; label: string }[] = [
   { value: 'area', label: 'Area' },
   { value: 'line', label: 'Line' },
@@ -31,8 +23,6 @@ const CHART_STYLE_OPTIONS: { value: ChartStyle; label: string }[] = [
 ]
 
 export function DashboardControls({
-  dateRange,
-  onDateRangeChange,
   customDate,
   onCustomDateChange,
   chartStyle,
@@ -49,35 +39,6 @@ export function DashboardControls({
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
       <div className="flex flex-wrap items-center gap-6">
-        {/* Time Selector - Segmented Control */}
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            Time Range
-          </label>
-          <div className="flex">
-            <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-600 p-1 bg-gray-50 dark:bg-gray-700">
-              {DATE_RANGE_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => {
-                    onDateRangeChange(option.value)
-                    onCustomDateChange(null)
-                  }}
-                  className={cn(
-                    "px-3 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer",
-                    dateRange === option.value && !customDate
-                      ? "bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm"
-                      : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
         {/* Custom Date Picker */}
         <div className="flex flex-col gap-2">
           <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
