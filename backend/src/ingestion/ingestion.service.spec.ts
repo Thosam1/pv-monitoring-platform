@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { IngestionService } from './ingestion.service';
 import { Measurement } from '../database/entities/measurement.entity';
 import { GoodWeParser } from './strategies/goodwe.strategy';
@@ -9,7 +8,6 @@ import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
 
 describe('IngestionService', () => {
   let service: IngestionService;
-  let repository: jest.Mocked<Repository<Measurement>>;
   let goodWeParser: jest.Mocked<GoodWeParser>;
   let ltiParser: jest.Mocked<LtiParser>;
 
@@ -62,7 +60,6 @@ describe('IngestionService', () => {
     }).compile();
 
     service = module.get<IngestionService>(IngestionService);
-    repository = module.get(getRepositoryToken(Measurement));
     goodWeParser = module.get(GoodWeParser);
     ltiParser = module.get(LtiParser);
 
@@ -82,9 +79,9 @@ describe('IngestionService', () => {
       ...overrides,
     });
 
-    async function* mockParseGenerator(
+    function* mockParseGenerator(
       dtos: UnifiedMeasurementDTO[],
-    ): AsyncGenerator<UnifiedMeasurementDTO> {
+    ): Generator<UnifiedMeasurementDTO> {
       for (const dto of dtos) {
         yield dto;
       }
@@ -201,7 +198,9 @@ describe('IngestionService', () => {
       ltiParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
-      mockQueryBuilder.execute.mockRejectedValue(new Error('DB connection lost'));
+      mockQueryBuilder.execute.mockRejectedValue(
+        new Error('DB connection lost'),
+      );
 
       const result = await service.ingestFile('test.csv', fileBuffer);
 
