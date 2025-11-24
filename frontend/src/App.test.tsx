@@ -3,6 +3,11 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import axios from 'axios'
 import App from './App'
+import {
+  API_BASE,
+  DEFAULT_LOGGERS,
+  setupStandardMocks
+} from './test/utils/mock-helpers'
 
 // Mock axios
 vi.mock('axios')
@@ -17,39 +22,6 @@ vi.mock('framer-motion', () => ({
   },
   AnimatePresence: ({ children }: React.PropsWithChildren) => <>{children}</>
 }))
-
-const API_BASE = 'http://localhost:3000'
-
-// Sample API responses
-const mockLoggers = {
-  loggers: [
-    { id: 'goodwe-001', type: 'goodwe' },
-    { id: 'goodwe-002', type: 'goodwe' },
-    { id: 'lti-001', type: 'lti' }
-  ]
-}
-
-const mockMeasurements = [
-  {
-    timestamp: '2024-06-15T08:00:00Z',
-    activePowerWatts: 2000,
-    energyDailyKwh: 5,
-    irradiance: 400,
-    metadata: { temperature: 25.5 }
-  },
-  {
-    timestamp: '2024-06-15T12:00:00Z',
-    activePowerWatts: 8000,
-    energyDailyKwh: 20,
-    irradiance: 900,
-    metadata: { temperature: 35 }
-  }
-]
-
-const mockDateRange = {
-  earliest: '2024-06-01T00:00:00Z',
-  latest: '2024-06-15T23:59:59Z'
-}
 
 describe('App', () => {
   beforeEach(() => {
@@ -89,7 +61,6 @@ describe('App', () => {
     })
 
     it('shows loading state initially', async () => {
-      // Create a promise that never resolves to simulate pending state
       const pendingPromise = new Promise(() => {})
       mockedAxios.get.mockReturnValue(pendingPromise)
 
@@ -101,18 +72,7 @@ describe('App', () => {
 
   describe('backend connection', () => {
     it('shows "Connected" status when backend responds successfully', async () => {
-      mockedAxios.get.mockImplementation((url: string) => {
-        if (url === API_BASE) {
-          return Promise.resolve({ data: 'PV Monitoring Backend' })
-        }
-        if (url === `${API_BASE}/measurements`) {
-          return Promise.resolve({ data: mockLoggers })
-        }
-        if (url.includes('/measurements/')) {
-          return Promise.resolve({ data: mockMeasurements })
-        }
-        return Promise.reject(new Error('Not found'))
-      })
+      setupStandardMocks(mockedAxios)
 
       render(<App />)
 
@@ -142,18 +102,7 @@ describe('App', () => {
     })
 
     it('displays backend message when connected', async () => {
-      mockedAxios.get.mockImplementation((url: string) => {
-        if (url === API_BASE) {
-          return Promise.resolve({ data: 'PV Monitoring Backend v1.0' })
-        }
-        if (url === `${API_BASE}/measurements`) {
-          return Promise.resolve({ data: mockLoggers })
-        }
-        if (url.includes('/measurements/')) {
-          return Promise.resolve({ data: mockMeasurements })
-        }
-        return Promise.reject(new Error('Not found'))
-      })
+      setupStandardMocks(mockedAxios, { backendResponse: 'PV Monitoring Backend v1.0' })
 
       render(<App />)
 
@@ -165,21 +114,7 @@ describe('App', () => {
 
   describe('logger selection', () => {
     beforeEach(() => {
-      mockedAxios.get.mockImplementation((url: string) => {
-        if (url === API_BASE) {
-          return Promise.resolve({ data: 'PV Monitoring Backend' })
-        }
-        if (url === `${API_BASE}/measurements`) {
-          return Promise.resolve({ data: mockLoggers })
-        }
-        if (url.includes('/date-range')) {
-          return Promise.resolve({ data: mockDateRange })
-        }
-        if (url.includes('/measurements/')) {
-          return Promise.resolve({ data: mockMeasurements })
-        }
-        return Promise.reject(new Error('Not found'))
-      })
+      setupStandardMocks(mockedAxios)
     })
 
     it('fetches and displays available loggers', async () => {
@@ -218,21 +153,7 @@ describe('App', () => {
 
   describe('data fetching', () => {
     beforeEach(() => {
-      mockedAxios.get.mockImplementation((url: string) => {
-        if (url === API_BASE) {
-          return Promise.resolve({ data: 'PV Monitoring Backend' })
-        }
-        if (url === `${API_BASE}/measurements`) {
-          return Promise.resolve({ data: mockLoggers })
-        }
-        if (url.includes('/date-range')) {
-          return Promise.resolve({ data: mockDateRange })
-        }
-        if (url.includes('/measurements/')) {
-          return Promise.resolve({ data: mockMeasurements })
-        }
-        return Promise.reject(new Error('Not found'))
-      })
+      setupStandardMocks(mockedAxios)
     })
 
     it('fetches measurements for selected logger', async () => {
@@ -254,21 +175,7 @@ describe('App', () => {
     })
 
     it('handles empty data gracefully', async () => {
-      mockedAxios.get.mockImplementation((url: string) => {
-        if (url === API_BASE) {
-          return Promise.resolve({ data: 'PV Monitoring Backend' })
-        }
-        if (url === `${API_BASE}/measurements`) {
-          return Promise.resolve({ data: mockLoggers })
-        }
-        if (url.includes('/date-range')) {
-          return Promise.resolve({ data: mockDateRange })
-        }
-        if (url.includes('/measurements/')) {
-          return Promise.resolve({ data: [] })
-        }
-        return Promise.reject(new Error('Not found'))
-      })
+      setupStandardMocks(mockedAxios, { measurements: [] })
 
       render(<App />)
 
@@ -283,10 +190,7 @@ describe('App', () => {
           return Promise.resolve({ data: 'PV Monitoring Backend' })
         }
         if (url === `${API_BASE}/measurements`) {
-          return Promise.resolve({ data: mockLoggers })
-        }
-        if (url.includes('/date-range')) {
-          return Promise.resolve({ data: mockDateRange })
+          return Promise.resolve({ data: DEFAULT_LOGGERS })
         }
         if (url.includes('/measurements/')) {
           return Promise.reject(new Error('Fetch failed'))
@@ -304,21 +208,7 @@ describe('App', () => {
 
   describe('refresh functionality', () => {
     beforeEach(() => {
-      mockedAxios.get.mockImplementation((url: string) => {
-        if (url === API_BASE) {
-          return Promise.resolve({ data: 'PV Monitoring Backend' })
-        }
-        if (url === `${API_BASE}/measurements`) {
-          return Promise.resolve({ data: mockLoggers })
-        }
-        if (url.includes('/date-range')) {
-          return Promise.resolve({ data: mockDateRange })
-        }
-        if (url.includes('/measurements/')) {
-          return Promise.resolve({ data: mockMeasurements })
-        }
-        return Promise.reject(new Error('Not found'))
-      })
+      setupStandardMocks(mockedAxios)
     })
 
     it('renders refresh button', async () => {
@@ -351,21 +241,7 @@ describe('App', () => {
 
   describe('Quick Info display', () => {
     beforeEach(() => {
-      mockedAxios.get.mockImplementation((url: string) => {
-        if (url === API_BASE) {
-          return Promise.resolve({ data: 'PV Monitoring Backend' })
-        }
-        if (url === `${API_BASE}/measurements`) {
-          return Promise.resolve({ data: mockLoggers })
-        }
-        if (url.includes('/date-range')) {
-          return Promise.resolve({ data: mockDateRange })
-        }
-        if (url.includes('/measurements/')) {
-          return Promise.resolve({ data: mockMeasurements })
-        }
-        return Promise.reject(new Error('Not found'))
-      })
+      setupStandardMocks(mockedAxios)
     })
 
     it('displays selected logger name', async () => {
@@ -414,15 +290,7 @@ describe('App', () => {
 
   describe('no loggers scenario', () => {
     it('handles case when no loggers are available', async () => {
-      mockedAxios.get.mockImplementation((url: string) => {
-        if (url === API_BASE) {
-          return Promise.resolve({ data: 'PV Monitoring Backend' })
-        }
-        if (url === `${API_BASE}/measurements`) {
-          return Promise.resolve({ data: { loggers: [] } })
-        }
-        return Promise.reject(new Error('Not found'))
-      })
+      setupStandardMocks(mockedAxios, { loggers: { loggers: [] } })
 
       render(<App />)
 
@@ -445,21 +313,7 @@ describe('App', () => {
 
   describe('date range display', () => {
     beforeEach(() => {
-      mockedAxios.get.mockImplementation((url: string) => {
-        if (url === API_BASE) {
-          return Promise.resolve({ data: 'PV Monitoring Backend' })
-        }
-        if (url === `${API_BASE}/measurements`) {
-          return Promise.resolve({ data: mockLoggers })
-        }
-        if (url.includes('/date-range')) {
-          return Promise.resolve({ data: mockDateRange })
-        }
-        if (url.includes('/measurements/')) {
-          return Promise.resolve({ data: mockMeasurements })
-        }
-        return Promise.reject(new Error('Not found'))
-      })
+      setupStandardMocks(mockedAxios)
     })
 
     it('fetches date range for selected logger', async () => {
