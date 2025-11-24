@@ -15,6 +15,14 @@ export interface MeasurementChartData {
   metadata: Record<string, unknown>;
 }
 
+/**
+ * Logger info with type
+ */
+export interface LoggerInfo {
+  loggerId: string;
+  loggerType: string;
+}
+
 @Injectable()
 export class MeasurementsService {
   private readonly logger = new Logger(MeasurementsService.name);
@@ -198,15 +206,21 @@ export class MeasurementsService {
   }
 
   /**
-   * Get list of all logger IDs in the database
+   * Get list of all logger IDs with their types
    */
-  async getLoggerIds(): Promise<string[]> {
+  async getLoggerIds(): Promise<LoggerInfo[]> {
     const result = await this.measurementRepository
       .createQueryBuilder('m')
-      .select('DISTINCT m.loggerId', 'loggerId')
-      .getRawMany<{ loggerId: string }>();
+      .select('m.loggerId', 'loggerId')
+      .addSelect('m.loggerType', 'loggerType')
+      .groupBy('m.loggerId')
+      .addGroupBy('m.loggerType')
+      .getRawMany<{ loggerId: string; loggerType: string }>();
 
-    return result.map((r) => r.loggerId);
+    return result.map((r) => ({
+      loggerId: r.loggerId,
+      loggerType: r.loggerType,
+    }));
   }
 
   /**

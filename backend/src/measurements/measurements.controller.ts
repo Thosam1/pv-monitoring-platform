@@ -102,14 +102,19 @@ export class MeasurementsController {
   }
 
   /**
-   * Get list of all logger IDs in the database
+   * Get list of all loggers with their types
    *
    * @example
-   * GET /measurements/loggers
+   * GET /measurements
+   * Response: { loggers: [{ id: "9250KHTU22BP0338", type: "goodwe" }, ...] }
    */
   @Get()
-  async getLoggerIds(): Promise<{ loggerIds: string[] }> {
-    const loggerIds = await this.measurementsService.getLoggerIds();
-    return { loggerIds };
+  async getLoggerIds(): Promise<{
+    loggers: Array<{ id: string; type: string }>;
+  }> {
+    const loggers = await this.measurementsService.getLoggerIds();
+    return {
+      loggers: loggers.map((l) => ({ id: l.loggerId, type: l.loggerType })),
+    };
   }
 }

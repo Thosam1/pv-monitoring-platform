@@ -45,6 +45,12 @@ interface DataDateRange {
   latest: Date
 }
 
+// Type for logger with type information
+interface LoggerInfo {
+  id: string
+  type: 'goodwe' | 'lti'
+}
+
 function App() {
   // Backend and data status
   const [backendStatus, setBackendStatus] = useState<BackendStatus>('loading')
@@ -56,7 +62,7 @@ function App() {
   const [measurementData, setMeasurementData] = useState<MeasurementDataPoint[]>([])
 
   // Logger selection state
-  const [availableLoggers, setAvailableLoggers] = useState<string[]>([])
+  const [availableLoggers, setAvailableLoggers] = useState<LoggerInfo[]>([])
   const [selectedLogger, setSelectedLogger] = useState<string | null>(null)
   const [loggerDropdownOpen, setLoggerDropdownOpen] = useState(false)
 
@@ -81,11 +87,11 @@ function App() {
   // Fetch available loggers
   const fetchLoggers = useCallback(async () => {
     try {
-      const response = await axios.get<{ loggerIds: string[] }>(`${API_BASE}/measurements`)
-      const loggerIds = response.data.loggerIds
-      setAvailableLoggers(loggerIds)
-      if (loggerIds.length > 0 && !selectedLogger) {
-        setSelectedLogger(loggerIds[0])
+      const response = await axios.get<{ loggers: Array<{ id: string; type: string }> }>(`${API_BASE}/measurements`)
+      const loggers = response.data.loggers.map(l => ({ id: l.id, type: l.type as 'goodwe' | 'lti' }))
+      setAvailableLoggers(loggers)
+      if (loggers.length > 0 && !selectedLogger) {
+        setSelectedLogger(loggers[0].id)
       }
     } catch (error) {
       console.error('Failed to fetch loggers:', error)
@@ -121,11 +127,11 @@ function App() {
         setBackendMessage(response.data)
         setBackendStatus('connected')
 
-        const loggersResponse = await axios.get<{ loggerIds: string[] }>(`${API_BASE}/measurements`)
-        const loggerIds = loggersResponse.data.loggerIds
-        setAvailableLoggers(loggerIds)
-        if (loggerIds.length > 0) {
-          setSelectedLogger(loggerIds[0])
+        const loggersResponse = await axios.get<{ loggers: Array<{ id: string; type: string }> }>(`${API_BASE}/measurements`)
+        const loggers = loggersResponse.data.loggers.map(l => ({ id: l.id, type: l.type as 'goodwe' | 'lti' }))
+        setAvailableLoggers(loggers)
+        if (loggers.length > 0) {
+          setSelectedLogger(loggers[0].id)
         }
       } catch {
         setBackendStatus('error')
@@ -292,27 +298,69 @@ function App() {
                   </button>
 
                   {loggerDropdownOpen && (
-                    <div className="absolute left-0 bottom-full mb-1 w-56 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 overflow-hidden z-20 max-h-48 overflow-y-auto">
+                    <div className="absolute left-0 bottom-full mb-1 w-64 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 overflow-hidden z-20 max-h-64 overflow-y-auto">
                       {availableLoggers.length === 0 ? (
                         <div className="px-3 py-2 text-xs text-gray-500">No loggers found</div>
                       ) : (
-                        availableLoggers.map((loggerId) => (
-                          <button
-                            key={loggerId}
-                            type="button"
-                            onClick={() => {
-                              setSelectedLogger(loggerId)
-                              setLoggerDropdownOpen(false)
-                            }}
-                            className={`w-full px-3 py-2 text-left text-xs transition-colors cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 ${
-                              selectedLogger === loggerId
-                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                                : 'text-gray-700 dark:text-gray-200'
-                            }`}
-                          >
-                            {loggerId}
-                          </button>
-                        ))
+                        <>
+                          {/* GoodWe Section */}
+                          {availableLoggers.some(l => l.type === 'goodwe') && (
+                            <div>
+                              <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
+                                GoodWe
+                              </div>
+                              {availableLoggers
+                                .filter(l => l.type === 'goodwe')
+                                .sort((a, b) => a.id.localeCompare(b.id))
+                                .map((logger) => (
+                                  <button
+                                    key={logger.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedLogger(logger.id)
+                                      setLoggerDropdownOpen(false)
+                                    }}
+                                    className={`w-full px-3 py-2 text-left text-xs transition-colors cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 ${
+                                      selectedLogger === logger.id
+                                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                        : 'text-gray-700 dark:text-gray-200'
+                                    }`}
+                                  >
+                                    {logger.id}
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+
+                          {/* LTI ReEnergy Section */}
+                          {availableLoggers.some(l => l.type === 'lti') && (
+                            <div>
+                              <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
+                                LTI ReEnergy
+                              </div>
+                              {availableLoggers
+                                .filter(l => l.type === 'lti')
+                                .sort((a, b) => a.id.localeCompare(b.id))
+                                .map((logger) => (
+                                  <button
+                                    key={logger.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedLogger(logger.id)
+                                      setLoggerDropdownOpen(false)
+                                    }}
+                                    className={`w-full px-3 py-2 text-left text-xs transition-colors cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 ${
+                                      selectedLogger === logger.id
+                                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                        : 'text-gray-700 dark:text-gray-200'
+                                    }`}
+                                  >
+                                    {logger.id}
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
@@ -401,6 +449,24 @@ function App() {
                   <span className="text-gray-500 dark:text-gray-400">Selected Logger</span>
                   <span className="text-gray-900 dark:text-white font-medium truncate max-w-[150px]">
                     {selectedLogger ?? 'None'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Logger Type</span>
+                  <span className="text-gray-900 dark:text-white font-medium">
+                    {selectedLogger && availableLoggers.find(l => l.id === selectedLogger)?.type === 'goodwe' && (
+                      <span className="inline-flex items-center">
+                        <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1.5"></span>
+                        GoodWe
+                      </span>
+                    )}
+                    {selectedLogger && availableLoggers.find(l => l.id === selectedLogger)?.type === 'lti' && (
+                      <span className="inline-flex items-center">
+                        <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1.5"></span>
+                        LTI ReEnergy
+                      </span>
+                    )}
+                    {!selectedLogger && 'None'}
                   </span>
                 </div>
                 <div className="flex justify-between">
