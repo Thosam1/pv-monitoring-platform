@@ -81,7 +81,7 @@ export function KPIGrid({ data, isLoading }: Readonly<KPIGridProps>) {
     const energyValues = data
       .map((d) => d.energyDailyKwh)
       .filter((v): v is number => v !== null && !Number.isNaN(v))
-    const totalEnergy = energyValues.length > 0 ? energyValues[energyValues.length - 1] : null
+    const totalEnergy = energyValues.length > 0 ? energyValues.at(-1) ?? null : null
 
     // Avg Temperature: average of metadata.temperature
     const tempValues = data

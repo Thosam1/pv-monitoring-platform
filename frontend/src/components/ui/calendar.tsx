@@ -16,11 +16,11 @@ function CalendarRoot({
   className,
   rootRef,
   ...props
-}: {
+}: Readonly<{
   className?: string
   rootRef?: React.Ref<HTMLDivElement>
   children?: React.ReactNode
-}) {
+}>) {
   return (
     <div
       data-slot="calendar"
@@ -36,10 +36,10 @@ function CalendarChevron({
   className,
   orientation,
   ...props
-}: {
+}: Readonly<{
   className?: string
   orientation?: "left" | "right" | "up" | "down"
-}) {
+}>) {
   if (orientation === "left") {
     return <ChevronLeftIcon className={cn("size-4", className)} {...props} />
   }
@@ -55,9 +55,9 @@ function CalendarChevron({
 function CalendarWeekNumber({
   children,
   ...props
-}: {
+}: Readonly<{
   children?: React.ReactNode
-}) {
+}>) {
   return (
     <td {...props}>
       <div className="flex size-(--cell-size) items-center justify-center text-center">

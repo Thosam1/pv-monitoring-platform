@@ -43,23 +43,23 @@ export const SAMPLE_MEASUREMENTS: MeasurementDataPoint[] = [
   createMeasurementDataPoint({
     timestamp: new Date('2024-06-15T08:00:00Z'),
     activePowerWatts: 2000,
-    energyDailyKwh: 5.0,
+    energyDailyKwh: 5,
     irradiance: 400,
     metadata: { temperature: 25.5 }
   }),
   createMeasurementDataPoint({
     timestamp: new Date('2024-06-15T12:00:00Z'),
     activePowerWatts: 8000,
-    energyDailyKwh: 20.0,
+    energyDailyKwh: 20,
     irradiance: 900,
-    metadata: { temperature: 35.0 }
+    metadata: { temperature: 35 }
   }),
   createMeasurementDataPoint({
     timestamp: new Date('2024-06-15T16:00:00Z'),
     activePowerWatts: 3000,
-    energyDailyKwh: 30.0,
+    energyDailyKwh: 30,
     irradiance: 500,
-    metadata: { temperature: 30.0 }
+    metadata: { temperature: 30 }
   })
 ]
 
@@ -80,7 +80,7 @@ export const TEMPERATURE_FORMAT_SAMPLES: MeasurementDataPoint[] = [
 export const SPARSE_MEASUREMENTS: MeasurementDataPoint[] = [
   createMeasurementDataPoint({
     activePowerWatts: null,
-    energyDailyKwh: 10.0,
+    energyDailyKwh: 10,
     irradiance: null
   }),
   createMeasurementDataPoint({
@@ -90,7 +90,7 @@ export const SPARSE_MEASUREMENTS: MeasurementDataPoint[] = [
   }),
   createMeasurementDataPoint({
     activePowerWatts: 3000,
-    energyDailyKwh: 25.0,
+    energyDailyKwh: 25,
     irradiance: 700
   })
 ]

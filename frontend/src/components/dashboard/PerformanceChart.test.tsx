@@ -159,7 +159,7 @@ describe('PerformanceChart', () => {
     it('handles null energy values by treating as 0', () => {
       const dataWithNulls = [
         createMeasurementDataPoint({ energyDailyKwh: null }),
-        createMeasurementDataPoint({ energyDailyKwh: 25.0 })
+        createMeasurementDataPoint({ energyDailyKwh: 25 })
       ]
       render(
         <PerformanceChart {...defaultProps} data={dataWithNulls} showEnergy={true} />
@@ -214,7 +214,7 @@ describe('PerformanceChart', () => {
       const mixedData = [
         createMeasurementDataPoint({
           activePowerWatts: null,
-          energyDailyKwh: 10.0,
+          energyDailyKwh: 10,
           irradiance: null
         }),
         createMeasurementDataPoint({
@@ -224,7 +224,7 @@ describe('PerformanceChart', () => {
         }),
         createMeasurementDataPoint({
           activePowerWatts: 3000,
-          energyDailyKwh: 25.0,
+          energyDailyKwh: 25,
           irradiance: 700
         })
       ]

@@ -6,18 +6,17 @@ import { cn } from "@/lib/utils"
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
-    <div
+    <section
       data-slot="table-container"
       className="relative w-full overflow-x-auto"
-      role="region"
-      tabIndex={0}
+      aria-label="Data table"
     >
       <table
         data-slot="table"
         className={cn("w-full caption-bottom text-sm", className)}
         {...props}
       />
-    </div>
+    </section>
   )
 }
 

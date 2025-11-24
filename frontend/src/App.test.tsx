@@ -33,16 +33,16 @@ const mockMeasurements = [
   {
     timestamp: '2024-06-15T08:00:00Z',
     activePowerWatts: 2000,
-    energyDailyKwh: 5.0,
+    energyDailyKwh: 5,
     irradiance: 400,
     metadata: { temperature: 25.5 }
   },
   {
     timestamp: '2024-06-15T12:00:00Z',
     activePowerWatts: 8000,
-    energyDailyKwh: 20.0,
+    energyDailyKwh: 20,
     irradiance: 900,
-    metadata: { temperature: 35.0 }
+    metadata: { temperature: 35 }
   }
 ]
 
