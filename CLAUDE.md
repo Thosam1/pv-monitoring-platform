@@ -34,6 +34,12 @@ PV Monitoring Platform - High-throughput solar data ingestion platform (MVP) for
 2. **Implementation**: If requirements are clear, generate production-ready code with error handling immediately.
 3. **Debugging**: If an error occurs, analyze the root cause based on logs, then generate the fix. Do not offer multiple theoretical solutions; pick the best one and implement it.
 
+### Refactoring Directive
+- **Extraction over Inlining**: When refactoring, always prefer extracting helper methods over inlining code.
+- **Function Complexity Limits**: If a function exceeds 20 lines or has a cognitive complexity above 15, extract helper methods immediately.
+- **Single Responsibility**: Each method should do exactly one thing. Complex operations must be decomposed into smaller, testable units.
+- **No Premature Optimization**: Only refactor when complexity thresholds are exceeded or when adding new functionality.
+
 ### Testing Standards
 - **Zero-Debt Policy**: No feature is considered "complete" without passing Unit Tests.
 - **Backend**:
@@ -43,6 +49,17 @@ PV Monitoring Platform - High-throughput solar data ingestion platform (MVP) for
 - **Frontend**:
   - Ensure components build without TypeScript errors.
   - (Optional) Add Unit Tests for complex logic helpers (e.g., `calculateDateRange`).
+
+### Strict Naming Conventions
+- **Files**: Use kebab-case for all file names (e.g., `measurement.service.ts`, `kpi-grid.tsx`, `date-range-picker.tsx`)
+- **Classes**: PascalCase for all class names (e.g., `MeasurementService`, `IngestionController`)
+- **Interfaces**: PascalCase for all interfaces (e.g., `MeasurementChartData`, `IParser`)
+- **Constants**: SCREAMING_SNAKE_CASE for all constants (e.g., `MAX_FILE_SIZE`, `DEFAULT_BATCH_SIZE`)
+- **React Components**: PascalCase for component names, filename must match component name in kebab-case (e.g., `KpiGrid` in `kpi-grid.tsx`)
+- **Functions/Methods**: camelCase for all functions and methods (e.g., `calculateDailyAverage`, `parseTimestamp`)
+- **Variables**: camelCase for all variables (e.g., `loggerData`, `isLoading`)
+- **Database Entities**: PascalCase with "Entity" suffix (e.g., `MeasurementEntity`)
+- **DTOs**: PascalCase with "Dto" suffix (e.g., `CreateMeasurementDto`)
 
 ## Common Development Commands
 
@@ -101,6 +118,46 @@ cd frontend && npm run build
 # Frontend linting
 cd frontend && npm run lint
 ```
+
+## Commit Message Standard
+
+**MANDATORY**: All commits must follow the Conventional Commits specification.
+
+### Format
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+### Types
+- **feat**: New feature or functionality
+- **fix**: Bug fix
+- **docs**: Documentation changes only
+- **style**: Code style changes (formatting, semicolons, etc.) that don't affect logic
+- **refactor**: Code refactoring without changing functionality
+- **test**: Adding or modifying tests
+- **chore**: Maintenance tasks, dependency updates, build changes
+
+### Examples
+```bash
+feat: add CSV parser for SolarEdge inverters
+fix: correct timestamp parsing in LTI strategy
+docs: update API endpoint documentation
+refactor: extract date validation logic to helper
+test: add unit tests for batch processing
+chore: upgrade TypeORM to v0.3.20
+```
+
+### Rules
+- Use present tense ("add" not "added")
+- Use imperative mood ("fix" not "fixes" or "fixed")
+- Don't capitalize first letter after colon
+- No period at the end of subject line
+- Subject line max 72 characters
+- Body line wrap at 80 characters
 
 ## Key Architecture Patterns
 
@@ -195,9 +252,43 @@ Backend enables CORS for `http://localhost:5173` in `main.ts`.
 - Parser-specific date format handling (GoodWe: compact format, LTI: ISO format)
 - Frontend displays in local timezone
 
-### Error Handling
-- Per-file error isolation in bulk uploads (one failure doesn't halt batch)
-- Graceful fallbacks for missing data fields (stored in JSONB metadata)
+### Error Handling Strategy
+
+#### Backend Error Handling
+- **HTTP Exceptions**: Always use NestJS `HttpException` or its subclasses (`BadRequestException`, `NotFoundException`, etc.) for API errors
+- **No Raw 500 Errors**: Never return raw 500 errors to clients. Catch all exceptions and wrap them with meaningful error messages
+- **Logging**: Use NestJS `Logger` service for all error logging. NEVER use `console.log`, `console.error` in production code
+- **Error Response Format**:
+  ```typescript
+  {
+    statusCode: number,
+    message: string | string[],
+    error: string,
+    timestamp: string,
+    path: string
+  }
+  ```
+- **Database Errors**: Catch TypeORM errors and translate to user-friendly messages (e.g., "Duplicate entry" → "Record already exists")
+- **Validation Errors**: Use class-validator DTOs to validate input. Return detailed validation errors in the response
+- **File Processing Errors**: Isolate per-file errors in bulk uploads. Return success/failure status for each file individually
+
+#### Frontend Error Handling
+- **Async Actions**: Always wrap async operations in try/catch blocks
+- **UI States**: Every component must explicitly handle three states:
+  - **Loading State**: Show spinner or skeleton loader
+  - **Error State**: Display error message with retry option
+  - **Empty State**: Show meaningful message when no data available
+- **No Blank Screens**: Never leave the user with a blank screen. Always provide feedback
+- **Error Boundaries**: Wrap feature components in React Error Boundaries to prevent full app crashes
+- **User Notifications**: Use toast notifications for transient errors, inline errors for form validation
+- **Retry Logic**: Provide manual retry buttons for failed network requests
+- **Fallback Data**: When appropriate, show cached or default data with a warning indicator
+
+#### Error Recovery Patterns
+- **Graceful Degradation**: If a feature fails, disable it but keep the app functional
+- **Circuit Breaker**: After 3 consecutive failures, temporarily disable the feature and notify the user
+- **Exponential Backoff**: For retryable errors, implement exponential backoff (1s, 2s, 4s, 8s)
+- **Data Integrity**: On partial failures, rollback entire transaction to maintain consistency
 
 ## CI/CD Pipeline
 
