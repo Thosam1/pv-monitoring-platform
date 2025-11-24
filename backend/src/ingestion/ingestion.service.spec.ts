@@ -1,0 +1,238 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { IngestionService } from './ingestion.service';
+import { Measurement } from '../database/entities/measurement.entity';
+import { GoodWeParser } from './strategies/goodwe.strategy';
+import { LtiParser } from './strategies/lti.strategy';
+import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
+
+describe('IngestionService', () => {
+  let service: IngestionService;
+  let goodWeParser: jest.Mocked<GoodWeParser>;
+  let ltiParser: jest.Mocked<LtiParser>;
+
+  const mockRepository = {
+    createQueryBuilder: jest.fn(),
+  };
+
+  const mockQueryBuilder = {
+    insert: jest.fn().mockReturnThis(),
+    into: jest.fn().mockReturnThis(),
+    values: jest.fn().mockReturnThis(),
+    orUpdate: jest.fn().mockReturnThis(),
+    execute: jest.fn(),
+  };
+
+  const mockGoodWeParser = {
+    name: 'goodwe',
+    description: 'GoodWe Parser',
+    canHandle: jest.fn(),
+    parse: jest.fn(),
+  };
+
+  const mockLtiParser = {
+    name: 'lti',
+    description: 'LTI Parser',
+    canHandle: jest.fn(),
+    parse: jest.fn(),
+  };
+
+  beforeEach(async () => {
+    mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+    mockQueryBuilder.execute.mockResolvedValue({ identifiers: [] });
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        IngestionService,
+        {
+          provide: getRepositoryToken(Measurement),
+          useValue: mockRepository,
+        },
+        {
+          provide: GoodWeParser,
+          useValue: mockGoodWeParser,
+        },
+        {
+          provide: LtiParser,
+          useValue: mockLtiParser,
+        },
+      ],
+    }).compile();
+
+    service = module.get<IngestionService>(IngestionService);
+    goodWeParser = module.get(GoodWeParser);
+    ltiParser = module.get(LtiParser);
+
+    jest.clearAllMocks();
+    mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+  });
+
+  describe('ingestFile', () => {
+    const createMockDTO = (overrides = {}): UnifiedMeasurementDTO => ({
+      timestamp: new Date('2024-06-15T12:00:00Z'),
+      loggerId: 'TEST-001',
+      loggerType: 'goodwe',
+      activePowerWatts: 5000,
+      energyDailyKwh: 25,
+      irradiance: 800,
+      metadata: { temperature: 35 },
+      ...overrides,
+    });
+
+    function* mockParseGenerator(
+      dtos: UnifiedMeasurementDTO[],
+    ): Generator<UnifiedMeasurementDTO> {
+      for (const dto of dtos) {
+        yield dto;
+      }
+    }
+
+    it('should successfully ingest a file with GoodWe parser', async () => {
+      const fileBuffer = Buffer.from('test,csv,content');
+      const mockDTO = createMockDTO();
+
+      ltiParser.canHandle.mockReturnValue(false);
+      goodWeParser.canHandle.mockReturnValue(true);
+      goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
+      mockQueryBuilder.execute.mockResolvedValue({
+        identifiers: [{ id: 1 }],
+      });
+
+      const result = await service.ingestFile('goodwe_test.csv', fileBuffer);
+
+      expect(result.success).toBe(true);
+      expect(result.parserUsed).toBe('goodwe');
+      expect(result.recordsProcessed).toBe(1);
+      expect(result.recordsInserted).toBe(1);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should successfully ingest a file with LTI parser', async () => {
+      const fileBuffer = Buffer.from('[header]\n[data]\ntest');
+      const mockDTO = createMockDTO({ loggerType: 'lti' });
+
+      ltiParser.canHandle.mockReturnValue(true);
+      ltiParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
+      mockQueryBuilder.execute.mockResolvedValue({
+        identifiers: [{ id: 1 }],
+      });
+
+      const result = await service.ingestFile('lti_export.csv', fileBuffer);
+
+      expect(result.success).toBe(true);
+      expect(result.parserUsed).toBe('lti');
+      expect(result.recordsInserted).toBe(1);
+    });
+
+    it('should return error when no parser can handle file', async () => {
+      const fileBuffer = Buffer.from('unknown format');
+
+      ltiParser.canHandle.mockReturnValue(false);
+      goodWeParser.canHandle.mockReturnValue(false);
+
+      const result = await service.ingestFile('unknown.csv', fileBuffer);
+
+      expect(result.success).toBe(false);
+      expect(result.parserUsed).toBe('none');
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain('No parser found');
+    });
+
+    it('should process multiple records in batches', async () => {
+      const fileBuffer = Buffer.from('multi record file');
+      const dtos = Array.from({ length: 5 }, (_, i) =>
+        createMockDTO({
+          timestamp: new Date(`2024-06-15T${10 + i}:00:00Z`),
+        }),
+      );
+
+      ltiParser.canHandle.mockReturnValue(false);
+      goodWeParser.canHandle.mockReturnValue(true);
+      goodWeParser.parse.mockReturnValue(mockParseGenerator(dtos));
+      mockQueryBuilder.execute.mockResolvedValue({
+        identifiers: dtos.map((_, i) => ({ id: i + 1 })),
+      });
+
+      const result = await service.ingestFile('goodwe_multi.csv', fileBuffer);
+
+      expect(result.success).toBe(true);
+      expect(result.recordsProcessed).toBe(5);
+      expect(result.recordsInserted).toBe(5);
+    });
+
+    it('should handle empty file (no records)', async () => {
+      const fileBuffer = Buffer.from('headers only');
+
+      ltiParser.canHandle.mockReturnValue(false);
+      goodWeParser.canHandle.mockReturnValue(true);
+      goodWeParser.parse.mockReturnValue(mockParseGenerator([]));
+
+      const result = await service.ingestFile('goodwe_empty.csv', fileBuffer);
+
+      expect(result.success).toBe(false);
+      expect(result.recordsProcessed).toBe(0);
+      expect(result.recordsInserted).toBe(0);
+    });
+
+    it('should track duration in milliseconds', async () => {
+      const fileBuffer = Buffer.from('test');
+      const mockDTO = createMockDTO();
+
+      ltiParser.canHandle.mockReturnValue(false);
+      goodWeParser.canHandle.mockReturnValue(true);
+      goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
+      mockQueryBuilder.execute.mockResolvedValue({
+        identifiers: [{ id: 1 }],
+      });
+
+      const result = await service.ingestFile('test.csv', fileBuffer);
+
+      expect(result.durationMs).toBeGreaterThanOrEqual(0);
+      expect(typeof result.durationMs).toBe('number');
+    });
+
+    it('should handle database errors gracefully', async () => {
+      const fileBuffer = Buffer.from('test');
+      const mockDTO = createMockDTO();
+
+      ltiParser.canHandle.mockReturnValue(false);
+      goodWeParser.canHandle.mockReturnValue(true);
+      goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
+      mockQueryBuilder.execute.mockRejectedValue(
+        new Error('DB connection lost'),
+      );
+
+      const result = await service.ingestFile('test.csv', fileBuffer);
+
+      expect(result.success).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it('should use default loggerType from parser if not in DTO', async () => {
+      const fileBuffer = Buffer.from('test');
+      const mockDTO = createMockDTO({ loggerType: undefined });
+
+      ltiParser.canHandle.mockReturnValue(false);
+      goodWeParser.canHandle.mockReturnValue(true);
+      goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
+      mockQueryBuilder.execute.mockResolvedValue({
+        identifiers: [{ id: 1 }],
+      });
+
+      await service.ingestFile('test.csv', fileBuffer);
+
+      expect(mockQueryBuilder.values).toHaveBeenCalled();
+    });
+  });
+
+  describe('getSupportedParsers', () => {
+    it('should return list of supported parsers', () => {
+      const parsers = service.getSupportedParsers();
+
+      expect(parsers).toEqual([
+        { name: 'lti', description: 'LTI Parser' },
+        { name: 'goodwe', description: 'GoodWe Parser' },
+      ]);
+    });
+  });
+});

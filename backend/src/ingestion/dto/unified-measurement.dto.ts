@@ -24,6 +24,14 @@ export class UnifiedMeasurementDTO {
   loggerId: string;
 
   /**
+   * Logger type identifier.
+   * Indicates which parser/strategy processed this measurement.
+   * Values: 'goodwe' | 'lti'
+   * Mandatory field.
+   */
+  loggerType: string;
+
+  /**
    * Golden Metric: Instantaneous AC power output in Watts.
    * Primary metric for real-time monitoring dashboards.
    */

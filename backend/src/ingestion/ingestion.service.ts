@@ -101,7 +101,7 @@ export class IngestionService {
         result.recordsProcessed++;
 
         try {
-          const measurement = this.dtoToEntity(dto);
+          const measurement = this.dtoToEntity(dto, parser.name);
           batch.push(measurement);
 
           // Flush batch when full
@@ -153,10 +153,14 @@ export class IngestionService {
   /**
    * Convert DTO to Entity
    */
-  private dtoToEntity(dto: UnifiedMeasurementDTO): Measurement {
+  private dtoToEntity(
+    dto: UnifiedMeasurementDTO,
+    parserName: string,
+  ): Measurement {
     const measurement = new Measurement();
     measurement.timestamp = dto.timestamp;
     measurement.loggerId = dto.loggerId;
+    measurement.loggerType = dto.loggerType || parserName;
     measurement.activePowerWatts = dto.activePowerWatts ?? null;
     measurement.energyDailyKwh = dto.energyDailyKwh ?? null;
     measurement.irradiance = dto.irradiance ?? null;
@@ -189,6 +193,7 @@ export class IngestionService {
       const values: QueryDeepPartialEntity<Measurement>[] = batch.map((m) => ({
         timestamp: m.timestamp,
         loggerId: m.loggerId,
+        loggerType: m.loggerType,
         activePowerWatts: m.activePowerWatts,
         energyDailyKwh: m.energyDailyKwh,
         irradiance: m.irradiance,
@@ -203,7 +208,13 @@ export class IngestionService {
         .into(Measurement)
         .values(values)
         .orUpdate(
-          ['activePowerWatts', 'energyDailyKwh', 'irradiance', 'metadata'],
+          [
+            'loggerType',
+            'activePowerWatts',
+            'energyDailyKwh',
+            'irradiance',
+            'metadata',
+          ],
           ['loggerId', 'timestamp'],
         )
         .execute();

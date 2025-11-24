@@ -50,6 +50,16 @@ export class Measurement {
   loggerId: string;
 
   /**
+   * Logger type identifier.
+   * Indicates which parser/strategy was used to ingest this measurement.
+   *
+   * Values: 'goodwe' | 'lti'
+   * Mandatory field - all measurements must have a logger type.
+   */
+  @Column({ type: 'varchar', length: 20, nullable: false })
+  loggerType: string;
+
+  /**
    * Golden Metric: Active power output in Watts.
    *
    * Extracted to top-level column because:

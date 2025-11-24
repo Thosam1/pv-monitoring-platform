@@ -439,6 +439,7 @@ export class GoodWeParser implements IParser {
     const dto: UnifiedMeasurementDTO = {
       timestamp: row['timestamp'] as Date,
       loggerId: (row['loggerId'] as string) || 'unknown',
+      loggerType: 'goodwe',
       activePowerWatts: null,
       energyDailyKwh: null,
       irradiance: null,

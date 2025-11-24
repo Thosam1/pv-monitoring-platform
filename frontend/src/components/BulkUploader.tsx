@@ -3,7 +3,7 @@ import { useDropzone, type FileRejection } from 'react-dropzone'
 import { motion, AnimatePresence } from 'framer-motion'
 import axios from 'axios'
 import { Upload, FolderOpen, CheckCircle, XCircle, Loader2, ChevronDown } from 'lucide-react'
-import { cn } from '../lib/cn'
+import { cn } from '@/lib/utils'
 
 const API_BASE = 'http://localhost:3000'
 

@@ -234,6 +234,7 @@ export class LtiParser implements IParser {
     const dto: UnifiedMeasurementDTO = {
       timestamp,
       loggerId,
+      loggerType: 'lti',
       activePowerWatts: null,
       energyDailyKwh: null,
       irradiance: null,

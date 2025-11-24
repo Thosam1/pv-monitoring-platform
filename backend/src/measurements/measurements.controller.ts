@@ -25,14 +25,33 @@ interface MeasurementsQuery {
  * Provides read endpoints for measurement data visualization.
  *
  * Endpoints:
+ * - GET /measurements - Get list of all logger IDs
  * - GET /measurements/:loggerId - Get measurements for a logger
- * - GET /measurements/loggers - Get list of all logger IDs
+ * - GET /measurements/:loggerId/date-range - Get earliest/latest timestamps for a logger
  */
 @Controller('measurements')
 export class MeasurementsController {
   private readonly logger = new Logger(MeasurementsController.name);
 
   constructor(private readonly measurementsService: MeasurementsService) {}
+
+  /**
+   * Get the date range (earliest and latest timestamps) for a logger
+   *
+   * @param loggerId - Logger serial number
+   * @returns Object with earliest and latest timestamps (or null if no data)
+   *
+   * @example
+   * GET /measurements/9250KHTU22BP0338/date-range
+   * Response: { earliest: "2025-01-15T08:00:00Z", latest: "2025-06-20T18:30:00Z" }
+   */
+  @Get(':loggerId/date-range')
+  async getDateRange(
+    @Param('loggerId') loggerId: string,
+  ): Promise<{ earliest: Date | null; latest: Date | null }> {
+    this.logger.log(`GET /measurements/${loggerId}/date-range`);
+    return this.measurementsService.getDateRange(loggerId);
+  }
 
   /**
    * Get measurements for a specific logger
@@ -83,14 +102,19 @@ export class MeasurementsController {
   }
 
   /**
-   * Get list of all logger IDs in the database
+   * Get list of all loggers with their types
    *
    * @example
-   * GET /measurements/loggers
+   * GET /measurements
+   * Response: { loggers: [{ id: "9250KHTU22BP0338", type: "goodwe" }, ...] }
    */
   @Get()
-  async getLoggerIds(): Promise<{ loggerIds: string[] }> {
-    const loggerIds = await this.measurementsService.getLoggerIds();
-    return { loggerIds };
+  async getLoggerIds(): Promise<{
+    loggers: Array<{ id: string; type: string }>;
+  }> {
+    const loggers = await this.measurementsService.getLoggerIds();
+    return {
+      loggers: loggers.map((l) => ({ id: l.loggerId, type: l.loggerType })),
+    };
   }
 }

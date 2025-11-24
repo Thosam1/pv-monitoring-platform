@@ -1,178 +1,130 @@
 import { useState, useEffect, useCallback } from 'react'
 import axios from 'axios'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { BulkUploader } from './components/BulkUploader'
-import { ChevronDown } from 'lucide-react'
+import {
+  DashboardControls,
+  KPIGrid,
+  PerformanceChart,
+  TechnicalChart,
+  type DateRange,
+  type ChartStyle,
+  type MeasurementDataPoint
+} from './components/dashboard'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  calculateDateBounds,
+  formatDateForInput,
+  formatDateLabel,
+  getBackendStatusConfig,
+  getDataStatusConfig,
+  type BackendStatus,
+  type DataStatus
+} from './lib/date-utils'
 
 // API base URL
 const API_BASE = 'http://localhost:3000'
 
-// Type for measurement data from API
+// Type for measurement data from API (extended with new fields)
 interface MeasurementData {
   timestamp: string
   activePowerWatts: number | null
   energyDailyKwh: number | null
+  irradiance: number | null
+  metadata: Record<string, unknown>
 }
 
-// Type for chart data
-interface ChartDataPoint {
-  time: string
-  timestamp: Date
-  power: number
-  energy: number
+// Type for date range response from API
+interface DateRangeResponse {
+  earliest: string | null
+  latest: string | null
 }
 
-// Status type aliases
-type BackendStatus = 'loading' | 'connected' | 'error'
-type DataStatus = 'loading' | 'loaded' | 'empty' | 'error'
-
-/**
- * Format timestamp to HH:mm for X-axis
- */
-function formatTime(timestamp: string): string {
-  const date = new Date(timestamp)
-  return date.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  })
+// Type for parsed date range
+interface DataDateRange {
+  earliest: Date
+  latest: Date
 }
 
-/**
- * Status indicator configuration
- */
-interface StatusConfig {
-  color: string
-  text: string
-}
-
-function getBackendStatusConfig(status: BackendStatus): StatusConfig {
-  const configs: Record<BackendStatus, StatusConfig> = {
-    connected: { color: 'bg-green-500', text: 'Connected' },
-    error: { color: 'bg-red-500', text: 'Disconnected' },
-    loading: { color: 'bg-yellow-500', text: 'Checking...' }
-  }
-  return configs[status]
-}
-
-function getDataStatusConfig(status: DataStatus, dataCount: number): StatusConfig {
-  const configs: Record<DataStatus, StatusConfig> = {
-    loaded: { color: 'bg-green-500', text: dataCount.toLocaleString() },
-    error: { color: 'bg-red-500', text: 'Error' },
-    empty: { color: 'bg-yellow-500', text: 'No Data' },
-    loading: { color: 'bg-blue-500', text: 'Loading...' }
-  }
-  return configs[status]
-}
-
-/**
- * Chart loading states component
- */
-interface ChartContentProps {
-  dataStatus: DataStatus
-  chartData: ChartDataPoint[]
-}
-
-function ChartContent({ dataStatus, chartData }: Readonly<ChartContentProps>) {
-  if (dataStatus === 'loading') {
-    return (
-      <div className="h-64 flex items-center justify-center">
-        <div className="text-gray-500">Loading chart data...</div>
-      </div>
-    )
-  }
-
-  if (dataStatus === 'empty') {
-    return (
-      <div className="h-64 flex items-center justify-center">
-        <div className="text-center text-gray-500">
-          <p className="mb-2">No measurement data available</p>
-          <p className="text-sm">Upload a CSV file via POST /ingest/goodwe</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (dataStatus === 'error') {
-    return (
-      <div className="h-64 flex items-center justify-center">
-        <div className="text-red-500">Failed to load data. Check backend connection.</div>
-      </div>
-    )
-  }
-
-  if (dataStatus === 'loaded' && chartData.length > 0) {
-    return (
-      <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis
-              dataKey="time"
-              stroke="#9CA3AF"
-              tick={{ fontSize: 12 }}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              stroke="#9CA3AF"
-              unit=" W"
-              tick={{ fontSize: 12 }}
-              width={80}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#1F2937',
-                border: 'none',
-                borderRadius: '8px',
-                color: '#F9FAFB'
-              }}
-              formatter={(value: number) => [`${value.toFixed(1)} W`, 'Power']}
-              labelFormatter={(label) => `Time: ${label}`}
-            />
-            <Line
-              type="monotone"
-              dataKey="power"
-              stroke="#F59E0B"
-              strokeWidth={2}
-              dot={false}
-              name="Active Power"
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    )
-  }
-
-  return null
+// Type for logger with type information
+interface LoggerInfo {
+  id: string
+  type: 'goodwe' | 'lti'
 }
 
 function App() {
+  // Backend and data status
   const [backendStatus, setBackendStatus] = useState<BackendStatus>('loading')
   const [backendMessage, setBackendMessage] = useState('')
-  const [chartData, setChartData] = useState<ChartDataPoint[]>([])
   const [dataStatus, setDataStatus] = useState<DataStatus>('loading')
   const [dataCount, setDataCount] = useState(0)
-  const [chartDate, setChartDate] = useState<string>('')
+
+  // Measurement data (full data points)
+  const [measurementData, setMeasurementData] = useState<MeasurementDataPoint[]>([])
 
   // Logger selection state
-  const [availableLoggers, setAvailableLoggers] = useState<string[]>([])
+  const [availableLoggers, setAvailableLoggers] = useState<LoggerInfo[]>([])
   const [selectedLogger, setSelectedLogger] = useState<string | null>(null)
-  const [loggerDropdownOpen, setLoggerDropdownOpen] = useState(false)
+
+  // Dashboard controls state
+  const [dateRange, setDateRange] = useState<DateRange>('day')
+  const [customDate, setCustomDate] = useState<string | null>(null)
+  const [chartStyle, setChartStyle] = useState<ChartStyle>('area')
+  const [showEnergy, setShowEnergy] = useState(false)
+  const [showIrradiance, setShowIrradiance] = useState(false)
+
+  // Track if initial data has been synced
+  const [isInitialSync, setIsInitialSync] = useState(true)
+
+  // Available data date range for selected logger
+  const [dataDateRange, setDataDateRange] = useState<DataDateRange | null>(null)
+
+  // Computed date label for charts
+  const dateLabel = measurementData.length > 0
+    ? formatDateLabel(measurementData[0].timestamp)
+    : null
 
   // Fetch available loggers
   const fetchLoggers = useCallback(async () => {
     try {
-      const response = await axios.get<{ loggerIds: string[] }>(`${API_BASE}/measurements`)
-      const loggerIds = response.data.loggerIds
-      setAvailableLoggers(loggerIds)
-      // Auto-select first logger if none selected
-      if (loggerIds.length > 0 && !selectedLogger) {
-        setSelectedLogger(loggerIds[0])
+      const response = await axios.get<{ loggers: Array<{ id: string; type: string }> }>(`${API_BASE}/measurements`)
+      const loggers = response.data.loggers.map(l => ({ id: l.id, type: l.type as 'goodwe' | 'lti' }))
+      setAvailableLoggers(loggers)
+      if (loggers.length > 0 && !selectedLogger) {
+        setSelectedLogger(loggers[0].id)
       }
     } catch (error) {
       console.error('Failed to fetch loggers:', error)
     }
   }, [selectedLogger])
+
+  // Fetch date range for selected logger
+  const fetchDateRange = useCallback(async (loggerId: string) => {
+    try {
+      const response = await axios.get<DateRangeResponse>(
+        `${API_BASE}/measurements/${loggerId}/date-range`
+      )
+      const { earliest, latest } = response.data
+      if (earliest && latest) {
+        setDataDateRange({
+          earliest: new Date(earliest),
+          latest: new Date(latest)
+        })
+      } else {
+        setDataDateRange(null)
+      }
+    } catch (error) {
+      console.error('Failed to fetch date range:', error)
+      setDataDateRange(null)
+    }
+  }, [])
 
   // Check backend connectivity and fetch loggers on mount
   useEffect(() => {
@@ -182,12 +134,11 @@ function App() {
         setBackendMessage(response.data)
         setBackendStatus('connected')
 
-        // Fetch loggers after backend is confirmed connected
-        const loggersResponse = await axios.get<{ loggerIds: string[] }>(`${API_BASE}/measurements`)
-        const loggerIds = loggersResponse.data.loggerIds
-        setAvailableLoggers(loggerIds)
-        if (loggerIds.length > 0) {
-          setSelectedLogger(loggerIds[0])
+        const loggersResponse = await axios.get<{ loggers: Array<{ id: string; type: string }> }>(`${API_BASE}/measurements`)
+        const loggers = loggersResponse.data.loggers.map(l => ({ id: l.id, type: l.type as 'goodwe' | 'lti' }))
+        setAvailableLoggers(loggers)
+        if (loggers.length > 0) {
+          setSelectedLogger(loggers[0].id)
         }
       } catch {
         setBackendStatus('error')
@@ -197,8 +148,8 @@ function App() {
     void initialize()
   }, [])
 
-  // Fetch measurement data
-  const fetchMeasurements = useCallback(async () => {
+  // Fetch measurement data with date filtering
+  const fetchMeasurements = useCallback(async (useSmartSync = false) => {
     if (!selectedLogger) {
       setDataStatus('empty')
       return
@@ -206,219 +157,321 @@ function App() {
 
     setDataStatus('loading')
     try {
-      const response = await axios.get<MeasurementData[]>(
-        `${API_BASE}/measurements/${selectedLogger}`
-      )
+      // Build URL with optional date params
+      let url = `${API_BASE}/measurements/${selectedLogger}`
 
+      // Only pass date params if not doing initial smart sync
+      if (!useSmartSync && (customDate || dateRange !== 'day')) {
+        const { start, end } = calculateDateBounds(dateRange, customDate)
+        const params = new URLSearchParams()
+        params.append('start', start.toISOString())
+        params.append('end', end.toISOString())
+        url += `?${params.toString()}`
+      }
+
+      const response = await axios.get<MeasurementData[]>(url)
       const data = response.data
 
       if (!data || data.length === 0) {
         setDataStatus('empty')
-        setChartData([])
+        setMeasurementData([])
         setDataCount(0)
-        setChartDate('')
         return
       }
 
-      // Extract date from first data point for chart title
-      const firstTimestamp = new Date(data[0].timestamp)
-      const dateString = firstTimestamp.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })
-      setChartDate(dateString)
-
-      // Transform data for chart
-      const transformed: ChartDataPoint[] = data.map((m) => ({
-        time: formatTime(m.timestamp),
+      // Transform to MeasurementDataPoint format
+      const transformed: MeasurementDataPoint[] = data.map((m) => ({
         timestamp: new Date(m.timestamp),
-        power: m.activePowerWatts ?? 0,
-        energy: m.energyDailyKwh ?? 0
+        activePowerWatts: m.activePowerWatts,
+        energyDailyKwh: m.energyDailyKwh,
+        irradiance: m.irradiance,
+        metadata: m.metadata ?? {}
       }))
 
       // Sort by timestamp
       transformed.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
 
-      // Sample data if too many points (take every Nth point for performance)
-      const maxPoints = 200
-      const sampledData = transformed.length > maxPoints
-        ? transformed.filter((_, i) => i % Math.ceil(transformed.length / maxPoints) === 0)
-        : transformed
+      // SMART SYNC: On initial load, sync UI to match actual data date
+      if (useSmartSync && transformed.length > 0) {
+        const firstDataDate = transformed[0].timestamp
+        setCustomDate(formatDateForInput(firstDataDate))
+        setDateRange('day')
+        setIsInitialSync(false)
+      }
 
-      setChartData(sampledData)
+      setMeasurementData(transformed)
       setDataCount(data.length)
       setDataStatus('loaded')
     } catch (error) {
       console.error('Failed to fetch measurements:', error)
       setDataStatus('error')
     }
-  }, [selectedLogger])
+  }, [selectedLogger, dateRange, customDate])
 
   // Fetch data when backend is connected and logger is selected
   useEffect(() => {
     const loadData = async () => {
       if (backendStatus === 'connected' && selectedLogger) {
-        await fetchMeasurements()
+        // Use smart sync on initial load to match UI to actual data date
+        await fetchMeasurements(isInitialSync)
       }
     }
     void loadData()
-  }, [backendStatus, selectedLogger, fetchMeasurements])
+  }, [backendStatus, selectedLogger, fetchMeasurements, isInitialSync])
 
-  // Handle upload complete - refresh both loggers and measurements
+  // Fetch date range when logger changes
+  useEffect(() => {
+    const loadDateRange = async () => {
+      if (backendStatus === 'connected' && selectedLogger) {
+        await fetchDateRange(selectedLogger)
+      }
+    }
+    void loadDateRange()
+  }, [backendStatus, selectedLogger, fetchDateRange])
+
+  // Re-fetch when date controls change (but not during initial sync)
+  useEffect(() => {
+    const loadData = async () => {
+      if (!isInitialSync && backendStatus === 'connected' && selectedLogger) {
+        await fetchMeasurements(false)
+      }
+    }
+    void loadData()
+  }, [dateRange, customDate]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle upload complete
   const handleUploadComplete = useCallback(async () => {
     await fetchLoggers()
     await fetchMeasurements()
-  }, [fetchLoggers, fetchMeasurements])
+    // Refresh date range after upload
+    if (selectedLogger) {
+      await fetchDateRange(selectedLogger)
+    }
+  }, [fetchLoggers, fetchMeasurements, fetchDateRange, selectedLogger])
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <header className="mb-8">
+        <header className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             PV Monitoring Platform
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">
-            High-Throughput Solar Data Ingestion Platform - MVP
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
+            Advanced Solar Data Visualization Dashboard
           </p>
         </header>
 
-        {/* Bulk Uploader */}
-        <BulkUploader onUploadComplete={handleUploadComplete} />
-
-        {/* Status Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          {/* Backend Status */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Backend Status</h3>
-            <div className="mt-2 flex items-center">
-              <span className={`inline-block w-3 h-3 rounded-full mr-2 ${getBackendStatusConfig(backendStatus).color}`}></span>
-              <span className="text-lg font-semibold text-gray-900 dark:text-white">
-                {getBackendStatusConfig(backendStatus).text}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">{backendMessage}</p>
+        {/* Bento Grid Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Bulk Uploader - Full Width */}
+          <div className="lg:col-span-4">
+            <BulkUploader onUploadComplete={handleUploadComplete} />
           </div>
 
-          {/* Data Status */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Data Points</h3>
-            <div className="mt-2 flex items-center">
-              <span className={`inline-block w-3 h-3 rounded-full mr-2 ${getDataStatusConfig(dataStatus, dataCount).color}`}></span>
-              <span className="text-lg font-semibold text-gray-900 dark:text-white">
-                {getDataStatusConfig(dataStatus, dataCount).text}
-              </span>
-            </div>
-            {/* Logger Selector */}
-            <div className="relative mt-2">
-              <button
-                type="button"
-                onClick={() => setLoggerDropdownOpen(!loggerDropdownOpen)}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 cursor-pointer transition-colors"
-              >
-                <span>Logger: {selectedLogger ?? 'None'}</span>
-                <ChevronDown className={`w-3 h-3 transition-transform ${loggerDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {loggerDropdownOpen && (
-                <div className="absolute left-0 bottom-full mb-1 w-56 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 overflow-hidden z-20 max-h-48 overflow-y-auto">
-                  {availableLoggers.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-gray-500">No loggers found</div>
-                  ) : (
-                    availableLoggers.map((loggerId) => (
-                      <button
-                        key={loggerId}
-                        type="button"
-                        onClick={() => {
-                          setSelectedLogger(loggerId)
-                          setLoggerDropdownOpen(false)
-                        }}
-                        className={`w-full px-3 py-2 text-left text-xs transition-colors cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 ${
-                          selectedLogger === loggerId
-                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                            : 'text-gray-700 dark:text-gray-200'
-                        }`}
-                      >
-                        {loggerId}
-                      </button>
-                    ))
-                  )}
+          {/* Status Bar - Full Width */}
+          <div className="lg:col-span-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Backend Status */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Backend</h3>
+                <div className="mt-2 flex items-center">
+                  <span className={`inline-block w-3 h-3 rounded-full mr-2 ${getBackendStatusConfig(backendStatus).color}`}></span>
+                  <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {getBackendStatusConfig(backendStatus).text}
+                  </span>
                 </div>
-              )}
-            </div>
-          </div>
+                <p className="text-xs text-gray-500 mt-1 truncate">{backendMessage}</p>
+              </div>
 
-          {/* Current Power */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Latest Power</h3>
-            <div className="mt-2">
-              <span className="text-2xl font-bold text-amber-500">
-                {chartData.length > 0 ? `${chartData[chartData.length - 1].power.toFixed(0)} W` : '-- W'}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              {chartData.length > 0 ? chartData[chartData.length - 1].time : '--:--'}
-            </p>
-          </div>
+              {/* Data Points with Logger Selector */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Data Points</h3>
+                <div className="mt-2 flex items-center">
+                  <span className={`inline-block w-3 h-3 rounded-full mr-2 ${getDataStatusConfig(dataStatus, dataCount).color}`}></span>
+                  <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {getDataStatusConfig(dataStatus, dataCount).text}
+                  </span>
+                </div>
+                {/* Logger Selector */}
+                <div className="mt-2">
+                  <Select
+                    value={selectedLogger ?? ""}
+                    onValueChange={(value) => setSelectedLogger(value || null)}
+                  >
+                    <SelectTrigger className="h-7 text-xs w-full">
+                      <SelectValue placeholder="Select Logger" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableLoggers.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">
+                          No loggers found
+                        </div>
+                      ) : (
+                        <>
+                          {/* GoodWe Section */}
+                          {availableLoggers.some(l => l.type === 'goodwe') && (
+                            <SelectGroup>
+                              <SelectLabel>GoodWe</SelectLabel>
+                              {availableLoggers
+                                .filter(l => l.type === 'goodwe')
+                                .sort((a, b) => a.id.localeCompare(b.id))
+                                .map((logger) => (
+                                  <SelectItem key={logger.id} value={logger.id}>
+                                    {logger.id}
+                                  </SelectItem>
+                                ))}
+                            </SelectGroup>
+                          )}
 
-          {/* Daily Energy */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Daily Energy</h3>
-            <div className="mt-2">
-              <span className="text-2xl font-bold text-green-500">
-                {chartData.length > 0 ? `${chartData[chartData.length - 1].energy.toFixed(2)} kWh` : '-- kWh'}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">Cumulative today</p>
-          </div>
-        </div>
+                          {/* LTI ReEnergy Section */}
+                          {availableLoggers.some(l => l.type === 'lti') && (
+                            <SelectGroup>
+                              <SelectLabel>LTI ReEnergy</SelectLabel>
+                              {availableLoggers
+                                .filter(l => l.type === 'lti')
+                                .sort((a, b) => a.id.localeCompare(b.id))
+                                .map((logger) => (
+                                  <SelectItem key={logger.id} value={logger.id}>
+                                    {logger.id}
+                                  </SelectItem>
+                                ))}
+                            </SelectGroup>
+                          )}
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-        {/* Power Chart */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Active Power Output
-              </h2>
-              {chartDate && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  {chartDate}
+              {/* Refresh Button */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex flex-col justify-between">
+                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Actions</h3>
+                <button
+                  onClick={() => fetchMeasurements(false)}
+                  className="mt-2 px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition cursor-pointer"
+                >
+                  Refresh Data
+                </button>
+              </div>
+
+              {/* Date Display */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Date Range</h3>
+                <div className="mt-2">
+                  <span className="text-lg font-semibold text-gray-900 dark:text-white capitalize">
+                    {customDate ? new Date(customDate).toLocaleDateString() : dateRange}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {measurementData.length > 0
+                    ? measurementData[0].timestamp.toLocaleDateString()
+                    : 'No data'}
                 </p>
-              )}
+              </div>
             </div>
-            <button
-              onClick={fetchMeasurements}
-              className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition cursor-pointer"
-            >
-              Refresh
-            </button>
           </div>
 
-          <ChartContent dataStatus={dataStatus} chartData={chartData} />
-        </div>
+          {/* KPI Grid - Full Width */}
+          <div className="lg:col-span-4">
+            <KPIGrid data={measurementData} isLoading={dataStatus === 'loading'} />
+          </div>
 
-        {/* Quick Start Instructions */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            Quick Start
-          </h2>
-          <div className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
-            <div className="flex items-start">
-              <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-500 text-white rounded-full text-xs mr-3 flex-shrink-0">1</span>
-              <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">docker-compose up -d</code>
-              <span className="ml-2">- Start PostgreSQL</span>
-            </div>
-            <div className="flex items-start">
-              <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-500 text-white rounded-full text-xs mr-3 flex-shrink-0">2</span>
-              <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">cd backend && npm run start:dev</code>
-              <span className="ml-2">- Start API</span>
-            </div>
-            <div className="flex items-start">
-              <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-500 text-white rounded-full text-xs mr-3 flex-shrink-0">3</span>
-              <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">curl -X POST http://localhost:3000/ingest/goodwe -F "file=@data.csv"</code>
-              <span className="ml-2">- Upload Data</span>
+          {/* Dashboard Controls - Full Width */}
+          <div className="lg:col-span-4">
+            <DashboardControls
+              customDate={customDate}
+              onCustomDateChange={setCustomDate}
+              chartStyle={chartStyle}
+              onChartStyleChange={setChartStyle}
+              showEnergy={showEnergy}
+              onShowEnergyChange={setShowEnergy}
+              showIrradiance={showIrradiance}
+              onShowIrradianceChange={setShowIrradiance}
+            />
+          </div>
+
+          {/* Performance Chart - Full Width */}
+          <div className="lg:col-span-4 h-96">
+            <PerformanceChart
+              data={measurementData}
+              chartStyle={chartStyle}
+              showEnergy={showEnergy}
+              showIrradiance={showIrradiance}
+              isLoading={dataStatus === 'loading'}
+              loggerId={selectedLogger}
+              dateLabel={dateLabel}
+              dataDateRange={dataDateRange}
+            />
+          </div>
+
+          {/* Technical Chart - Half Width */}
+          <div className="lg:col-span-2 h-64">
+            <TechnicalChart
+              data={measurementData}
+              isLoading={dataStatus === 'loading'}
+              loggerId={selectedLogger}
+              dateLabel={dateLabel}
+            />
+          </div>
+
+          {/* Energy Summary Card - Half Width */}
+          <div className="lg:col-span-2 h-64">
+            <div className="h-full bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
+                Quick Info
+              </h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Selected Logger</span>
+                  <span className="text-gray-900 dark:text-white font-medium truncate max-w-[150px]">
+                    {selectedLogger ?? 'None'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Logger Type</span>
+                  <span className="text-gray-900 dark:text-white font-medium">
+                    {selectedLogger && availableLoggers.find(l => l.id === selectedLogger)?.type === 'goodwe' && (
+                      <span className="inline-flex items-center">
+                        <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1.5"></span>
+                        <span>GoodWe</span>
+                      </span>
+                    )}
+                    {selectedLogger && availableLoggers.find(l => l.id === selectedLogger)?.type === 'lti' && (
+                      <span className="inline-flex items-center">
+                        <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1.5"></span>
+                        <span>LTI ReEnergy</span>
+                      </span>
+                    )}
+                    {!selectedLogger && 'None'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Total Records</span>
+                  <span className="text-gray-900 dark:text-white font-medium">
+                    {dataCount.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Chart Style</span>
+                  <span className="text-gray-900 dark:text-white font-medium capitalize">
+                    {chartStyle}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Energy Overlay</span>
+                  <span className={`font-medium ${showEnergy ? 'text-green-500' : 'text-gray-400'}`}>
+                    {showEnergy ? 'On' : 'Off'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Irradiance Overlay</span>
+                  <span className={`font-medium ${showIrradiance ? 'text-yellow-500' : 'text-gray-400'}`}>
+                    {showIrradiance ? 'On' : 'Off'}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

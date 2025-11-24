@@ -4,13 +4,23 @@ import { Repository, Between } from 'typeorm';
 import { Measurement } from '../database/entities/measurement.entity';
 
 /**
- * Lightweight DTO for chart data
- * Only includes fields needed for visualization
+ * DTO for chart data with full metrics
+ * Includes all fields needed for advanced visualization
  */
 export interface MeasurementChartData {
   timestamp: Date;
   activePowerWatts: number | null;
   energyDailyKwh: number | null;
+  irradiance: number | null;
+  metadata: Record<string, unknown>;
+}
+
+/**
+ * Logger info with type
+ */
+export interface LoggerInfo {
+  loggerId: string;
+  loggerType: string;
 }
 
 @Injectable()
@@ -67,9 +77,15 @@ export class MeasurementsService {
       `Fetching measurements for ${loggerId} from ${startDate.toISOString()} to ${endDate.toISOString()}`,
     );
 
-    // Select only needed fields for chart (optimization)
+    // Select all fields needed for advanced visualization
     const measurements = await this.measurementRepository.find({
-      select: ['timestamp', 'activePowerWatts', 'energyDailyKwh'],
+      select: [
+        'timestamp',
+        'activePowerWatts',
+        'energyDailyKwh',
+        'irradiance',
+        'metadata',
+      ],
       where: {
         loggerId,
         timestamp: Between(startDate, endDate),
@@ -83,6 +99,8 @@ export class MeasurementsService {
       timestamp: m.timestamp,
       activePowerWatts: m.activePowerWatts,
       energyDailyKwh: m.energyDailyKwh,
+      irradiance: m.irradiance,
+      metadata: m.metadata ?? {},
     }));
   }
 
@@ -160,15 +178,49 @@ export class MeasurementsService {
   }
 
   /**
-   * Get list of all logger IDs in the database
+   * Get the earliest timestamp for a logger
    */
-  async getLoggerIds(): Promise<string[]> {
+  async getEarliestTimestamp(loggerId: string): Promise<Date | null> {
+    const record = await this.measurementRepository.findOne({
+      select: ['timestamp'],
+      where: { loggerId },
+      order: { timestamp: 'ASC' },
+    });
+
+    return record?.timestamp ?? null;
+  }
+
+  /**
+   * Get the date range (earliest and latest) for a logger
+   * Returns null values if no data exists
+   */
+  async getDateRange(
+    loggerId: string,
+  ): Promise<{ earliest: Date | null; latest: Date | null }> {
+    const [earliest, latest] = await Promise.all([
+      this.getEarliestTimestamp(loggerId),
+      this.getLatestTimestamp(loggerId),
+    ]);
+
+    return { earliest, latest };
+  }
+
+  /**
+   * Get list of all logger IDs with their types
+   */
+  async getLoggerIds(): Promise<LoggerInfo[]> {
     const result = await this.measurementRepository
       .createQueryBuilder('m')
-      .select('DISTINCT m.loggerId', 'loggerId')
-      .getRawMany<{ loggerId: string }>();
+      .select('m.loggerId', 'loggerId')
+      .addSelect('m.loggerType', 'loggerType')
+      .groupBy('m.loggerId')
+      .addGroupBy('m.loggerType')
+      .getRawMany<{ loggerId: string; loggerType: string }>();
 
-    return result.map((r) => r.loggerId);
+    return result.map((r) => ({
+      loggerId: r.loggerId,
+      loggerType: r.loggerType,
+    }));
   }
 
   /**

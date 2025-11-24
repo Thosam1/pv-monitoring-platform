@@ -1,0 +1,263 @@
+import { useMemo } from 'react'
+import {
+  ComposedChart,
+  Area,
+  Line,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend
+} from 'recharts'
+import type { ChartStyle } from './DashboardControls'
+import type { MeasurementDataPoint } from './KPIGrid'
+
+interface DataDateRange {
+  earliest: Date
+  latest: Date
+}
+
+interface PerformanceChartProps {
+  data: MeasurementDataPoint[]
+  chartStyle: ChartStyle
+  showEnergy: boolean
+  showIrradiance: boolean
+  isLoading?: boolean
+  loggerId?: string | null
+  dateLabel?: string | null
+  dataDateRange?: DataDateRange | null
+}
+
+interface ChartDataPoint {
+  time: string
+  timestamp: Date
+  power: number
+  energy: number
+  irradiance: number
+}
+
+/**
+ * Format timestamp to HH:mm for X-axis
+ */
+function formatTime(timestamp: Date): string {
+  return timestamp.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+}
+
+/**
+ * Format a date for display
+ */
+function formatDateDisplay(date: Date): string {
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  })
+}
+
+export function PerformanceChart({
+  data,
+  chartStyle,
+  showEnergy,
+  showIrradiance,
+  isLoading,
+  loggerId,
+  dateLabel,
+  dataDateRange
+}: Readonly<PerformanceChartProps>) {
+  const chartData = useMemo(() => {
+    if (!data || data.length === 0) return []
+
+    const transformed: ChartDataPoint[] = data.map((m) => ({
+      time: formatTime(m.timestamp),
+      timestamp: m.timestamp,
+      power: m.activePowerWatts ?? 0,
+      energy: m.energyDailyKwh ?? 0,
+      irradiance: m.irradiance ?? 0
+    }))
+
+    // Sort by timestamp
+    transformed.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+
+    // Sample data if too many points (for performance)
+    const maxPoints = 200
+    if (transformed.length > maxPoints) {
+      const step = Math.ceil(transformed.length / maxPoints)
+      return transformed.filter((_, i) => i % step === 0)
+    }
+
+    return transformed
+  }, [data])
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div className="text-gray-500 dark:text-gray-400">Loading chart...</div>
+      </div>
+    )
+  }
+
+  if (chartData.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div className="text-center text-gray-500 dark:text-gray-400">
+          <p className="mb-2">No measurement data available for selected date</p>
+          {dataDateRange ? (
+            <p className="text-sm">
+              Data available from{' '}
+              <span className="font-medium text-blue-500">
+                {formatDateDisplay(dataDateRange.earliest)}
+              </span>
+              {' '}to{' '}
+              <span className="font-medium text-blue-500">
+                {formatDateDisplay(dataDateRange.latest)}
+              </span>
+            </p>
+          ) : (
+            <p className="text-sm">Upload CSV files to see the chart</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const hasSecondaryAxis = showEnergy || showIrradiance
+
+  // Check if irradiance data exists
+  const hasIrradianceData = chartData.some((d) => d.irradiance > 0)
+
+  // Build chart title with context
+  const chartTitle = [
+    'Performance Overview',
+    loggerId && `• ${loggerId}`,
+    dateLabel && `• ${dateLabel}`
+  ].filter(Boolean).join(' ')
+
+  return (
+    <div className="h-full bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          {chartTitle}
+        </h3>
+        {showIrradiance && !hasIrradianceData && (
+          <span className="text-xs text-amber-500 bg-amber-500/10 px-2 py-1 rounded">
+            No irradiance data
+          </span>
+        )}
+      </div>
+      <div className="h-[calc(100%-3rem)]">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+            <XAxis
+              dataKey="time"
+              stroke="#9CA3AF"
+              tick={{ fontSize: 11 }}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              yAxisId="left"
+              stroke="#F59E0B"
+              unit=" W"
+              tick={{ fontSize: 11 }}
+              width={70}
+            />
+            {hasSecondaryAxis && (
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                stroke={showEnergy ? '#3B82F6' : '#EAB308'}
+                unit={showEnergy ? ' kWh' : ' W/m²'}
+                tick={{ fontSize: 11 }}
+                width={70}
+              />
+            )}
+            <Tooltip
+              contentStyle={{
+                backgroundColor: '#1F2937',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#F9FAFB'
+              }}
+              formatter={(value: number, name: string) => {
+                if (name === 'power') return [`${value.toFixed(1)} W`, 'Power']
+                if (name === 'energy') return [`${value.toFixed(2)} kWh`, 'Energy']
+                if (name === 'irradiance') return [`${value.toFixed(0)} W/m²`, 'Irradiance']
+                return [value, name]
+              }}
+              labelFormatter={(label) => `Time: ${label}`}
+            />
+            <Legend />
+
+            {/* Primary Metric - Active Power */}
+            {chartStyle === 'area' && (
+              <Area
+                yAxisId="left"
+                type="monotone"
+                dataKey="power"
+                name="power"
+                stroke="#F59E0B"
+                fill="#F59E0B"
+                fillOpacity={0.3}
+                strokeWidth={2}
+              />
+            )}
+            {chartStyle === 'line' && (
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="power"
+                name="power"
+                stroke="#F59E0B"
+                strokeWidth={2}
+                dot={false}
+              />
+            )}
+            {chartStyle === 'bar' && (
+              <Bar
+                yAxisId="left"
+                dataKey="power"
+                name="power"
+                fill="#F59E0B"
+                fillOpacity={0.8}
+              />
+            )}
+
+            {/* Secondary Metric - Energy */}
+            {showEnergy && (
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="energy"
+                name="energy"
+                stroke="#3B82F6"
+                strokeWidth={2}
+                dot={false}
+                strokeDasharray="5 5"
+              />
+            )}
+
+            {/* Secondary Metric - Irradiance */}
+            {showIrradiance && (
+              <Line
+                yAxisId={showEnergy ? 'left' : 'right'}
+                type="monotone"
+                dataKey="irradiance"
+                name="irradiance"
+                stroke="#EAB308"
+                strokeWidth={2}
+                dot={false}
+                strokeDasharray="3 3"
+              />
+            )}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}

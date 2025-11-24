@@ -91,11 +91,15 @@ describe('MeasurementsService', () => {
             timestamp: new Date('2023-06-15T10:00:00.000Z'),
             activePowerWatts: 1500,
             energyDailyKwh: 5.5,
+            irradiance: null,
+            metadata: {},
           },
           {
             timestamp: new Date('2023-06-15T11:00:00.000Z'),
             activePowerWatts: 1800,
             energyDailyKwh: 6.2,
+            irradiance: null,
+            metadata: {},
           },
         ];
 
@@ -108,11 +112,15 @@ describe('MeasurementsService', () => {
           timestamp: new Date('2023-06-15T10:00:00.000Z'),
           activePowerWatts: 1500,
           energyDailyKwh: 5.5,
+          irradiance: null,
+          metadata: {},
         });
         expect(results[1]).toEqual<MeasurementChartData>({
           timestamp: new Date('2023-06-15T11:00:00.000Z'),
           activePowerWatts: 1800,
           energyDailyKwh: 6.2,
+          irradiance: null,
+          metadata: {},
         });
       });
     });
@@ -286,32 +294,44 @@ describe('MeasurementsService', () => {
   });
 
   describe('getLoggerIds', () => {
-    it('should return list of distinct logger IDs', async () => {
+    it('should return list of distinct loggers with types', async () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
-        getRawMany: jest
-          .fn()
-          .mockResolvedValue([
-            { loggerId: 'LOGGER001' },
-            { loggerId: 'LOGGER002' },
-            { loggerId: 'LOGGER003' },
-          ]),
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          { loggerId: 'LOGGER001', loggerType: 'goodwe' },
+          { loggerId: 'LOGGER002', loggerType: 'lti' },
+          { loggerId: 'LOGGER003', loggerType: 'goodwe' },
+        ]),
       };
       mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
 
       const result = await service.getLoggerIds();
 
-      expect(result).toEqual(['LOGGER001', 'LOGGER002', 'LOGGER003']);
+      expect(result).toEqual([
+        { loggerId: 'LOGGER001', loggerType: 'goodwe' },
+        { loggerId: 'LOGGER002', loggerType: 'lti' },
+        { loggerId: 'LOGGER003', loggerType: 'goodwe' },
+      ]);
       expect(mockRepository.createQueryBuilder).toHaveBeenCalledWith('m');
       expect(mockQueryBuilder.select).toHaveBeenCalledWith(
-        'DISTINCT m.loggerId',
+        'm.loggerId',
         'loggerId',
+      );
+      expect(mockQueryBuilder.addSelect).toHaveBeenCalledWith(
+        'm.loggerType',
+        'loggerType',
       );
     });
 
     it('should return empty array when no loggers exist', async () => {
       const mockQueryBuilder = {
         select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
         getRawMany: jest.fn().mockResolvedValue([]),
       };
       mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
