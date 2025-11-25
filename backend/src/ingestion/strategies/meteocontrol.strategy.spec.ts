@@ -100,15 +100,17 @@ Uhrzeit;G_M6;G_M10`;
       expect(results[0].irradiance).toBe(657);
     });
 
-    it('should map G_M10 and other G_* columns to metadata', async () => {
+    it('should map G_M10 and other G_* columns to metadata with semantic names', async () => {
       const results = await parseAndCollect(
         parser,
         meteocontrolCsv.simple(657),
       );
 
       expect(results).toHaveLength(1);
-      expect(results[0].metadata).toHaveProperty('gM10', 637); // 657 - 20
-      expect(results[0].metadata).toHaveProperty('gM18', 647); // 657 - 10
+      // G_M10 -> irradiancePoa10 (Plane of Array sensor)
+      expect(results[0].metadata).toHaveProperty('irradiancePoa10', 637); // 657 - 20
+      // G_M18 -> irradiancePoa18 (Plane of Array sensor)
+      expect(results[0].metadata).toHaveProperty('irradiancePoa18', 647); // 657 - 10
     });
 
     it('should set activePowerWatts to null for analog files', async () => {
@@ -225,8 +227,8 @@ Uhrzeit;G_M6;G_M10`;
       );
 
       expect(results).toHaveLength(2);
-      // First row: G_M18 is empty
-      expect(results[0].metadata).toHaveProperty('gM18', null);
+      // First row: G_M18 is empty -> irradiancePoa18
+      expect(results[0].metadata).toHaveProperty('irradiancePoa18', null);
       // Second row: G_M6 (irradiance) is empty
       expect(results[1].irradiance).toBeNull();
     });

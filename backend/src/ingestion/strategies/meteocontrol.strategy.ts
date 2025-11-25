@@ -61,6 +61,18 @@ export class MeteoControlParser implements IParser {
   private readonly IRRADIANCE_COLUMN = 'g_m6';
 
   /**
+   * Semantic translation map for solar domain terminology
+   * Maps raw sensor code prefixes to industry-standard names
+   *
+   * G_M = Global Modul (Plane of Array irradiance on tilted surface)
+   * G_H = Global Horizontal (irradiance on flat ground)
+   */
+  private readonly TRANSLATION_MAP: Record<string, string> = {
+    g_m: 'irradiancePoa', // Plane of Array - critical for PR calculations
+    g_h: 'irradianceGhi', // Global Horizontal - used for weather comparison
+  };
+
+  /**
    * Handle state transitions based on section markers
    * Returns new state if transition occurs, null otherwise
    */
@@ -391,13 +403,33 @@ export class MeteoControlParser implements IParser {
   }
 
   /**
-   * Normalize field name for metadata storage
-   * Converts G_M6 -> gM6, G_M10 -> gM10, etc.
+   * Normalize field name for metadata storage using solar domain terminology
+   *
+   * Examples:
+   * - g_m6 -> irradiancePoa6 (Plane of Array sensor #6)
+   * - g_m10 -> irradiancePoa10
+   * - g_h2 -> irradianceGhi2 (Global Horizontal sensor #2)
+   * - unknown_field -> unknownField (camelCase fallback)
    */
   private normalizeFieldName(name: string): string {
     if (!name) return '';
 
-    // Convert to camelCase: g_m6 -> gM6
+    const lowerName = name.toLowerCase();
+
+    // Check for irradiance sensor patterns: g_m6 -> irradiancePoa6
+    for (const [pattern, semanticName] of Object.entries(
+      this.TRANSLATION_MAP,
+    )) {
+      if (lowerName.startsWith(pattern)) {
+        // Extract numeric suffix: g_m6 -> 6, g_m10 -> 10
+        const suffix = lowerName.slice(pattern.length);
+        if (/^\d+$/.test(suffix)) {
+          return `${semanticName}${suffix}`;
+        }
+      }
+    }
+
+    // Fallback: convert to camelCase
     const parts = name.split('_');
     return parts
       .map((part, index) => {
