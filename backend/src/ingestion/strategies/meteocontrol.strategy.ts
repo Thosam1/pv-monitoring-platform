@@ -22,54 +22,110 @@ interface DateComponents {
 }
 
 /**
+ * File type for MeteoControl exports
+ */
+type MeteoControlFileType = 'analog' | 'inverter';
+
+/**
  * Meteo Control Web Platform Parser Strategy
  *
  * Handles INI-style text files exported from Meteo Control web platform.
- * Phase 1: delta_analog files for irradiance data only.
+ * Supports both delta_analog (irradiance) and delta_inverter (power/energy) files.
  *
- * File Structure:
+ * File Structure (both types):
  * [info]
  * Anlage=Turnow-P. 1 FF - Strang N2
  * Datum=251106                        # YYMMDD format
  *
  * [messung]
- * Uhrzeit;Intervall;G_M6;G_M10;...   # Headers
- * ;s;W/m²;W/m²;...                   # Units row
+ * Headers row (semicolon-separated)
+ * Units row (semicolon-separated)
  *
  * [Start]
- * 12:45:00;900;657;637;...           # Data rows (time only!)
- * Info;Time                           # Skip these marker lines
+ * Data rows...
  *
- * Field Mapping:
- * - Datum + Uhrzeit -> timestamp (combined)
- * - Anlage (sanitized) -> loggerId
- * - G_M6 -> irradiance (golden metric, primary reference sensor)
- * - Other G_* columns -> metadata
- * - activePowerWatts -> null (not in analog files)
- * - energyDailyKwh -> null (not in analog files)
+ * delta_analog (irradiance sensors):
+ * - One row per timestamp with multiple G_M/G_H columns
+ * - G_M6 -> irradiance (golden metric)
+ * - loggerId from Anlage field
+ *
+ * delta_inverter (inverter telemetry):
+ * - Multiple rows per timestamp (one per inverter)
+ * - Serien Nummer -> loggerId (per row)
+ * - Pac (kW) -> activePowerWatts (× 1000)
+ * - E_Tag (kWh) -> energyDailyKwh
  */
 @Injectable()
 export class MeteoControlParser implements IParser {
   private readonly logger = new Logger(MeteoControlParser.name);
 
   readonly name = 'meteocontrol';
-  readonly description = 'Meteo Control Web Platform INI Export (delta_analog)';
+  readonly description =
+    'Meteo Control Web Platform INI Export (delta_analog, delta_inverter)';
 
   /**
-   * Primary reference sensor for irradiance golden metric
+   * Primary reference sensor for irradiance golden metric (analog files)
    */
   private readonly IRRADIANCE_COLUMN = 'g_m6';
+
+  /**
+   * Column containing inverter serial number (inverter files)
+   */
+  private readonly SERIAL_COLUMN = 'serien nummer';
+
+  /**
+   * Field mappings for inverter golden metrics
+   * Maps column header -> { field, conversionFactor }
+   */
+  private readonly INVERTER_FIELD_MAPPINGS: Record<
+    string,
+    {
+      field: 'activePowerWatts' | 'energyDailyKwh';
+      factor: number;
+    }
+  > = {
+    pac: { field: 'activePowerWatts', factor: 1000 }, // kW -> W
+    e_tag: { field: 'energyDailyKwh', factor: 1 }, // already kWh
+  };
 
   /**
    * Semantic translation map for solar domain terminology
    * Maps raw sensor code prefixes to industry-standard names
    *
-   * G_M = Global Modul (Plane of Array irradiance on tilted surface)
-   * G_H = Global Horizontal (irradiance on flat ground)
+   * Analog sensors:
+   * - G_M = Global Modul (Plane of Array irradiance on tilted surface)
+   * - G_H = Global Horizontal (irradiance on flat ground)
+   *
+   * Inverter fields:
+   * - Uac = AC Voltage, Fac = AC Frequency
+   * - Upv/Ipv/Ppv = DC Voltage/Current/Power
+   * - E_Total/E_Tag/E_Int = Energy totals
    */
   private readonly TRANSLATION_MAP: Record<string, string> = {
+    // Analog irradiance sensors
     g_m: 'irradiancePoa', // Plane of Array - critical for PR calculations
     g_h: 'irradianceGhi', // Global Horizontal - used for weather comparison
+    // Inverter AC measurements
+    uac_l1: 'voltageAcPhaseA',
+    uac_l2: 'voltageAcPhaseB',
+    uac_l3: 'voltageAcPhaseC',
+    fac: 'gridFrequencyHz',
+    // Inverter DC measurements
+    upv_ist: 'voltageDcActual',
+    upv0: 'voltageDcOpen',
+    ipv: 'currentDcAmps',
+    ppv: 'powerDcKw',
+    // Energy totals
+    e_total: 'energyLifetimeKwh',
+    e_int: 'energyIntervalKwh',
+    // Temperatures
+    tsc: 'temperatureStringC',
+    tpt100: 'temperaturePt100C',
+    tkk: 'temperatureInverterC',
+    // Other
+    riso: 'insulationResistanceKohm',
+    h_total: 'operatingHoursTotal',
+    h_on: 'operatingHoursOn',
   };
 
   /**
@@ -87,21 +143,42 @@ export class MeteoControlParser implements IParser {
   /**
    * Detect if this parser can handle the file
    *
-   * Heuristics (Phase 1 - delta_analog only):
-   * - Filename contains "delta_analog" (case-insensitive)
-   * - Content has [info] section with Datum= and G_M columns (irradiance sensors)
+   * Heuristics:
+   * - Filename contains "delta_analog" or "delta_inverter" (case-insensitive)
+   * - Content has [info] section with Datum= and either:
+   *   - G_M columns (irradiance sensors) for analog files
+   *   - Serien Nummer column for inverter files
    */
   canHandle(filename: string, snippet: string): boolean {
-    // Phase 1: Only delta_analog files
-    const filenameMatch = /delta_analog/i.test(filename);
+    // Accept both delta_analog and delta_inverter filenames
+    const filenameMatch = /delta_(analog|inverter)/i.test(filename);
 
-    // Content: INI-style with [info], Datum=, and G_M columns (irradiance)
-    const contentMatch =
-      snippet.includes('[info]') &&
-      /Datum=\d{6}/i.test(snippet) &&
-      /G_M\d+/i.test(snippet);
+    // Content detection for both types
+    const hasInfoSection =
+      snippet.includes('[info]') && /Datum=\d{6}/i.test(snippet);
+    const hasIrradianceData = /G_M\d+/i.test(snippet); // delta_analog
+    const hasInverterData = /Serien Nummer/i.test(snippet); // delta_inverter
 
-    return filenameMatch || contentMatch;
+    return (
+      filenameMatch ||
+      (hasInfoSection && (hasIrradianceData || hasInverterData))
+    );
+  }
+
+  /**
+   * Detect file type based on headers
+   * - 'inverter' if headers contain inverter-specific columns (serien nummer, pac)
+   * - 'analog' otherwise (irradiance sensor data)
+   */
+  private detectFileType(headers: string[]): MeteoControlFileType {
+    if (
+      headers.includes(this.SERIAL_COLUMN) ||
+      headers.includes('pac') ||
+      headers.includes('e_tag')
+    ) {
+      return 'inverter';
+    }
+    return 'analog';
   }
 
   /**
@@ -120,8 +197,9 @@ export class MeteoControlParser implements IParser {
 
     let state = ParseState.INITIAL;
     let dateComponents: DateComponents | null = null;
-    let loggerId = 'METEOCONTROL_Unknown';
+    let fallbackLoggerId = 'METEOCONTROL_Unknown'; // From Anlage (used for analog)
     let headers: string[] = [];
+    let fileType: MeteoControlFileType = 'analog';
     let dataRowCount = 0;
 
     for (const line of lines) {
@@ -146,7 +224,7 @@ export class MeteoControlParser implements IParser {
               dateComponents = this.parseDatum(datum);
             },
             (anlage) => {
-              loggerId = this.sanitizeLoggerId(anlage);
+              fallbackLoggerId = this.sanitizeLoggerId(anlage);
             },
           );
           break;
@@ -155,6 +233,8 @@ export class MeteoControlParser implements IParser {
           // First non-empty line is headers, second is units (skip)
           if (headers.length === 0) {
             headers = this.parseHeaders(trimmedLine);
+            fileType = this.detectFileType(headers);
+            this.logger.debug(`Detected file type: ${fileType}`);
           }
           // Units row starts with ; - skip it
           break;
@@ -174,7 +254,8 @@ export class MeteoControlParser implements IParser {
             trimmedLine,
             headers,
             dateComponents,
-            loggerId,
+            fallbackLoggerId,
+            fileType,
           );
           if (dto) {
             dataRowCount++;
@@ -189,7 +270,9 @@ export class MeteoControlParser implements IParser {
       }
     }
 
-    this.logger.log(`Parsed ${dataRowCount} data rows from Meteo Control file`);
+    this.logger.log(
+      `Parsed ${dataRowCount} data rows from Meteo Control ${fileType} file`,
+    );
 
     if (dataRowCount === 0) {
       throw new ParserError(
@@ -284,13 +367,31 @@ export class MeteoControlParser implements IParser {
   }
 
   /**
+   * Columns to skip for metadata (non-numeric identifiers)
+   */
+  private readonly SKIP_METADATA_COLUMNS = new Set([
+    'uhrzeit',
+    'intervall',
+    this.SERIAL_COLUMN,
+    'adresse',
+    'ip-adresse',
+    'wartestatus',
+    'mpc',
+    'team_fkt',
+    'status',
+    'fehler',
+  ]);
+
+  /**
    * Transform a data row to UnifiedMeasurementDTO
+   * Handles both analog (irradiance) and inverter (power/energy) files
    */
   private transformRowToDTO(
     line: string,
     headers: string[],
     dateComponents: DateComponents,
-    loggerId: string,
+    fallbackLoggerId: string,
+    fileType: MeteoControlFileType,
   ): UnifiedMeasurementDTO | null {
     const values = line.split(';').map((v) => v.trim());
 
@@ -308,13 +409,23 @@ export class MeteoControlParser implements IParser {
       return null;
     }
 
+    // Determine loggerId based on file type
+    let loggerId = fallbackLoggerId;
+    if (fileType === 'inverter') {
+      // For inverter files, use Serien Nummer from each row
+      const serialIndex = headers.indexOf(this.SERIAL_COLUMN);
+      if (serialIndex >= 0 && values[serialIndex]) {
+        loggerId = values[serialIndex];
+      }
+    }
+
     // Build DTO
     const dto: UnifiedMeasurementDTO = {
       timestamp,
       loggerId,
       loggerType: 'meteocontrol',
-      activePowerWatts: null, // Not in analog files
-      energyDailyKwh: null, // Not in analog files
+      activePowerWatts: null,
+      energyDailyKwh: null,
       irradiance: null,
       metadata: {},
     };
@@ -324,23 +435,38 @@ export class MeteoControlParser implements IParser {
     // Map values to headers
     for (let i = 0; i < headers.length && i < values.length; i++) {
       const header = headers[i];
-      const numericValue = this.parseNumber(values[i]);
+      const rawValue = values[i];
 
       // Skip non-data columns
-      if (header === 'uhrzeit' || header === 'intervall') {
-        if (header === 'intervall' && numericValue !== null) {
-          metadata['intervalSeconds'] = numericValue;
+      if (this.SKIP_METADATA_COLUMNS.has(header)) {
+        if (header === 'intervall') {
+          const numericValue = this.parseNumber(rawValue);
+          if (numericValue !== null) {
+            metadata['intervalSeconds'] = numericValue;
+          }
         }
         continue;
       }
 
-      // Check for primary irradiance sensor (G_M6)
-      if (header === this.IRRADIANCE_COLUMN) {
-        dto.irradiance = numericValue;
+      const numericValue = this.parseNumber(rawValue);
+
+      if (fileType === 'analog') {
+        // Analog file: map irradiance sensor
+        if (header === this.IRRADIANCE_COLUMN) {
+          dto.irradiance = numericValue;
+        } else {
+          const metaKey = this.normalizeFieldName(header);
+          metadata[metaKey] = numericValue;
+        }
       } else {
-        // All other columns go to metadata with normalized key
-        const metaKey = this.normalizeFieldName(header);
-        metadata[metaKey] = numericValue;
+        // Inverter file: map power/energy golden metrics
+        const mapping = this.INVERTER_FIELD_MAPPINGS[header];
+        if (mapping && numericValue !== null) {
+          dto[mapping.field] = numericValue * mapping.factor;
+        } else {
+          const metaKey = this.normalizeFieldName(header);
+          metadata[metaKey] = numericValue;
+        }
       }
     }
 
@@ -409,6 +535,8 @@ export class MeteoControlParser implements IParser {
    * - g_m6 -> irradiancePoa6 (Plane of Array sensor #6)
    * - g_m10 -> irradiancePoa10
    * - g_h2 -> irradianceGhi2 (Global Horizontal sensor #2)
+   * - uac_l1 -> voltageAcPhaseA (exact match)
+   * - fac -> gridFrequencyHz (exact match)
    * - unknown_field -> unknownField (camelCase fallback)
    */
   private normalizeFieldName(name: string): string {
@@ -416,7 +544,12 @@ export class MeteoControlParser implements IParser {
 
     const lowerName = name.toLowerCase();
 
-    // Check for irradiance sensor patterns: g_m6 -> irradiancePoa6
+    // Check for exact match first (inverter fields like uac_l1, fac)
+    if (this.TRANSLATION_MAP[lowerName]) {
+      return this.TRANSLATION_MAP[lowerName];
+    }
+
+    // Check for prefix + numeric suffix patterns: g_m6 -> irradiancePoa6
     for (const [pattern, semanticName] of Object.entries(
       this.TRANSLATION_MAP,
     )) {
