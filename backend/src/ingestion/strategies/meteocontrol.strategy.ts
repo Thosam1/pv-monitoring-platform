@@ -399,27 +399,18 @@ export class MeteoControlParser implements IParser {
       return null;
     }
 
-    // First column is Uhrzeit (time)
-    const uhrzeitIndex = headers.indexOf('uhrzeit');
-    const timeValue = uhrzeitIndex >= 0 ? values[uhrzeitIndex] : values[0];
-
-    const timestamp = this.buildTimestamp(dateComponents, timeValue);
+    const timestamp = this.extractTimestamp(headers, values, dateComponents);
     if (!timestamp) {
-      this.logger.warn(`Invalid time: ${timeValue}`);
       return null;
     }
 
-    // Determine loggerId based on file type
-    let loggerId = fallbackLoggerId;
-    if (fileType === 'inverter') {
-      // For inverter files, use Serien Nummer from each row
-      const serialIndex = headers.indexOf(this.SERIAL_COLUMN);
-      if (serialIndex >= 0 && values[serialIndex]) {
-        loggerId = values[serialIndex];
-      }
-    }
+    const loggerId = this.extractLoggerId(
+      headers,
+      values,
+      fallbackLoggerId,
+      fileType,
+    );
 
-    // Build DTO
     const dto: UnifiedMeasurementDTO = {
       timestamp,
       loggerId,
@@ -431,47 +422,147 @@ export class MeteoControlParser implements IParser {
     };
 
     const metadata: Record<string, unknown> = {};
+    this.mapFieldsToDTO(headers, values, fileType, dto, metadata);
+    dto.metadata = metadata;
 
-    // Map values to headers
-    for (let i = 0; i < headers.length && i < values.length; i++) {
+    return dto;
+  }
+
+  /**
+   * Extract timestamp from row values
+   */
+  private extractTimestamp(
+    headers: string[],
+    values: string[],
+    dateComponents: DateComponents,
+  ): Date | null {
+    const uhrzeitIndex = headers.indexOf('uhrzeit');
+    const timeValue = uhrzeitIndex >= 0 ? values[uhrzeitIndex] : values[0];
+
+    const timestamp = this.buildTimestamp(dateComponents, timeValue);
+    if (!timestamp) {
+      this.logger.warn(`Invalid time: ${timeValue}`);
+    }
+    return timestamp;
+  }
+
+  /**
+   * Extract loggerId based on file type
+   * - Analog: use fallback from Anlage field
+   * - Inverter: use Serien Nummer from each row
+   */
+  private extractLoggerId(
+    headers: string[],
+    values: string[],
+    fallbackLoggerId: string,
+    fileType: MeteoControlFileType,
+  ): string {
+    if (fileType !== 'inverter') {
+      return fallbackLoggerId;
+    }
+
+    const serialIndex = headers.indexOf(this.SERIAL_COLUMN);
+    if (serialIndex >= 0 && values[serialIndex]) {
+      return values[serialIndex];
+    }
+    return fallbackLoggerId;
+  }
+
+  /**
+   * Map all fields from row to DTO and metadata
+   */
+  private mapFieldsToDTO(
+    headers: string[],
+    values: string[],
+    fileType: MeteoControlFileType,
+    dto: UnifiedMeasurementDTO,
+    metadata: Record<string, unknown>,
+  ): void {
+    const limit = Math.min(headers.length, values.length);
+
+    for (let i = 0; i < limit; i++) {
       const header = headers[i];
       const rawValue = values[i];
 
-      // Skip non-data columns
-      if (this.SKIP_METADATA_COLUMNS.has(header)) {
-        if (header === 'intervall') {
-          const numericValue = this.parseNumber(rawValue);
-          if (numericValue !== null) {
-            metadata['intervalSeconds'] = numericValue;
-          }
-        }
+      if (this.handleSkipColumn(header, rawValue, metadata)) {
         continue;
       }
 
       const numericValue = this.parseNumber(rawValue);
+      this.mapFieldByType(header, numericValue, fileType, dto, metadata);
+    }
+  }
 
-      if (fileType === 'analog') {
-        // Analog file: map irradiance sensor
-        if (header === this.IRRADIANCE_COLUMN) {
-          dto.irradiance = numericValue;
-        } else {
-          const metaKey = this.normalizeFieldName(header);
-          metadata[metaKey] = numericValue;
-        }
-      } else {
-        // Inverter file: map power/energy golden metrics
-        const mapping = this.INVERTER_FIELD_MAPPINGS[header];
-        if (mapping && numericValue !== null) {
-          dto[mapping.field] = numericValue * mapping.factor;
-        } else {
-          const metaKey = this.normalizeFieldName(header);
-          metadata[metaKey] = numericValue;
-        }
-      }
+  /**
+   * Handle columns that should be skipped (but may extract interval)
+   * Returns true if column was handled (should skip further processing)
+   */
+  private handleSkipColumn(
+    header: string,
+    rawValue: string,
+    metadata: Record<string, unknown>,
+  ): boolean {
+    if (!this.SKIP_METADATA_COLUMNS.has(header)) {
+      return false;
     }
 
-    dto.metadata = metadata;
-    return dto;
+    if (header === 'intervall') {
+      const numericValue = this.parseNumber(rawValue);
+      if (numericValue !== null) {
+        metadata['intervalSeconds'] = numericValue;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Map a single field based on file type
+   */
+  private mapFieldByType(
+    header: string,
+    numericValue: number | null,
+    fileType: MeteoControlFileType,
+    dto: UnifiedMeasurementDTO,
+    metadata: Record<string, unknown>,
+  ): void {
+    if (fileType === 'analog') {
+      this.mapAnalogField(header, numericValue, dto, metadata);
+    } else {
+      this.mapInverterField(header, numericValue, dto, metadata);
+    }
+  }
+
+  /**
+   * Map field for analog file (irradiance sensors)
+   */
+  private mapAnalogField(
+    header: string,
+    numericValue: number | null,
+    dto: UnifiedMeasurementDTO,
+    metadata: Record<string, unknown>,
+  ): void {
+    if (header === this.IRRADIANCE_COLUMN) {
+      dto.irradiance = numericValue;
+    } else {
+      metadata[this.normalizeFieldName(header)] = numericValue;
+    }
+  }
+
+  /**
+   * Map field for inverter file (power/energy metrics)
+   */
+  private mapInverterField(
+    header: string,
+    numericValue: number | null,
+    dto: UnifiedMeasurementDTO,
+    metadata: Record<string, unknown>,
+  ): void {
+    const mapping = this.INVERTER_FIELD_MAPPINGS[header];
+    if (mapping && numericValue !== null) {
+      dto[mapping.field] = numericValue * mapping.factor;
+    } else {
+      metadata[this.normalizeFieldName(header)] = numericValue;
+    }
   }
 
   /**
