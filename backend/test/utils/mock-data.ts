@@ -221,6 +221,81 @@ export const integraXml = {
     ].join('\n'),
 };
 
+// Meier-NT constants
+export const MEIER_TIMESTAMP = '01.10.2025 01:50:00';
+export const MEIER_SERIAL = '080000891';
+
+// Meier-NT CSV structure
+const MEIER_METADATA_LINES = (serial: string) => [
+  `serial; ${serial}`,
+  'usermail; monitoring@ranft-gruppe.de',
+  'description; Test Installation',
+];
+const MEIER_HEADERS =
+  '; GENERAL.Feed-In_Power; Kostal.1.2.Feed-In_Power; GENERAL.Generator_Power; GENERAL.Yield';
+const MEIER_UNITS = '; W; W; W; Wh';
+
+/**
+ * Meier-NT Logger CSV data builders
+ */
+export const meierCsv = {
+  /** Simple CSV with single data row */
+  simple: (
+    feedInPower: number,
+    yieldWh: number,
+    ts = MEIER_TIMESTAMP,
+    serial = MEIER_SERIAL,
+  ): string =>
+    [
+      ...MEIER_METADATA_LINES(serial),
+      MEIER_HEADERS,
+      MEIER_UNITS,
+      `${ts}; ${feedInPower}; ${feedInPower}; 0; ${yieldWh}`,
+    ].join('\n'),
+
+  /** CSV with all values specified */
+  withAllValues: (
+    values: {
+      ts?: string;
+      feedInPower: number;
+      kostalFeedInPower: number;
+      generatorPower: number;
+      yieldWh: number;
+    },
+    serial = MEIER_SERIAL,
+  ): string =>
+    [
+      ...MEIER_METADATA_LINES(serial),
+      MEIER_HEADERS,
+      MEIER_UNITS,
+      `${values.ts ?? MEIER_TIMESTAMP}; ${values.feedInPower}; ${values.kostalFeedInPower}; ${values.generatorPower}; ${values.yieldWh}`,
+    ].join('\n'),
+
+  /** CSV with multiple data rows */
+  multipleRows: (
+    rows: Array<{ ts: string; feedInPower: number; yieldWh: number }>,
+    serial = MEIER_SERIAL,
+  ): string =>
+    [
+      ...MEIER_METADATA_LINES(serial),
+      MEIER_HEADERS,
+      MEIER_UNITS,
+      ...rows.map(
+        (r) => `${r.ts}; ${r.feedInPower}; ${r.feedInPower}; 0; ${r.yieldWh}`,
+      ),
+    ].join('\n'),
+
+  /** Headers only (no data) for error testing */
+  headersOnly: (serial = MEIER_SERIAL): string =>
+    [...MEIER_METADATA_LINES(serial), MEIER_HEADERS, MEIER_UNITS].join('\n'),
+
+  /** Empty file */
+  empty: (): string => '',
+
+  /** Metadata lines for custom structures */
+  metadataLines: MEIER_METADATA_LINES,
+};
+
 // MBMET constants
 export const MBMET_TIMESTAMP = '2025_09_30 23:42:27';
 export const MBMET_LOGGER_ID = '838176578';

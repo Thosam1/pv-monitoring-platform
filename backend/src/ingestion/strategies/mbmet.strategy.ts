@@ -31,6 +31,16 @@ export class MbmetParser implements IParser {
   private lastFilename = '';
 
   /**
+   * Semantic translation map for metadata keys
+   * Maps German field names to canonical English names
+   */
+  private readonly TRANSLATION_MAP: Record<string, string> = {
+    t_zelle: 'cellTemperature',
+    t_umgebung: 'ambientTemperature',
+    einstrahlung: 'irradiance',
+  };
+
+  /**
    * Detect if this parser can handle the file
    *
    * Heuristics:
@@ -209,8 +219,9 @@ export class MbmetParser implements IParser {
 
   /**
    * Normalize field name for metadata storage
-   * Converts "Einstrahlung (Einstrahlung Ost)" -> "einstrahlungOst"
-   * Converts "T_Zelle (Einstrahlung West)" -> "tZelleWest"
+   * Uses TRANSLATION_MAP for semantic English names
+   * Converts "Einstrahlung (Einstrahlung Ost)" -> "irradianceEast"
+   * Converts "T_Zelle (Einstrahlung West)" -> "cellTemperatureWest"
    */
   private normalizeFieldName(name: string): string {
     // Extract orientation (West/Ost) if present
@@ -223,24 +234,26 @@ export class MbmetParser implements IParser {
       parenIndex >= 0 ? name.substring(0, parenIndex) : name
     ).trim();
 
-    let camelCase: string;
+    const lowerBaseName = baseName.toLowerCase();
 
-    // Handle T_Zelle and T_Umgebung - preserve case after T_
-    if (baseName.startsWith('T_')) {
-      // T_Zelle -> tZelle, T_Umgebung -> tUmgebung
-      camelCase = 't' + baseName.slice(2);
-    } else {
-      // Convert to camelCase without regex (avoids backtracking concerns)
-      camelCase = this.toCamelCase(baseName);
+    // Check translation map for semantic English names
+    let englishName: string | null = null;
+    for (const [pattern, translation] of Object.entries(this.TRANSLATION_MAP)) {
+      if (lowerBaseName.includes(pattern)) {
+        englishName = translation;
+        break;
+      }
     }
 
-    // Append orientation
+    // Fallback to camelCase if no translation found
+    const camelCase = englishName ?? this.toCamelCase(baseName);
+
+    // Append orientation with East/West normalization
     if (orientation) {
-      return (
-        camelCase +
-        orientation.charAt(0).toUpperCase() +
-        orientation.slice(1).toLowerCase()
-      );
+      // Normalize Ost -> East for English consistency
+      const englishOrientation =
+        orientation.toLowerCase() === 'ost' ? 'East' : 'West';
+      return camelCase + englishOrientation;
     }
 
     return camelCase;

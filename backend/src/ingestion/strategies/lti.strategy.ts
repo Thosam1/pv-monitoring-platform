@@ -49,6 +49,24 @@ export class LtiParser implements IParser {
   };
 
   /**
+   * Semantic translation map for metadata keys
+   * Maps LTI abbreviations to canonical English names
+   */
+  private readonly TRANSLATION_MAP: Record<string, string> = {
+    u_ac: 'voltageAC',
+    i_ac: 'currentAC',
+    u_dc: 'voltageDC',
+    i_dc: 'currentDC',
+    e_int: 'energyInterval',
+    e_total: 'energyTotal',
+    t_ch: 'temperatureChannel',
+    t_tr: 'temperatureTransformer',
+    t_hs: 'temperatureHeatsink',
+    cos_phi: 'powerFactor',
+    pc: 'powerCurtailment',
+  };
+
+  /**
    * Detect if this parser can handle the file
    *
    * Heuristics:
@@ -326,12 +344,24 @@ export class LtiParser implements IParser {
 
   /**
    * Normalize field name for metadata storage
-   * Converts "P_AC" -> "pAc", "Some Field" -> "someField"
+   * Uses TRANSLATION_MAP for semantic English names
+   * Converts "U_AC" -> "voltageAC", "Some Field" -> "someField"
    */
   private normalizeFieldName(name: string): string {
-    return name
-      .trim()
-      .toLowerCase()
+    const lowerName = name.trim().toLowerCase();
+
+    // Check translation map for semantic English names
+    for (const [pattern, translation] of Object.entries(this.TRANSLATION_MAP)) {
+      if (
+        lowerName === pattern ||
+        lowerName.replaceAll('_', '') === pattern.replaceAll('_', '')
+      ) {
+        return translation;
+      }
+    }
+
+    // Fallback to camelCase
+    return lowerName
       .replaceAll(/[^a-z0-9\s_]/g, '')
       .replaceAll(/_([a-z])/g, (_, char: string) => char.toUpperCase())
       .replaceAll(/\s+(\S)/g, (_, char: string) => char.toUpperCase());
