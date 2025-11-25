@@ -89,3 +89,134 @@ export const goodweCsv = {
     logger = DEFAULT_LOGGER,
   ) => [`${ts},${logger},pac,${pac}`, `${ts},${logger},e_day,${eDay}`],
 };
+
+// Integra Sun constants
+export const INTEGRA_TIMESTAMP = '2025-10-01 10:00:00';
+export const INTEGRA_SERIAL = 'A1801100416';
+
+/**
+ * Integra Sun XML data builders (Meteocontrol format)
+ */
+export const integraXml = {
+  /** Single inverter with P_AC */
+  simple: (
+    pAc: number,
+    serial = INTEGRA_SERIAL,
+    ts = INTEGRA_TIMESTAMP,
+  ): string =>
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<root>',
+      '<system interval="900" serial="20190276" utcOffset="+0">',
+      '<md>',
+      `<dp interval="300" timestamp="${ts}">`,
+      `<inverter serial="${serial}" type="SG36KTL-M">`,
+      `<mv type="P_AC">${pAc}</mv>`,
+      '</inverter>',
+      '</dp>',
+      '</md>',
+      '</system>',
+      '</root>',
+    ].join('\n'),
+
+  /** Single inverter with multiple metrics */
+  withMetrics: (
+    metrics: Record<string, string>,
+    serial = INTEGRA_SERIAL,
+    ts = INTEGRA_TIMESTAMP,
+  ): string => {
+    const mvElements = Object.entries(metrics)
+      .map(([type, value]) => `<mv type="${type}">${value}</mv>`)
+      .join('\n');
+    return [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<root>',
+      '<system serial="20190276"><md>',
+      `<dp timestamp="${ts}">`,
+      `<inverter serial="${serial}" type="SG36KTL-M">`,
+      mvElements,
+      '</inverter>',
+      '</dp>',
+      '</md></system>',
+      '</root>',
+    ].join('\n');
+  },
+
+  /** Multiple inverters at same timestamp */
+  multipleInverters: (
+    inverters: Array<{ serial: string; pAc: number }>,
+    ts = INTEGRA_TIMESTAMP,
+  ): string => {
+    const invElements = inverters
+      .map(
+        (i) =>
+          `<inverter serial="${i.serial}" type="SG36KTL-M"><mv type="P_AC">${i.pAc}</mv></inverter>`,
+      )
+      .join('\n');
+    return [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<root>',
+      '<system serial="20190276"><md>',
+      `<dp timestamp="${ts}">`,
+      invElements,
+      '</dp>',
+      '</md></system>',
+      '</root>',
+    ].join('\n');
+  },
+
+  /** Multiple data points (timestamps) */
+  multipleDataPoints: (
+    dps: Array<{ ts: string; serial: string; pAc: number }>,
+  ): string => {
+    const dpElements = dps
+      .map(
+        (dp) =>
+          `<dp timestamp="${dp.ts}"><inverter serial="${dp.serial}" type="SG36KTL-M"><mv type="P_AC">${dp.pAc}</mv></inverter></dp>`,
+      )
+      .join('\n');
+    return [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<root>',
+      '<system serial="20190276"><md>',
+      dpElements,
+      '</md></system>',
+      '</root>',
+    ].join('\n');
+  },
+
+  /** With powermanagement (should be skipped) */
+  withPowerManagement: (
+    pAc: number,
+    serial = INTEGRA_SERIAL,
+    ts = INTEGRA_TIMESTAMP,
+  ): string =>
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<root>',
+      '<system serial="20190276"><md>',
+      `<dp timestamp="${ts}">`,
+      `<inverter serial="${serial}" type="SG36KTL-M"><mv type="P_AC">${pAc}</mv></inverter>`,
+      '<powermanagement><mv type="DM">100</mv></powermanagement>',
+      '</dp>',
+      '</md></system>',
+      '</root>',
+    ].join('\n'),
+
+  /** With error values (": --" and ": Run") */
+  withErrors: (serial = INTEGRA_SERIAL, ts = INTEGRA_TIMESTAMP): string =>
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<root>',
+      '<system serial="20190276"><md>',
+      `<dp timestamp="${ts}">`,
+      `<inverter serial="${serial}" type="SG36KTL-M">`,
+      '<mv type="ERROR">: --</mv>',
+      '<mv type="STATE">: Run</mv>',
+      '<mv type="P_AC">1500</mv>',
+      '</inverter>',
+      '</dp>',
+      '</md></system>',
+      '</root>',
+    ].join('\n'),
+};

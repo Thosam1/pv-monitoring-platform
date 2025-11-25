@@ -5,6 +5,7 @@ import { Measurement } from '../database/entities/measurement.entity';
 import { IParser, ParserError } from './interfaces/parser.interface';
 import { GoodWeParser } from './strategies/goodwe.strategy';
 import { LtiParser } from './strategies/lti.strategy';
+import { IntegraParser } from './strategies/integra.strategy';
 import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
@@ -43,10 +44,12 @@ export class IngestionService {
     private readonly measurementRepository: Repository<Measurement>,
     private readonly goodWeParser: GoodWeParser,
     private readonly ltiParser: LtiParser,
+    private readonly integraParser: IntegraParser,
   ) {
     // Register all available parsers (order matters - more specific parsers first)
     this.parsers = [
       this.ltiParser, // LTI has specific [header]/[data] markers, check first
+      this.integraParser, // Integra requires .xml extension + content signatures
       this.goodWeParser,
       // Add more parsers here: smaParser, froniusParser, etc.
     ];

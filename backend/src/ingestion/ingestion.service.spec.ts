@@ -4,12 +4,14 @@ import { IngestionService } from './ingestion.service';
 import { Measurement } from '../database/entities/measurement.entity';
 import { GoodWeParser } from './strategies/goodwe.strategy';
 import { LtiParser } from './strategies/lti.strategy';
+import { IntegraParser } from './strategies/integra.strategy';
 import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
 
 describe('IngestionService', () => {
   let service: IngestionService;
   let goodWeParser: jest.Mocked<GoodWeParser>;
   let ltiParser: jest.Mocked<LtiParser>;
+  let integraParser: jest.Mocked<IntegraParser>;
 
   const mockRepository = {
     createQueryBuilder: jest.fn(),
@@ -37,6 +39,13 @@ describe('IngestionService', () => {
     parse: jest.fn(),
   };
 
+  const mockIntegraParser = {
+    name: 'integra',
+    description: 'Integra Sun XML Export (Meteocontrol format)',
+    canHandle: jest.fn(),
+    parse: jest.fn(),
+  };
+
   beforeEach(async () => {
     mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
     mockQueryBuilder.execute.mockResolvedValue({ identifiers: [] });
@@ -56,12 +65,17 @@ describe('IngestionService', () => {
           provide: LtiParser,
           useValue: mockLtiParser,
         },
+        {
+          provide: IntegraParser,
+          useValue: mockIntegraParser,
+        },
       ],
     }).compile();
 
     service = module.get<IngestionService>(IngestionService);
     goodWeParser = module.get(GoodWeParser);
     ltiParser = module.get(LtiParser);
+    integraParser = module.get(IntegraParser);
 
     jest.clearAllMocks();
     mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
@@ -92,6 +106,7 @@ describe('IngestionService', () => {
       const mockDTO = createMockDTO();
 
       ltiParser.canHandle.mockReturnValue(false);
+      integraParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -128,6 +143,7 @@ describe('IngestionService', () => {
       const fileBuffer = Buffer.from('unknown format');
 
       ltiParser.canHandle.mockReturnValue(false);
+      integraParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(false);
 
       const result = await service.ingestFile('unknown.csv', fileBuffer);
@@ -147,6 +163,7 @@ describe('IngestionService', () => {
       );
 
       ltiParser.canHandle.mockReturnValue(false);
+      integraParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator(dtos));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -164,6 +181,7 @@ describe('IngestionService', () => {
       const fileBuffer = Buffer.from('headers only');
 
       ltiParser.canHandle.mockReturnValue(false);
+      integraParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([]));
 
@@ -179,6 +197,7 @@ describe('IngestionService', () => {
       const mockDTO = createMockDTO();
 
       ltiParser.canHandle.mockReturnValue(false);
+      integraParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -196,6 +215,7 @@ describe('IngestionService', () => {
       const mockDTO = createMockDTO();
 
       ltiParser.canHandle.mockReturnValue(false);
+      integraParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockRejectedValue(
@@ -213,6 +233,7 @@ describe('IngestionService', () => {
       const mockDTO = createMockDTO({ loggerType: undefined });
 
       ltiParser.canHandle.mockReturnValue(false);
+      integraParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -231,6 +252,10 @@ describe('IngestionService', () => {
 
       expect(parsers).toEqual([
         { name: 'lti', description: 'LTI Parser' },
+        {
+          name: 'integra',
+          description: 'Integra Sun XML Export (Meteocontrol format)',
+        },
         { name: 'goodwe', description: 'GoodWe Parser' },
       ]);
     });
