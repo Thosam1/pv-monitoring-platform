@@ -444,6 +444,30 @@ describe('MeierParser', () => {
         );
       });
 
+      it('should translate "GENERAL.Generator_Power_A" to "generatorPowerPhaseA"', () => {
+        expect(normalizeFieldName('GENERAL.Generator_Power_A')).toBe(
+          'generatorPowerPhaseA',
+        );
+      });
+
+      it('should translate "GENERAL.Generator_Power_B" to "generatorPowerPhaseB"', () => {
+        expect(normalizeFieldName('GENERAL.Generator_Power_B')).toBe(
+          'generatorPowerPhaseB',
+        );
+      });
+
+      it('should translate "GENERAL.Generator_Power_C" to "generatorPowerPhaseC"', () => {
+        expect(normalizeFieldName('GENERAL.Generator_Power_C')).toBe(
+          'generatorPowerPhaseC',
+        );
+      });
+
+      it('should translate "GENERAL.Generator_Power_All" to "generatorPowerTotal"', () => {
+        expect(normalizeFieldName('GENERAL.Generator_Power_All')).toBe(
+          'generatorPowerTotal',
+        );
+      });
+
       it('should translate compound names like "Kostal.1.2.T_Umgebung"', () => {
         expect(normalizeFieldName('Kostal.1.2.T_Umgebung')).toBe(
           'ambientTemperature',

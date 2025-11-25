@@ -47,12 +47,18 @@ export class MeierParser implements IParser {
   /**
    * Semantic translation map for metadata keys
    * Maps raw field name fragments to canonical English names
+   * Order matters: longer/more specific patterns must come first to avoid substring matches
    */
   private readonly TRANSLATION_MAP: Record<string, string> = {
     t_umgebung: 'ambientTemperature',
     t_zelle: 'cellTemperature',
     'feed-in_power': 'activePowerWatts',
     yield: 'energyDailyKwh',
+    // Phase-specific generator power: _all must come before _a (substring issue)
+    generator_power_all: 'generatorPowerTotal',
+    generator_power_a: 'generatorPowerPhaseA',
+    generator_power_b: 'generatorPowerPhaseB',
+    generator_power_c: 'generatorPowerPhaseC',
     generator_power: 'generatorPower',
   };
 

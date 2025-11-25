@@ -219,4 +219,102 @@ describe('LtiParser', () => {
       ).rejects.toThrow('No valid data rows found');
     });
   });
+
+  describe('Semantic Normalization', () => {
+    it('should translate U_AC to voltageAC', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;U_AC', `${LTI_TIMESTAMP};230`),
+      );
+      expect(results[0].metadata).toHaveProperty('voltageAC', 230);
+    });
+
+    it('should translate I_AC to currentAC', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;I_AC', `${LTI_TIMESTAMP};10.5`),
+      );
+      expect(results[0].metadata).toHaveProperty('currentAC', 10.5);
+    });
+
+    it('should translate U_DC to voltageDC', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;U_DC', `${LTI_TIMESTAMP};400`),
+      );
+      expect(results[0].metadata).toHaveProperty('voltageDC', 400);
+    });
+
+    it('should translate I_DC to currentDC', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;I_DC', `${LTI_TIMESTAMP};8.2`),
+      );
+      expect(results[0].metadata).toHaveProperty('currentDC', 8.2);
+    });
+
+    it('should translate E_INT to energyInterval', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;E_INT', `${LTI_TIMESTAMP};1.5`),
+      );
+      expect(results[0].metadata).toHaveProperty('energyInterval', 1.5);
+    });
+
+    it('should translate E_TOTAL to energyTotal', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;E_TOTAL', `${LTI_TIMESTAMP};12345`),
+      );
+      expect(results[0].metadata).toHaveProperty('energyTotal', 12345);
+    });
+
+    it('should translate T_CH to temperatureChannel', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;T_CH', `${LTI_TIMESTAMP};45`),
+      );
+      expect(results[0].metadata).toHaveProperty('temperatureChannel', 45);
+    });
+
+    it('should translate T_TR to temperatureTransformer', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;T_TR', `${LTI_TIMESTAMP};55`),
+      );
+      expect(results[0].metadata).toHaveProperty('temperatureTransformer', 55);
+    });
+
+    it('should translate T_HS to temperatureHeatsink', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;T_HS', `${LTI_TIMESTAMP};60`),
+      );
+      expect(results[0].metadata).toHaveProperty('temperatureHeatsink', 60);
+    });
+
+    it('should translate COS_PHI to powerFactor', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;COS_PHI', `${LTI_TIMESTAMP};0.95`),
+      );
+      expect(results[0].metadata).toHaveProperty('powerFactor', 0.95);
+    });
+
+    it('should translate PC to powerCurtailment', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;PC', `${LTI_TIMESTAMP};100`),
+      );
+      expect(results[0].metadata).toHaveProperty('powerCurtailment', 100);
+    });
+
+    it('should fallback to camelCase for unknown fields', async () => {
+      const results = await parseAndCollect(
+        parser,
+        ltiCsv.withHeader('timestamp;unknown_field', `${LTI_TIMESTAMP};123`),
+      );
+      expect(results[0].metadata).toHaveProperty('unknownField', 123);
+    });
+  });
 });

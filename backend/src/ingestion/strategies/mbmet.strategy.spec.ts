@@ -99,7 +99,7 @@ describe('MbmetParser', () => {
       parser.canHandle(`einstrahlung_${MBMET_LOGGER_ID}.csv`, '');
     });
 
-    it('should store temperature fields in metadata', async () => {
+    it('should store temperature fields in metadata with semantic English names', async () => {
       const buffer = Buffer.from(
         mbmetCsv.withAllValues({
           irradianceWest: 500,
@@ -114,11 +114,18 @@ describe('MbmetParser', () => {
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results[0].irradiance).toBe(500);
-      expect(results[0].metadata).toHaveProperty('tZelleWest', 25.5);
-      expect(results[0].metadata).toHaveProperty('tUmgebungWest', 22.3);
-      expect(results[0].metadata).toHaveProperty('einstrahlungOst', 480);
-      expect(results[0].metadata).toHaveProperty('tZelleOst', 26.1);
-      expect(results[0].metadata).toHaveProperty('tUmgebungOst', 21.8);
+      // German -> English translations applied
+      expect(results[0].metadata).toHaveProperty('cellTemperatureWest', 25.5);
+      expect(results[0].metadata).toHaveProperty(
+        'ambientTemperatureWest',
+        22.3,
+      );
+      expect(results[0].metadata).toHaveProperty('irradianceEast', 480);
+      expect(results[0].metadata).toHaveProperty('cellTemperatureEast', 26.1);
+      expect(results[0].metadata).toHaveProperty(
+        'ambientTemperatureEast',
+        21.8,
+      );
     });
 
     it('should store East irradiance in metadata, not golden metric', async () => {
@@ -137,8 +144,8 @@ describe('MbmetParser', () => {
 
       // West is golden metric
       expect(results[0].irradiance).toBe(500);
-      // East is in metadata
-      expect(results[0].metadata).toHaveProperty('einstrahlungOst', 600);
+      // East is in metadata with English name
+      expect(results[0].metadata).toHaveProperty('irradianceEast', 600);
     });
   });
 
@@ -317,26 +324,46 @@ describe('MbmetParser', () => {
       return (parser as unknown as MbmetParserPrivate).normalizeFieldName(name);
     };
 
-    it('should convert "Einstrahlung (Einstrahlung Ost)" to "einstrahlungOst"', () => {
-      expect(normalizeFieldName('Einstrahlung (Einstrahlung Ost)')).toBe(
-        'einstrahlungOst',
-      );
+    describe('Semantic Translation', () => {
+      it('should translate "Einstrahlung (Einstrahlung Ost)" to "irradianceEast"', () => {
+        expect(normalizeFieldName('Einstrahlung (Einstrahlung Ost)')).toBe(
+          'irradianceEast',
+        );
+      });
+
+      it('should translate "T_Zelle (Einstrahlung West)" to "cellTemperatureWest"', () => {
+        expect(normalizeFieldName('T_Zelle (Einstrahlung West)')).toBe(
+          'cellTemperatureWest',
+        );
+      });
+
+      it('should translate "T_Umgebung (Einstrahlung Ost)" to "ambientTemperatureEast"', () => {
+        expect(normalizeFieldName('T_Umgebung (Einstrahlung Ost)')).toBe(
+          'ambientTemperatureEast',
+        );
+      });
+
+      it('should translate "T_Zelle (Einstrahlung Ost)" to "cellTemperatureEast"', () => {
+        expect(normalizeFieldName('T_Zelle (Einstrahlung Ost)')).toBe(
+          'cellTemperatureEast',
+        );
+      });
+
+      it('should translate "T_Umgebung (Einstrahlung West)" to "ambientTemperatureWest"', () => {
+        expect(normalizeFieldName('T_Umgebung (Einstrahlung West)')).toBe(
+          'ambientTemperatureWest',
+        );
+      });
     });
 
-    it('should convert "T_Zelle (Einstrahlung West)" to "tZelleWest"', () => {
-      expect(normalizeFieldName('T_Zelle (Einstrahlung West)')).toBe(
-        'tZelleWest',
-      );
-    });
+    describe('CamelCase Fallback', () => {
+      it('should fallback to camelCase for unknown fields', () => {
+        expect(normalizeFieldName('Temperature')).toBe('temperature');
+      });
 
-    it('should convert "T_Umgebung (Einstrahlung Ost)" to "tUmgebungOst"', () => {
-      expect(normalizeFieldName('T_Umgebung (Einstrahlung Ost)')).toBe(
-        'tUmgebungOst',
-      );
-    });
-
-    it('should handle field without orientation', () => {
-      expect(normalizeFieldName('Temperature')).toBe('temperature');
+      it('should handle field without orientation', () => {
+        expect(normalizeFieldName('Unknown_Field')).toBe('unknownField');
+      });
     });
   });
 
