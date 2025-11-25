@@ -504,4 +504,71 @@ export const meteocontrolCsv = {
 
   /** Empty file */
   empty: (): string[] => [],
+
+  // ===== delta_inverter builders =====
+
+  /** Simple inverter INI with single inverter row */
+  inverterSimple: (
+    serial: string,
+    pacKw: number,
+    eTagKwh: number,
+    datum = METEOCONTROL_DATUM,
+    time = METEOCONTROL_TIMESTAMP,
+  ): string[] => [
+    '[info]',
+    `Anlage=${METEOCONTROL_ANLAGE}`,
+    `Datum=${datum}`,
+    '',
+    '[messung]',
+    'Uhrzeit;Intervall;Adresse;IP-Adresse;Serien Nummer;Pac;E_Tag;Uac_L1;Fac',
+    ';s;;;kW;kWh;V;Hz',
+    '',
+    '[Start]',
+    `${time};900;511;10.10.2.2;${serial};${pacKw};${eTagKwh};318.16;50.00`,
+  ],
+
+  /** Inverter INI with multiple inverters at same timestamp */
+  inverterMultiple: (
+    inverters: Array<{
+      serial: string;
+      pacKw: number;
+      eTagKwh: number;
+    }>,
+    time = METEOCONTROL_TIMESTAMP,
+    datum = METEOCONTROL_DATUM,
+  ): string[] => [
+    '[info]',
+    `Anlage=${METEOCONTROL_ANLAGE}`,
+    `Datum=${datum}`,
+    '',
+    '[messung]',
+    'Uhrzeit;Intervall;Adresse;IP-Adresse;Serien Nummer;Pac;E_Tag;Uac_L1;Uac_L2;Uac_L3;Fac',
+    ';s;;;kW;kWh;V;V;V;Hz',
+    '',
+    '[Start]',
+    ...inverters.map(
+      (inv, i) =>
+        `${time};900;${511 + i};10.10.2.${i + 1};${inv.serial};${inv.pacKw};${inv.eTagKwh};318.16;318.55;318.74;50.00`,
+    ),
+  ],
+
+  /** Inverter INI with full column set (realistic example) */
+  inverterFull: (
+    serial: string,
+    pacKw: number,
+    eTagKwh: number,
+    datum = METEOCONTROL_DATUM,
+    time = METEOCONTROL_TIMESTAMP,
+  ): string[] => [
+    '[info]',
+    `Anlage=${METEOCONTROL_ANLAGE}`,
+    `Datum=${datum}`,
+    '',
+    '[messung]',
+    'Uhrzeit;Intervall;Adresse;IP-Adresse;Serien Nummer;Wartestatus;MPC;Upv_Ist;Upv0;Ipv;Ppv;Uac_L1;Uac_L2;Uac_L3;Fac;Pac;Riso;Tsc;Tpt100;Tkk;E_Total;E_Tag;E_Int;h_Total;h_On',
+    ';s;;;;;;V;V;A;kW;V;V;V;Hz;kW;kOhm;°C;°C;°C;kWh;kWh;kWh;H;H',
+    '',
+    '[Start]',
+    `${time};900;511;10.10.2.2;${serial};0;;10;0;5.1;0.5;318.16;318.55;318.74;50.00;${pacKw};0;17.0;0.0;7.24;12072483.3;${eTagKwh};0.5;49376.13;105985.96`,
+  ],
 };

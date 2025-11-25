@@ -29,8 +29,8 @@ Uhrzeit;G_M6;G_M10`;
       expect(parser.canHandle('unknown.txt', snippet)).toBe(true);
     });
 
-    it('should return false for delta_inverter files (Phase 2)', () => {
-      expect(parser.canHandle('delta_inverter_test.txt', '')).toBe(false);
+    it('should return true for delta_inverter files', () => {
+      expect(parser.canHandle('delta_inverter_test.txt', '')).toBe(true);
     });
 
     it('should return false for unrelated file', () => {
@@ -308,6 +308,179 @@ Uhrzeit;G_M6;G_M10`;
 
     it('should have correct description', () => {
       expect(parser.description).toContain('Meteo Control');
+    });
+  });
+
+  // ===== delta_inverter Tests (Phase 2) =====
+
+  describe('delta_inverter: File Type Detection', () => {
+    it('should detect inverter file type from headers', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterSimple('084A837B', 5.0, 10.5),
+      );
+
+      expect(results).toHaveLength(1);
+      // Inverter files have activePowerWatts and energyDailyKwh, not irradiance
+      expect(results[0].activePowerWatts).not.toBeNull();
+      expect(results[0].irradiance).toBeNull();
+    });
+
+    it('should return true for content with Serien Nummer column', () => {
+      const snippet = `[info]
+Anlage=Test
+Datum=251106
+[messung]
+Uhrzeit;Serien Nummer;Pac;E_Tag`;
+      expect(parser.canHandle('unknown.txt', snippet)).toBe(true);
+    });
+  });
+
+  describe('delta_inverter: Golden Metrics', () => {
+    it('should convert Pac from kW to Watts (× 1000)', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterSimple('084A837B', 5.0, 10.5),
+      );
+
+      expect(results).toHaveLength(1);
+      // 5.0 kW -> 5000 W
+      expect(results[0].activePowerWatts).toBe(5000);
+    });
+
+    it('should map E_Tag directly to energyDailyKwh', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterSimple('084A837B', 5.0, 10.5),
+      );
+
+      expect(results).toHaveLength(1);
+      expect(results[0].energyDailyKwh).toBe(10.5);
+    });
+
+    it('should set irradiance to null for inverter files', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterSimple('084A837B', 5.0, 10.5),
+      );
+
+      expect(results).toHaveLength(1);
+      expect(results[0].irradiance).toBeNull();
+    });
+  });
+
+  describe('delta_inverter: LoggerId from Serien Nummer', () => {
+    it('should use Serien Nummer as loggerId', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterSimple('084A837B', 5.0, 10.5),
+      );
+
+      expect(results).toHaveLength(1);
+      expect(results[0].loggerId).toBe('084A837B');
+    });
+
+    it('should create separate DTOs for each inverter', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterMultiple([
+          { serial: 'INV001', pacKw: 5.0, eTagKwh: 10.0 },
+          { serial: 'INV002', pacKw: 4.5, eTagKwh: 9.0 },
+          { serial: 'INV003', pacKw: 5.2, eTagKwh: 11.0 },
+        ]),
+      );
+
+      expect(results).toHaveLength(3);
+      expect(results[0].loggerId).toBe('INV001');
+      expect(results[1].loggerId).toBe('INV002');
+      expect(results[2].loggerId).toBe('INV003');
+    });
+
+    it('should have same timestamp for all inverters in same row', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterMultiple([
+          { serial: 'INV001', pacKw: 5.0, eTagKwh: 10.0 },
+          { serial: 'INV002', pacKw: 4.5, eTagKwh: 9.0 },
+        ]),
+      );
+
+      expect(results).toHaveLength(2);
+      expect(results[0].timestamp.toISOString()).toBe(
+        results[1].timestamp.toISOString(),
+      );
+    });
+  });
+
+  describe('delta_inverter: Semantic Field Names', () => {
+    it('should map Uac_L1 to voltageAcPhaseA in metadata', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterSimple('084A837B', 5.0, 10.5),
+      );
+
+      expect(results).toHaveLength(1);
+      expect(results[0].metadata).toHaveProperty('voltageAcPhaseA', 318.16);
+    });
+
+    it('should map Fac to gridFrequencyHz in metadata', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterSimple('084A837B', 5.0, 10.5),
+      );
+
+      expect(results).toHaveLength(1);
+      expect(results[0].metadata).toHaveProperty('gridFrequencyHz', 50.0);
+    });
+
+    it('should map full inverter columns with semantic names', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterFull('084A837B', 5.0, 10.5),
+      );
+
+      expect(results).toHaveLength(1);
+      const meta = results[0].metadata;
+
+      // Check various semantic field mappings
+      expect(meta).toHaveProperty('voltageDcActual', 10);
+      expect(meta).toHaveProperty('currentDcAmps', 5.1);
+      expect(meta).toHaveProperty('powerDcKw', 0.5);
+      expect(meta).toHaveProperty('energyLifetimeKwh', 12072483.3);
+      expect(meta).toHaveProperty('temperatureStringC', 17.0);
+      expect(meta).toHaveProperty('temperatureInverterC', 7.24);
+      expect(meta).toHaveProperty('insulationResistanceKohm', 0);
+      expect(meta).toHaveProperty('operatingHoursTotal', 49376.13);
+    });
+  });
+
+  describe('delta_inverter: Multiple Inverters Power Values', () => {
+    it('should correctly convert Pac for each inverter', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterMultiple([
+          { serial: 'INV001', pacKw: 5.0, eTagKwh: 10.0 },
+          { serial: 'INV002', pacKw: 4.5, eTagKwh: 9.0 },
+        ]),
+      );
+
+      expect(results).toHaveLength(2);
+      expect(results[0].activePowerWatts).toBe(5000); // 5.0 kW -> 5000 W
+      expect(results[1].activePowerWatts).toBe(4500); // 4.5 kW -> 4500 W
+    });
+
+    it('should correctly map E_Tag for each inverter', async () => {
+      const results = await parseAndCollect(
+        parser,
+        meteocontrolCsv.inverterMultiple([
+          { serial: 'INV001', pacKw: 5.0, eTagKwh: 10.0 },
+          { serial: 'INV002', pacKw: 4.5, eTagKwh: 9.0 },
+        ]),
+      );
+
+      expect(results).toHaveLength(2);
+      expect(results[0].energyDailyKwh).toBe(10.0);
+      expect(results[1].energyDailyKwh).toBe(9.0);
     });
   });
 });
