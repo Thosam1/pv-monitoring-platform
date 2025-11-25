@@ -5,6 +5,7 @@ import { Measurement } from '../database/entities/measurement.entity';
 import { GoodWeParser } from './strategies/goodwe.strategy';
 import { LtiParser } from './strategies/lti.strategy';
 import { IntegraParser } from './strategies/integra.strategy';
+import { MbmetParser } from './strategies/mbmet.strategy';
 import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
 
 describe('IngestionService', () => {
@@ -12,6 +13,7 @@ describe('IngestionService', () => {
   let goodWeParser: jest.Mocked<GoodWeParser>;
   let ltiParser: jest.Mocked<LtiParser>;
   let integraParser: jest.Mocked<IntegraParser>;
+  let mbmetParser: jest.Mocked<MbmetParser>;
 
   const mockRepository = {
     createQueryBuilder: jest.fn(),
@@ -46,6 +48,13 @@ describe('IngestionService', () => {
     parse: jest.fn(),
   };
 
+  const mockMbmetParser = {
+    name: 'mbmet',
+    description: 'MBMET 501FB Meteo Station CSV Export',
+    canHandle: jest.fn(),
+    parse: jest.fn(),
+  };
+
   beforeEach(async () => {
     mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
     mockQueryBuilder.execute.mockResolvedValue({ identifiers: [] });
@@ -69,6 +78,10 @@ describe('IngestionService', () => {
           provide: IntegraParser,
           useValue: mockIntegraParser,
         },
+        {
+          provide: MbmetParser,
+          useValue: mockMbmetParser,
+        },
       ],
     }).compile();
 
@@ -76,6 +89,7 @@ describe('IngestionService', () => {
     goodWeParser = module.get(GoodWeParser);
     ltiParser = module.get(LtiParser);
     integraParser = module.get(IntegraParser);
+    mbmetParser = module.get(MbmetParser);
 
     jest.clearAllMocks();
     mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
@@ -107,6 +121,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      mbmetParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -144,6 +159,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      mbmetParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(false);
 
       const result = await service.ingestFile('unknown.csv', fileBuffer);
@@ -164,6 +180,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      mbmetParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator(dtos));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -182,6 +199,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      mbmetParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([]));
 
@@ -198,6 +216,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      mbmetParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -216,6 +235,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      mbmetParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockRejectedValue(
@@ -234,6 +254,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      mbmetParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -256,6 +277,7 @@ describe('IngestionService', () => {
           name: 'integra',
           description: 'Integra Sun XML Export (Meteocontrol format)',
         },
+        { name: 'mbmet', description: 'MBMET 501FB Meteo Station CSV Export' },
         { name: 'goodwe', description: 'GoodWe Parser' },
       ]);
     });

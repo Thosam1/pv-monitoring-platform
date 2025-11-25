@@ -220,3 +220,59 @@ export const integraXml = {
       '</root>',
     ].join('\n'),
 };
+
+// MBMET constants
+export const MBMET_TIMESTAMP = '2025_09_30 23:42:27';
+export const MBMET_LOGGER_ID = '838176578';
+
+// MBMET CSV headers
+const MBMET_HEADERS =
+  'Zeitstempel,Einstrahlung (Einstrahlung West),T_Zelle (Einstrahlung West),T_Umgebung (Einstrahlung West),Einstrahlung (Einstrahlung Ost),T_Zelle (Einstrahlung Ost),T_Umgebung (Einstrahlung Ost)';
+const MBMET_UNITS = 'yyyy_MM_dd HH:mm:ss,W/m2,°C,°C,W/m2,°C,°C';
+
+/**
+ * MBMET 501FB Meteo Station CSV data builders
+ */
+export const mbmetCsv = {
+  /** Simple CSV with single data row */
+  simple: (irradianceWest: number, ts = MBMET_TIMESTAMP): string =>
+    [
+      MBMET_HEADERS,
+      MBMET_UNITS,
+      `${ts},${irradianceWest},10.4,9.2,0.0,10.9,8.8`,
+    ].join('\n'),
+
+  /** CSV with all values specified */
+  withAllValues: (values: {
+    ts?: string;
+    irradianceWest: number;
+    tZelleWest: number;
+    tUmgebungWest: number;
+    irradianceOst: number;
+    tZelleOst: number;
+    tUmgebungOst: number;
+  }): string =>
+    [
+      MBMET_HEADERS,
+      MBMET_UNITS,
+      `${values.ts ?? MBMET_TIMESTAMP},${values.irradianceWest},${values.tZelleWest},${values.tUmgebungWest},${values.irradianceOst},${values.tZelleOst},${values.tUmgebungOst}`,
+    ].join('\n'),
+
+  /** CSV with multiple data rows */
+  multipleRows: (rows: Array<{ ts: string; irradianceWest: number }>): string =>
+    [
+      MBMET_HEADERS,
+      MBMET_UNITS,
+      ...rows.map((r) => `${r.ts},${r.irradianceWest},10.4,9.2,0.0,10.9,8.8`),
+    ].join('\n'),
+
+  /** CSV without units row (edge case) */
+  withoutUnits: (irradianceWest: number, ts = MBMET_TIMESTAMP): string =>
+    [MBMET_HEADERS, `${ts},${irradianceWest},10.4,9.2,0.0,10.9,8.8`].join('\n'),
+
+  /** Headers only (no data) for error testing */
+  headersOnly: (): string => [MBMET_HEADERS, MBMET_UNITS].join('\n'),
+
+  /** Empty file */
+  empty: (): string => '',
+};
