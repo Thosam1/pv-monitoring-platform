@@ -9,6 +9,7 @@ import { IntegraParser } from './strategies/integra.strategy';
 import { MbmetParser } from './strategies/mbmet.strategy';
 import { MeierParser } from './strategies/meier.strategy';
 import { MeteoControlParser } from './strategies/meteocontrol.strategy';
+import { PlexlogParser } from './strategies/plexlog.strategy';
 import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
@@ -51,9 +52,11 @@ export class IngestionService {
     private readonly mbmetParser: MbmetParser,
     private readonly meierParser: MeierParser,
     private readonly meteoControlParser: MeteoControlParser,
+    private readonly plexlogParser: PlexlogParser,
   ) {
     // Register all available parsers (order matters - more specific parsers first)
     this.parsers = [
+      this.plexlogParser, // Plexlog checks SQLite magic bytes - binary format, check first
       this.ltiParser, // LTI has specific [header]/[data] markers, check first
       this.integraParser, // Integra requires .xml extension + content signatures
       this.meteoControlParser, // Meteo Control has [info]/[messung]/[Start] INI sections

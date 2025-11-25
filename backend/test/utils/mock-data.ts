@@ -352,6 +352,72 @@ export const mbmetCsv = {
   empty: (): string => '',
 };
 
+// Plexlog constants
+export const PLEXLOG_TIMESTAMP = '2025-10-13T10:55:00.0000000';
+export const PLEXLOG_SQLITE_MAGIC = 'SQLite format 3\0';
+
+/**
+ * Plexlog SQLite data builders
+ * Note: These return row objects matching tbl_inverterdata schema
+ * Used for mocking better-sqlite3 query results
+ */
+export const plexlogData = {
+  /** Inverter row with power and optional values */
+  inverterRow: (
+    id: number,
+    power: number,
+    timestamp = PLEXLOG_TIMESTAMP,
+    optionalvalue?: string,
+  ) => ({
+    id_inverter: id,
+    acproduction: power,
+    timestamp,
+    optionalvalue:
+      optionalvalue ?? `T00:29.8;tot:381936;uac:235;p01:1843;u01:734`,
+  }),
+
+  /** Sensor row (irradiance) - device ID 10 */
+  sensorRow: (
+    id: number,
+    irradiance: number,
+    timestamp = PLEXLOG_TIMESTAMP,
+  ) => ({
+    id_inverter: id,
+    acproduction: irradiance,
+    timestamp,
+    optionalvalue: `tce:25.0;tex:20.0;wds:0.5`,
+  }),
+
+  /** Meter row with grid values - device ID 2 */
+  meterRow: (id: number, power: number, timestamp = PLEXLOG_TIMESTAMP) => ({
+    id_inverter: id,
+    acproduction: power,
+    timestamp,
+    optionalvalue: `exp:0.000;imp:0.000;frq:49.986;cos:1.000;ul1:20246;il1:0.000`,
+  }),
+
+  /** Row with null optionalvalue (minimal) */
+  minimalRow: (id: number, power: number, timestamp = PLEXLOG_TIMESTAMP) => ({
+    id_inverter: id,
+    acproduction: power,
+    timestamp,
+    optionalvalue: null,
+  }),
+
+  /** Multiple inverter rows at same timestamp */
+  multipleInverters: (
+    inverters: Array<{ id: number; power: number; optionalvalue?: string }>,
+    timestamp = PLEXLOG_TIMESTAMP,
+  ) =>
+    inverters.map((inv) => ({
+      id_inverter: inv.id,
+      acproduction: inv.power,
+      timestamp,
+      optionalvalue:
+        inv.optionalvalue ?? `T00:25.0;tot:100000;uac:235;p01:${inv.power}`,
+    })),
+};
+
 // Meteo Control constants
 export const METEOCONTROL_TIMESTAMP = '12:45:00';
 export const METEOCONTROL_DATUM = '251106'; // YYMMDD = Nov 6, 2025

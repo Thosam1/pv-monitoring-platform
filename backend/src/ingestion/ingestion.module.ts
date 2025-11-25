@@ -9,6 +9,7 @@ import { IntegraParser } from './strategies/integra.strategy';
 import { MbmetParser } from './strategies/mbmet.strategy';
 import { MeierParser } from './strategies/meier.strategy';
 import { MeteoControlParser } from './strategies/meteocontrol.strategy';
+import { PlexlogParser } from './strategies/plexlog.strategy';
 
 /**
  * IngestionModule
@@ -24,6 +25,7 @@ import { MeteoControlParser } from './strategies/meteocontrol.strategy';
  * - MbmetParser: Strategy for MBMET 501FB Meteo Station CSV files
  * - MeierParser: Strategy for Meier-NT Logger CSV files
  * - MeteoControlParser: Strategy for Meteo Control INI-style files (delta_analog)
+ * - PlexlogParser: Strategy for Plexlog SQLite database files (.s3db)
  *
  * Future Expansion:
  * - Add SMAParser for SMA Sunny Portal exports
@@ -41,6 +43,7 @@ import { MeteoControlParser } from './strategies/meteocontrol.strategy';
     MbmetParser,
     MeierParser,
     MeteoControlParser,
+    PlexlogParser,
   ],
   exports: [IngestionService],
 })
