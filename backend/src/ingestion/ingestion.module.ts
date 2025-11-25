@@ -6,6 +6,7 @@ import { IngestionService } from './ingestion.service';
 import { GoodWeParser } from './strategies/goodwe.strategy';
 import { LtiParser } from './strategies/lti.strategy';
 import { IntegraParser } from './strategies/integra.strategy';
+import { MbmetParser } from './strategies/mbmet.strategy';
 
 /**
  * IngestionModule
@@ -18,6 +19,7 @@ import { IntegraParser } from './strategies/integra.strategy';
  * - GoodWeParser: Strategy for GoodWe/SEMS CSV files
  * - LtiParser: Strategy for LTI ReEnergy sectioned CSV files
  * - IntegraParser: Strategy for Integra Sun/Meteocontrol XML files
+ * - MbmetParser: Strategy for MBMET 501FB Meteo Station CSV files
  *
  * Future Expansion:
  * - Add SMAParser for SMA Sunny Portal exports
@@ -27,7 +29,13 @@ import { IntegraParser } from './strategies/integra.strategy';
 @Module({
   imports: [TypeOrmModule.forFeature([Measurement])],
   controllers: [IngestionController],
-  providers: [IngestionService, GoodWeParser, LtiParser, IntegraParser],
+  providers: [
+    IngestionService,
+    GoodWeParser,
+    LtiParser,
+    IntegraParser,
+    MbmetParser,
+  ],
   exports: [IngestionService],
 })
 export class IngestionModule {}
