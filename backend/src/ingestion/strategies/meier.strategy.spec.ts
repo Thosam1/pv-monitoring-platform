@@ -190,9 +190,9 @@ describe('MeierParser', () => {
       expect(results[0].activePowerWatts).toBe(1500);
       expect(results[0].energyDailyKwh).toBe(5.0);
 
-      // Metadata
-      expect(results[0].metadata).toHaveProperty('kostal12FeedInPower', 1400);
-      expect(results[0].metadata).toHaveProperty('generalGeneratorPower', 1600);
+      // Metadata - semantic translation applied
+      expect(results[0].metadata).toHaveProperty('activePowerWatts', 1400); // Kostal.1.2.Feed-In_Power
+      expect(results[0].metadata).toHaveProperty('generatorPower', 1600); // GENERAL.Generator_Power
     });
 
     it('should normalize metadata keys to camelCase', async () => {
@@ -419,28 +419,58 @@ describe('MeierParser', () => {
       return (parser as unknown as MeierParserPrivate).normalizeFieldName(name);
     };
 
-    it('should convert "GENERAL.Feed-In_Power" to "generalFeedInPower"', () => {
-      expect(normalizeFieldName('GENERAL.Feed-In_Power')).toBe(
-        'generalFeedInPower',
-      );
+    describe('Semantic Translation', () => {
+      it('should translate "T_Umgebung" to "ambientTemperature"', () => {
+        expect(normalizeFieldName('T_Umgebung')).toBe('ambientTemperature');
+      });
+
+      it('should translate "T_Zelle" to "cellTemperature"', () => {
+        expect(normalizeFieldName('T_Zelle')).toBe('cellTemperature');
+      });
+
+      it('should translate "GENERAL.Feed-In_Power" to "activePowerWatts"', () => {
+        expect(normalizeFieldName('GENERAL.Feed-In_Power')).toBe(
+          'activePowerWatts',
+        );
+      });
+
+      it('should translate "Kostal.1.2.Yield" to "energyDailyKwh"', () => {
+        expect(normalizeFieldName('Kostal.1.2.Yield')).toBe('energyDailyKwh');
+      });
+
+      it('should translate "GENERAL.Generator_Power" to "generatorPower"', () => {
+        expect(normalizeFieldName('GENERAL.Generator_Power')).toBe(
+          'generatorPower',
+        );
+      });
+
+      it('should translate compound names like "Kostal.1.2.T_Umgebung"', () => {
+        expect(normalizeFieldName('Kostal.1.2.T_Umgebung')).toBe(
+          'ambientTemperature',
+        );
+      });
+
+      it('should translate "WRTP2S9E.2.2110127233.Yield" to "energyDailyKwh"', () => {
+        expect(normalizeFieldName('WRTP2S9E.2.2110127233.Yield')).toBe(
+          'energyDailyKwh',
+        );
+      });
     });
 
-    it('should convert "Kostal.1.2.Yield" to "kostal12Yield"', () => {
-      expect(normalizeFieldName('Kostal.1.2.Yield')).toBe('kostal12Yield');
-    });
+    describe('CamelCase Fallback', () => {
+      it('should fallback to camelCase for unknown fields', () => {
+        expect(normalizeFieldName('Unknown.Field.Name')).toBe(
+          'unknownFieldName',
+        );
+      });
 
-    it('should convert "WRTP2S9E.2.2110127233.Yield" to "wrtp2s9e22110127233Yield"', () => {
-      expect(normalizeFieldName('WRTP2S9E.2.2110127233.Yield')).toBe(
-        'wrtp2s9e22110127233Yield',
-      );
-    });
+      it('should handle single word', () => {
+        expect(normalizeFieldName('Power')).toBe('power');
+      });
 
-    it('should handle single word', () => {
-      expect(normalizeFieldName('Power')).toBe('power');
-    });
-
-    it('should handle empty string', () => {
-      expect(normalizeFieldName('')).toBe('');
+      it('should handle empty string', () => {
+        expect(normalizeFieldName('')).toBe('');
+      });
     });
   });
 

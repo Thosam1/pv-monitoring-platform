@@ -45,6 +45,18 @@ export class MeierParser implements IParser {
   };
 
   /**
+   * Semantic translation map for metadata keys
+   * Maps raw field name fragments to canonical English names
+   */
+  private readonly TRANSLATION_MAP: Record<string, string> = {
+    t_umgebung: 'ambientTemperature',
+    t_zelle: 'cellTemperature',
+    'feed-in_power': 'activePowerWatts',
+    yield: 'energyDailyKwh',
+    generator_power: 'generatorPower',
+  };
+
+  /**
    * Detect if this parser can handle the file
    *
    * Heuristics:
@@ -243,13 +255,26 @@ export class MeierParser implements IParser {
 
   /**
    * Normalize field name for metadata storage
-   * "GENERAL.Feed-In_Power" -> "generalFeedInPower"
-   * "Kostal.1.2.Yield" -> "kostal12Yield"
+   * Uses TRANSLATION_MAP for semantic English names, falls back to camelCase
+   *
+   * Examples:
+   * - "T_Umgebung" -> "ambientTemperature" (translated)
+   * - "T_Zelle" -> "cellTemperature" (translated)
+   * - "Unknown.Field" -> "unknownField" (camelCase fallback)
    */
   private normalizeFieldName(name: string): string {
     if (!name) return '';
 
-    // Remove dots and underscores, convert to camelCase
+    const lowerName = name.toLowerCase();
+
+    // Check translation map for known field patterns
+    for (const [pattern, englishName] of Object.entries(this.TRANSLATION_MAP)) {
+      if (lowerName.includes(pattern)) {
+        return englishName;
+      }
+    }
+
+    // Fallback: convert to camelCase
     const parts = name.split(/[._-]+/);
     return parts
       .map((part, index) => {
