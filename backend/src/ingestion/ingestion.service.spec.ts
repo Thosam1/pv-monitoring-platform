@@ -8,6 +8,7 @@ import { IntegraParser } from './strategies/integra.strategy';
 import { MbmetParser } from './strategies/mbmet.strategy';
 import { MeierParser } from './strategies/meier.strategy';
 import { MeteoControlParser } from './strategies/meteocontrol.strategy';
+import { PlexlogParser } from './strategies/plexlog.strategy';
 import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
 
 describe('IngestionService', () => {
@@ -18,6 +19,7 @@ describe('IngestionService', () => {
   let mbmetParser: jest.Mocked<MbmetParser>;
   let meierParser: jest.Mocked<MeierParser>;
   let meteoControlParser: jest.Mocked<MeteoControlParser>;
+  let plexlogParser: jest.Mocked<PlexlogParser>;
 
   const mockRepository = {
     createQueryBuilder: jest.fn(),
@@ -73,6 +75,13 @@ describe('IngestionService', () => {
     parse: jest.fn(),
   };
 
+  const mockPlexlogParser = {
+    name: 'plexlog',
+    description: 'Plexlog SQLite Database Export (.s3db)',
+    canHandle: jest.fn(),
+    parse: jest.fn(),
+  };
+
   beforeEach(async () => {
     mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
     mockQueryBuilder.execute.mockResolvedValue({ identifiers: [] });
@@ -108,6 +117,10 @@ describe('IngestionService', () => {
           provide: MeteoControlParser,
           useValue: mockMeteoControlParser,
         },
+        {
+          provide: PlexlogParser,
+          useValue: mockPlexlogParser,
+        },
       ],
     }).compile();
 
@@ -118,6 +131,7 @@ describe('IngestionService', () => {
     mbmetParser = module.get(MbmetParser);
     meierParser = module.get(MeierParser);
     meteoControlParser = module.get(MeteoControlParser);
+    plexlogParser = module.get(PlexlogParser);
 
     jest.clearAllMocks();
     mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
@@ -147,6 +161,7 @@ describe('IngestionService', () => {
       const fileBuffer = Buffer.from('test,csv,content');
       const mockDTO = createMockDTO();
 
+      plexlogParser.canHandle.mockReturnValue(false);
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
       meteoControlParser.canHandle.mockReturnValue(false);
@@ -171,6 +186,7 @@ describe('IngestionService', () => {
       const fileBuffer = Buffer.from('[header]\n[data]\ntest');
       const mockDTO = createMockDTO({ loggerType: 'lti' });
 
+      plexlogParser.canHandle.mockReturnValue(false);
       ltiParser.canHandle.mockReturnValue(true);
       ltiParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -187,6 +203,7 @@ describe('IngestionService', () => {
     it('should return error when no parser can handle file', async () => {
       const fileBuffer = Buffer.from('unknown format');
 
+      plexlogParser.canHandle.mockReturnValue(false);
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
       meteoControlParser.canHandle.mockReturnValue(false);
@@ -210,6 +227,7 @@ describe('IngestionService', () => {
         }),
       );
 
+      plexlogParser.canHandle.mockReturnValue(false);
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
       meteoControlParser.canHandle.mockReturnValue(false);
@@ -231,6 +249,7 @@ describe('IngestionService', () => {
     it('should handle empty file (no records)', async () => {
       const fileBuffer = Buffer.from('headers only');
 
+      plexlogParser.canHandle.mockReturnValue(false);
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
       meteoControlParser.canHandle.mockReturnValue(false);
@@ -250,6 +269,7 @@ describe('IngestionService', () => {
       const fileBuffer = Buffer.from('test');
       const mockDTO = createMockDTO();
 
+      plexlogParser.canHandle.mockReturnValue(false);
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
       meteoControlParser.canHandle.mockReturnValue(false);
@@ -271,6 +291,7 @@ describe('IngestionService', () => {
       const fileBuffer = Buffer.from('test');
       const mockDTO = createMockDTO();
 
+      plexlogParser.canHandle.mockReturnValue(false);
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
       meteoControlParser.canHandle.mockReturnValue(false);
@@ -292,6 +313,7 @@ describe('IngestionService', () => {
       const fileBuffer = Buffer.from('test');
       const mockDTO = createMockDTO({ loggerType: undefined });
 
+      plexlogParser.canHandle.mockReturnValue(false);
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
       meteoControlParser.canHandle.mockReturnValue(false);
@@ -314,6 +336,10 @@ describe('IngestionService', () => {
       const parsers = service.getSupportedParsers();
 
       expect(parsers).toEqual([
+        {
+          name: 'plexlog',
+          description: 'Plexlog SQLite Database Export (.s3db)',
+        },
         { name: 'lti', description: 'LTI Parser' },
         {
           name: 'integra',
