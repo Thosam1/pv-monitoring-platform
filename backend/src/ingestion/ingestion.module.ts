@@ -7,6 +7,7 @@ import { GoodWeParser } from './strategies/goodwe.strategy';
 import { LtiParser } from './strategies/lti.strategy';
 import { IntegraParser } from './strategies/integra.strategy';
 import { MbmetParser } from './strategies/mbmet.strategy';
+import { MeierParser } from './strategies/meier.strategy';
 
 /**
  * IngestionModule
@@ -20,6 +21,7 @@ import { MbmetParser } from './strategies/mbmet.strategy';
  * - LtiParser: Strategy for LTI ReEnergy sectioned CSV files
  * - IntegraParser: Strategy for Integra Sun/Meteocontrol XML files
  * - MbmetParser: Strategy for MBMET 501FB Meteo Station CSV files
+ * - MeierParser: Strategy for Meier-NT Logger CSV files
  *
  * Future Expansion:
  * - Add SMAParser for SMA Sunny Portal exports
@@ -35,6 +37,7 @@ import { MbmetParser } from './strategies/mbmet.strategy';
     LtiParser,
     IntegraParser,
     MbmetParser,
+    MeierParser,
   ],
   exports: [IngestionService],
 })
