@@ -61,6 +61,18 @@ export class MeteoControlParser implements IParser {
   private readonly IRRADIANCE_COLUMN = 'g_m6';
 
   /**
+   * Handle state transitions based on section markers
+   * Returns new state if transition occurs, null otherwise
+   */
+  private handleStateTransition(line: string): ParseState | null {
+    const lower = line.toLowerCase();
+    if (lower === '[info]') return ParseState.INFO;
+    if (lower === '[messung]') return ParseState.MESSUNG;
+    if (lower === '[start]') return ParseState.DATA;
+    return null;
+  }
+
+  /**
    * Detect if this parser can handle the file
    *
    * Heuristics (Phase 1 - delta_analog only):
@@ -107,16 +119,9 @@ export class MeteoControlParser implements IParser {
       if (trimmedLine === '') continue;
 
       // State transitions on section markers
-      if (trimmedLine.toLowerCase() === '[info]') {
-        state = ParseState.INFO;
-        continue;
-      }
-      if (trimmedLine.toLowerCase() === '[messung]') {
-        state = ParseState.MESSUNG;
-        continue;
-      }
-      if (trimmedLine.toLowerCase() === '[start]') {
-        state = ParseState.DATA;
+      const newState = this.handleStateTransition(trimmedLine);
+      if (newState !== null) {
+        state = newState;
         continue;
       }
 
@@ -243,10 +248,10 @@ export class MeteoControlParser implements IParser {
     // Replace spaces, dots, and multiple dashes with underscores
     // Then collapse multiple underscores into single
     return anlage
-      .replace(/[\s.]+/g, '_') // Replace spaces and dots with underscore
-      .replace(/-+/g, '_') // Replace dashes with underscore
-      .replace(/_+/g, '_') // Collapse multiple underscores
-      .replace(/^_|_$/g, ''); // Trim leading/trailing underscores
+      .replaceAll(/[\s.]+/g, '_') // Replace spaces and dots with underscore
+      .replaceAll(/-+/g, '_') // Replace dashes with underscore
+      .replaceAll(/_+/g, '_') // Collapse multiple underscores
+      .replaceAll(/(^_)|(_$)/g, ''); // Trim leading/trailing underscores
   }
 
   /**
