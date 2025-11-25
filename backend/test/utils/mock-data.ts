@@ -351,3 +351,157 @@ export const mbmetCsv = {
   /** Empty file */
   empty: (): string => '',
 };
+
+// Meteo Control constants
+export const METEOCONTROL_TIMESTAMP = '12:45:00';
+export const METEOCONTROL_DATUM = '251106'; // YYMMDD = Nov 6, 2025
+export const METEOCONTROL_ANLAGE = 'Turnow-P. 1 FF - Strang N2';
+
+/**
+ * Meteo Control INI-style data builders (delta_analog format)
+ * Returns arrays of strings (like ltiCsv) for use with parseAndCollect
+ */
+export const meteocontrolCsv = {
+  /** Simple INI with single data row */
+  simple: (
+    irradiance: number,
+    datum = METEOCONTROL_DATUM,
+    time = METEOCONTROL_TIMESTAMP,
+    anlage = METEOCONTROL_ANLAGE,
+  ): string[] => [
+    '[info]',
+    `Anlage=${anlage}`,
+    `Datum=${datum}`,
+    '',
+    '[messung]',
+    'Uhrzeit;Intervall;G_M6;G_M10;G_M18',
+    ';s;W/m²;W/m²;W/m²',
+    '',
+    '[Start]',
+    `${time};900;${irradiance};${irradiance - 20};${irradiance - 10}`,
+  ],
+
+  /** INI with custom columns and values */
+  withColumns: (
+    headers: string,
+    units: string,
+    ...dataRows: string[]
+  ): string[] => [
+    '[info]',
+    `Anlage=${METEOCONTROL_ANLAGE}`,
+    `Datum=${METEOCONTROL_DATUM}`,
+    '',
+    '[messung]',
+    headers,
+    units,
+    '',
+    '[Start]',
+    ...dataRows,
+  ],
+
+  /** INI with custom Datum */
+  withDatum: (datum: string, time: string, irradiance: number): string[] => [
+    '[info]',
+    `Anlage=${METEOCONTROL_ANLAGE}`,
+    `Datum=${datum}`,
+    '',
+    '[messung]',
+    'Uhrzeit;Intervall;G_M6',
+    ';s;W/m²',
+    '',
+    '[Start]',
+    `${time};900;${irradiance}`,
+  ],
+
+  /** INI with custom Anlage */
+  withAnlage: (anlage: string, irradiance: number): string[] => [
+    '[info]',
+    `Anlage=${anlage}`,
+    `Datum=${METEOCONTROL_DATUM}`,
+    '',
+    '[messung]',
+    'Uhrzeit;Intervall;G_M6',
+    ';s;W/m²',
+    '',
+    '[Start]',
+    `${METEOCONTROL_TIMESTAMP};900;${irradiance}`,
+  ],
+
+  /** INI with multiple data rows */
+  multipleRows: (
+    rows: Array<{ time: string; irradiance: number }>,
+    datum = METEOCONTROL_DATUM,
+  ): string[] => [
+    '[info]',
+    `Anlage=${METEOCONTROL_ANLAGE}`,
+    `Datum=${datum}`,
+    '',
+    '[messung]',
+    'Uhrzeit;Intervall;G_M6;G_M10',
+    ';s;W/m²;W/m²',
+    '',
+    '[Start]',
+    ...rows.map((r) => `${r.time};900;${r.irradiance};${r.irradiance - 20}`),
+  ],
+
+  /** INI with Info;Time marker lines (edge case) */
+  withMarkerLines: (irradiance: number): string[] => [
+    '[info]',
+    `Anlage=${METEOCONTROL_ANLAGE}`,
+    `Datum=${METEOCONTROL_DATUM}`,
+    '',
+    '[messung]',
+    'Uhrzeit;Intervall;G_M6',
+    ';s;W/m²',
+    '',
+    '[Start]',
+    `${METEOCONTROL_TIMESTAMP};900;${irradiance}`,
+    'Info;Time',
+    '12:50:00;900;660',
+  ],
+
+  /** INI with edge case values (-0, empty) */
+  withEdgeCases: (): string[] => [
+    '[info]',
+    `Anlage=${METEOCONTROL_ANLAGE}`,
+    `Datum=${METEOCONTROL_DATUM}`,
+    '',
+    '[messung]',
+    'Uhrzeit;Intervall;G_M6;G_M10;G_M18',
+    ';s;W/m²;W/m²;W/m²',
+    '',
+    '[Start]',
+    '00:00:00;900;-0;0;',
+    '00:15:00;900;;5;10',
+  ],
+
+  /** INI with 24:00:00 timestamp edge case */
+  with24Timestamp: (datum: string, irradiance: number): string[] => [
+    '[info]',
+    `Anlage=${METEOCONTROL_ANLAGE}`,
+    `Datum=${datum}`,
+    '',
+    '[messung]',
+    'Uhrzeit;Intervall;G_M6',
+    ';s;W/m²',
+    '',
+    '[Start]',
+    `24:00:00;900;${irradiance}`,
+  ],
+
+  /** Headers only (no data) for error testing */
+  headersOnly: (): string[] => [
+    '[info]',
+    `Anlage=${METEOCONTROL_ANLAGE}`,
+    `Datum=${METEOCONTROL_DATUM}`,
+    '',
+    '[messung]',
+    'Uhrzeit;Intervall;G_M6',
+    ';s;W/m²',
+    '',
+    '[Start]',
+  ],
+
+  /** Empty file */
+  empty: (): string[] => [],
+};

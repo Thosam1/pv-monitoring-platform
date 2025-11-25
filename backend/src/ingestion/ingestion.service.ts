@@ -8,6 +8,7 @@ import { LtiParser } from './strategies/lti.strategy';
 import { IntegraParser } from './strategies/integra.strategy';
 import { MbmetParser } from './strategies/mbmet.strategy';
 import { MeierParser } from './strategies/meier.strategy';
+import { MeteoControlParser } from './strategies/meteocontrol.strategy';
 import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
@@ -49,11 +50,13 @@ export class IngestionService {
     private readonly integraParser: IntegraParser,
     private readonly mbmetParser: MbmetParser,
     private readonly meierParser: MeierParser,
+    private readonly meteoControlParser: MeteoControlParser,
   ) {
     // Register all available parsers (order matters - more specific parsers first)
     this.parsers = [
       this.ltiParser, // LTI has specific [header]/[data] markers, check first
       this.integraParser, // Integra requires .xml extension + content signatures
+      this.meteoControlParser, // Meteo Control has [info]/[messung]/[Start] INI sections
       this.mbmetParser, // MBMET has specific Zeitstempel/Einstrahlung headers
       this.meierParser, // Meier-NT has "serial;" metadata prefix
       this.goodWeParser,

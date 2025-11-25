@@ -7,6 +7,7 @@ import { LtiParser } from './strategies/lti.strategy';
 import { IntegraParser } from './strategies/integra.strategy';
 import { MbmetParser } from './strategies/mbmet.strategy';
 import { MeierParser } from './strategies/meier.strategy';
+import { MeteoControlParser } from './strategies/meteocontrol.strategy';
 import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
 
 describe('IngestionService', () => {
@@ -16,6 +17,7 @@ describe('IngestionService', () => {
   let integraParser: jest.Mocked<IntegraParser>;
   let mbmetParser: jest.Mocked<MbmetParser>;
   let meierParser: jest.Mocked<MeierParser>;
+  let meteoControlParser: jest.Mocked<MeteoControlParser>;
 
   const mockRepository = {
     createQueryBuilder: jest.fn(),
@@ -64,6 +66,13 @@ describe('IngestionService', () => {
     parse: jest.fn(),
   };
 
+  const mockMeteoControlParser = {
+    name: 'meteocontrol',
+    description: 'Meteo Control Web Platform INI Export (delta_analog)',
+    canHandle: jest.fn(),
+    parse: jest.fn(),
+  };
+
   beforeEach(async () => {
     mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
     mockQueryBuilder.execute.mockResolvedValue({ identifiers: [] });
@@ -95,6 +104,10 @@ describe('IngestionService', () => {
           provide: MeierParser,
           useValue: mockMeierParser,
         },
+        {
+          provide: MeteoControlParser,
+          useValue: mockMeteoControlParser,
+        },
       ],
     }).compile();
 
@@ -104,6 +117,7 @@ describe('IngestionService', () => {
     integraParser = module.get(IntegraParser);
     mbmetParser = module.get(MbmetParser);
     meierParser = module.get(MeierParser);
+    meteoControlParser = module.get(MeteoControlParser);
 
     jest.clearAllMocks();
     mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
@@ -135,6 +149,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
@@ -174,6 +189,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(false);
@@ -196,6 +212,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
@@ -216,6 +233,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
@@ -234,6 +252,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
@@ -254,6 +273,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
@@ -274,6 +294,7 @@ describe('IngestionService', () => {
 
       ltiParser.canHandle.mockReturnValue(false);
       integraParser.canHandle.mockReturnValue(false);
+      meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
@@ -297,6 +318,10 @@ describe('IngestionService', () => {
         {
           name: 'integra',
           description: 'Integra Sun XML Export (Meteocontrol format)',
+        },
+        {
+          name: 'meteocontrol',
+          description: 'Meteo Control Web Platform INI Export (delta_analog)',
         },
         { name: 'mbmet', description: 'MBMET 501FB Meteo Station CSV Export' },
         { name: 'meier', description: 'Meier-NT Logger CSV Export' },

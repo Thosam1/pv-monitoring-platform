@@ -8,6 +8,7 @@ import { LtiParser } from './strategies/lti.strategy';
 import { IntegraParser } from './strategies/integra.strategy';
 import { MbmetParser } from './strategies/mbmet.strategy';
 import { MeierParser } from './strategies/meier.strategy';
+import { MeteoControlParser } from './strategies/meteocontrol.strategy';
 
 /**
  * IngestionModule
@@ -22,6 +23,7 @@ import { MeierParser } from './strategies/meier.strategy';
  * - IntegraParser: Strategy for Integra Sun/Meteocontrol XML files
  * - MbmetParser: Strategy for MBMET 501FB Meteo Station CSV files
  * - MeierParser: Strategy for Meier-NT Logger CSV files
+ * - MeteoControlParser: Strategy for Meteo Control INI-style files (delta_analog)
  *
  * Future Expansion:
  * - Add SMAParser for SMA Sunny Portal exports
@@ -38,6 +40,7 @@ import { MeierParser } from './strategies/meier.strategy';
     IntegraParser,
     MbmetParser,
     MeierParser,
+    MeteoControlParser,
   ],
   exports: [IngestionService],
 })
