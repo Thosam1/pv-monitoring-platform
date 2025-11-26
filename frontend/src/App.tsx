@@ -28,6 +28,7 @@ import {
   type BackendStatus,
   type DataStatus
 } from './lib/date-utils'
+import { type LoggerType, LOGGER_CONFIG, LOGGER_GROUPS } from './types/logger'
 
 // API base URL
 const API_BASE = 'http://localhost:3000'
@@ -56,7 +57,7 @@ interface DataDateRange {
 // Type for logger with type information
 interface LoggerInfo {
   id: string
-  type: 'goodwe' | 'lti'
+  type: LoggerType
 }
 
 function App() {
@@ -95,7 +96,7 @@ function App() {
   const fetchLoggers = useCallback(async () => {
     try {
       const response = await axios.get<{ loggers: Array<{ id: string; type: string }> }>(`${API_BASE}/measurements`)
-      const loggers = response.data.loggers.map(l => ({ id: l.id, type: l.type as 'goodwe' | 'lti' }))
+      const loggers = response.data.loggers.map(l => ({ id: l.id, type: l.type as LoggerType }))
       setAvailableLoggers(loggers)
       if (loggers.length > 0 && !selectedLogger) {
         setSelectedLogger(loggers[0].id)
@@ -135,7 +136,7 @@ function App() {
         setBackendStatus('connected')
 
         const loggersResponse = await axios.get<{ loggers: Array<{ id: string; type: string }> }>(`${API_BASE}/measurements`)
-        const loggers = loggersResponse.data.loggers.map(l => ({ id: l.id, type: l.type as 'goodwe' | 'lti' }))
+        const loggers = loggersResponse.data.loggers.map(l => ({ id: l.id, type: l.type as LoggerType }))
         setAvailableLoggers(loggers)
         if (loggers.length > 0) {
           setSelectedLogger(loggers[0].id)
@@ -309,35 +310,27 @@ function App() {
                         </div>
                       ) : (
                         <>
-                          {/* GoodWe Section */}
-                          {availableLoggers.some(l => l.type === 'goodwe') && (
-                            <SelectGroup>
-                              <SelectLabel>GoodWe</SelectLabel>
-                              {availableLoggers
-                                .filter(l => l.type === 'goodwe')
-                                .sort((a, b) => a.id.localeCompare(b.id))
-                                .map((logger) => (
-                                  <SelectItem key={logger.id} value={logger.id}>
-                                    {logger.id}
-                                  </SelectItem>
-                                ))}
-                            </SelectGroup>
-                          )}
-
-                          {/* LTI ReEnergy Section */}
-                          {availableLoggers.some(l => l.type === 'lti') && (
-                            <SelectGroup>
-                              <SelectLabel>LTI ReEnergy</SelectLabel>
-                              {availableLoggers
-                                .filter(l => l.type === 'lti')
-                                .sort((a, b) => a.id.localeCompare(b.id))
-                                .map((logger) => (
-                                  <SelectItem key={logger.id} value={logger.id}>
-                                    {logger.id}
-                                  </SelectItem>
-                                ))}
-                            </SelectGroup>
-                          )}
+                          {LOGGER_GROUPS.map(group => {
+                            const groupLoggers = availableLoggers.filter(l =>
+                              group.options.some(opt => opt.value === l.type)
+                            )
+                            if (groupLoggers.length === 0) return null
+                            return (
+                              <SelectGroup key={group.label}>
+                                <SelectLabel>{group.label}</SelectLabel>
+                                {groupLoggers
+                                  .sort((a, b) => a.id.localeCompare(b.id))
+                                  .map((logger) => (
+                                    <SelectItem key={logger.id} value={logger.id}>
+                                      <span className="flex items-center gap-2">
+                                        <span className={`inline-block w-2 h-2 rounded-full ${LOGGER_CONFIG[logger.type].color}`} />
+                                        {logger.id}
+                                      </span>
+                                    </SelectItem>
+                                  ))}
+                              </SelectGroup>
+                            )
+                          })}
                         </>
                       )}
                     </SelectContent>
@@ -432,18 +425,17 @@ function App() {
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">Logger Type</span>
                   <span className="text-gray-900 dark:text-white font-medium">
-                    {selectedLogger && availableLoggers.find(l => l.id === selectedLogger)?.type === 'goodwe' && (
-                      <span className="inline-flex items-center">
-                        <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1.5"></span>
-                        <span>GoodWe</span>
-                      </span>
-                    )}
-                    {selectedLogger && availableLoggers.find(l => l.id === selectedLogger)?.type === 'lti' && (
-                      <span className="inline-flex items-center">
-                        <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1.5"></span>
-                        <span>LTI ReEnergy</span>
-                      </span>
-                    )}
+                    {selectedLogger && (() => {
+                      const loggerInfo = availableLoggers.find(l => l.id === selectedLogger)
+                      if (!loggerInfo) return 'Unknown'
+                      const config = LOGGER_CONFIG[loggerInfo.type]
+                      return (
+                        <span className="inline-flex items-center">
+                          <span className={`inline-block w-2 h-2 rounded-full ${config.color} mr-1.5`}></span>
+                          <span>{config.label}</span>
+                        </span>
+                      )
+                    })()}
                     {!selectedLogger && 'None'}
                   </span>
                 </div>

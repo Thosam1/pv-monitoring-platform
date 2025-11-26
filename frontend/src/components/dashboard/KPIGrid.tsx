@@ -47,10 +47,21 @@ function KPICard({ title, value, unit, icon, color }: Readonly<KPICardProps>) {
 }
 
 /**
- * Extract temperature from metadata - handles both GoodWe and LTI formats
+ * Extract temperature from metadata - handles all logger formats with priority fallback
+ * Priority: ambientTemperature -> cellTemperature -> temperatureHeatsink -> temperatureInternal -> legacy keys
  */
 function extractTemperature(metadata: Record<string, unknown>): number | null {
-  const tempKeys = ['temperature', 'T_HS', 'internaltemp', 'temp', 'moduleTemp']
+  const tempKeys = [
+    'ambientTemperature',      // Priority 1: Ambient temperature
+    'cellTemperature',         // Priority 2: Cell/Module temperature
+    'temperatureHeatsink',     // Priority 3: Heatsink temperature
+    'temperatureInternal',     // Priority 4: Internal temperature
+    'temperature',             // Legacy fallbacks
+    'T_HS',
+    'internaltemp',
+    'temp',
+    'moduleTemp'
+  ]
   for (const key of tempKeys) {
     const value = metadata[key]
     if (typeof value === 'number' && !Number.isNaN(value)) {

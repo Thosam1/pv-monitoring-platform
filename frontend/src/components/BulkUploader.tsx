@@ -4,21 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import axios from 'axios'
 import { Upload, FolderOpen, CheckCircle, XCircle, Loader2, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { type LoggerType, LOGGER_GROUPS, LOGGER_CONFIG } from '../types/logger'
 
 const API_BASE = 'http://localhost:3000'
-
-// Logger type options
-type LoggerType = 'goodwe' | 'lti'
-
-interface LoggerOption {
-  value: LoggerType
-  label: string
-}
-
-const LOGGER_OPTIONS: LoggerOption[] = [
-  { value: 'goodwe', label: 'GoodWe' },
-  { value: 'lti', label: 'LTI ReEnergy' }
-]
 
 // Stats interface
 interface UploadStats {
@@ -248,7 +236,7 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
     noClick: uploading
   })
 
-  const selectedLoggerLabel = LOGGER_OPTIONS.find((opt) => opt.value === selectedLogger)?.label ?? 'Select Logger'
+  const selectedLoggerLabel = LOGGER_CONFIG[selectedLogger]?.label ?? 'Select Logger'
 
   return (
     <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-lg p-6 mb-8">
@@ -285,26 +273,43 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 overflow-hidden z-10"
+                className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 overflow-hidden z-10"
               >
-                {LOGGER_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => {
-                      setSelectedLogger(option.value)
-                      setDropdownOpen(false)
-                    }}
-                    className={cn(
-                      "w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer",
-                      "hover:bg-gray-100 dark:hover:bg-gray-600",
-                      selectedLogger === option.value
-                        ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                        : "text-gray-700 dark:text-gray-200"
+                {LOGGER_GROUPS.map((group, groupIndex) => (
+                  <div key={group.label}>
+                    {/* Group separator (not for first group) */}
+                    {groupIndex > 0 && (
+                      <div className="border-t border-gray-200 dark:border-gray-600 my-1" />
                     )}
-                  >
-                    {option.label}
-                  </button>
+                    {/* Group label */}
+                    <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      {group.label}
+                    </div>
+                    {/* Group options */}
+                    {group.options.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLogger(option.value)
+                          setDropdownOpen(false)
+                        }}
+                        className={cn(
+                          "w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer flex items-center gap-2",
+                          "hover:bg-gray-100 dark:hover:bg-gray-600",
+                          selectedLogger === option.value
+                            ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                            : "text-gray-700 dark:text-gray-200"
+                        )}
+                      >
+                        <span className={cn(
+                          "inline-block w-2 h-2 rounded-full",
+                          LOGGER_CONFIG[option.value].color
+                        )} />
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                 ))}
               </motion.div>
             )}
