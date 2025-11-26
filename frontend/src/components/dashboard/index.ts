@@ -7,3 +7,5 @@ export type { MeasurementDataPoint } from './KPIGrid'
 export { PerformanceChart } from './PerformanceChart'
 
 export { TechnicalChart } from './TechnicalChart'
+
+export { DashboardContent } from './dashboard-content'
