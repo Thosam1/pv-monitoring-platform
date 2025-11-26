@@ -9,6 +9,7 @@ import { MbmetParser } from './strategies/mbmet.strategy';
 import { MeierParser } from './strategies/meier.strategy';
 import { MeteoControlParser } from './strategies/meteocontrol.strategy';
 import { PlexlogParser } from './strategies/plexlog.strategy';
+import { SmartdogParser } from './strategies/smartdog.strategy';
 import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
 
 describe('IngestionService', () => {
@@ -20,6 +21,7 @@ describe('IngestionService', () => {
   let meierParser: jest.Mocked<MeierParser>;
   let meteoControlParser: jest.Mocked<MeteoControlParser>;
   let plexlogParser: jest.Mocked<PlexlogParser>;
+  let smartdogParser: jest.Mocked<SmartdogParser>;
 
   const mockRepository = {
     createQueryBuilder: jest.fn(),
@@ -82,6 +84,13 @@ describe('IngestionService', () => {
     parse: jest.fn(),
   };
 
+  const mockSmartdogParser = {
+    name: 'smartdog',
+    description: 'SmartDog Logger CSV Export',
+    canHandle: jest.fn(),
+    parse: jest.fn(),
+  };
+
   beforeEach(async () => {
     mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
     mockQueryBuilder.execute.mockResolvedValue({ identifiers: [] });
@@ -121,6 +130,10 @@ describe('IngestionService', () => {
           provide: PlexlogParser,
           useValue: mockPlexlogParser,
         },
+        {
+          provide: SmartdogParser,
+          useValue: mockSmartdogParser,
+        },
       ],
     }).compile();
 
@@ -132,6 +145,7 @@ describe('IngestionService', () => {
     meierParser = module.get(MeierParser);
     meteoControlParser = module.get(MeteoControlParser);
     plexlogParser = module.get(PlexlogParser);
+    smartdogParser = module.get(SmartdogParser);
 
     jest.clearAllMocks();
     mockRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
@@ -167,6 +181,7 @@ describe('IngestionService', () => {
       meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
+      smartdogParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -209,6 +224,7 @@ describe('IngestionService', () => {
       meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
+      smartdogParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(false);
 
       const result = await service.ingestFile('unknown.csv', fileBuffer);
@@ -233,6 +249,7 @@ describe('IngestionService', () => {
       meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
+      smartdogParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator(dtos));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -255,6 +272,7 @@ describe('IngestionService', () => {
       meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
+      smartdogParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([]));
 
@@ -275,6 +293,7 @@ describe('IngestionService', () => {
       meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
+      smartdogParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -297,6 +316,7 @@ describe('IngestionService', () => {
       meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
+      smartdogParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockRejectedValue(
@@ -319,6 +339,7 @@ describe('IngestionService', () => {
       meteoControlParser.canHandle.mockReturnValue(false);
       mbmetParser.canHandle.mockReturnValue(false);
       meierParser.canHandle.mockReturnValue(false);
+      smartdogParser.canHandle.mockReturnValue(false);
       goodWeParser.canHandle.mockReturnValue(true);
       goodWeParser.parse.mockReturnValue(mockParseGenerator([mockDTO]));
       mockQueryBuilder.execute.mockResolvedValue({
@@ -351,6 +372,7 @@ describe('IngestionService', () => {
         },
         { name: 'mbmet', description: 'MBMET 501FB Meteo Station CSV Export' },
         { name: 'meier', description: 'Meier-NT Logger CSV Export' },
+        { name: 'smartdog', description: 'SmartDog Logger CSV Export' },
         { name: 'goodwe', description: 'GoodWe Parser' },
       ]);
     });

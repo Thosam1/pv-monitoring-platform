@@ -10,6 +10,7 @@ import { MbmetParser } from './strategies/mbmet.strategy';
 import { MeierParser } from './strategies/meier.strategy';
 import { MeteoControlParser } from './strategies/meteocontrol.strategy';
 import { PlexlogParser } from './strategies/plexlog.strategy';
+import { SmartdogParser } from './strategies/smartdog.strategy';
 import { UnifiedMeasurementDTO } from './dto/unified-measurement.dto';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
@@ -53,6 +54,7 @@ export class IngestionService {
     private readonly meierParser: MeierParser,
     private readonly meteoControlParser: MeteoControlParser,
     private readonly plexlogParser: PlexlogParser,
+    private readonly smartdogParser: SmartdogParser,
   ) {
     // Register all available parsers (order matters - more specific parsers first)
     this.parsers = [
@@ -62,7 +64,8 @@ export class IngestionService {
       this.meteoControlParser, // Meteo Control has [info]/[messung]/[Start] INI sections
       this.mbmetParser, // MBMET has specific Zeitstempel/Einstrahlung headers
       this.meierParser, // Meier-NT has "serial;" metadata prefix
-      this.goodWeParser,
+      this.smartdogParser, // SmartDog has B{}_A{}_S{} filename patterns
+      this.goodWeParser, // GoodWe is a more general fallback
       // Add more parsers here: smaParser, froniusParser, etc.
     ];
 

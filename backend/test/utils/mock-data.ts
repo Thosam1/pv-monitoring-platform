@@ -418,6 +418,105 @@ export const plexlogData = {
     })),
 };
 
+// SmartDog constants
+export const SMARTDOG_TIMESTAMP = 1762152300; // Unix seconds
+export const SMARTDOG_INVERTER_HEADER =
+  'timestamp;address;bus;strings;stringid;pac;pdc;udc;temp';
+export const SMARTDOG_SENSOR_HEADER = 'timestamp;value';
+
+/**
+ * SmartDog Logger CSV data builders
+ */
+export const smartdogCsv = {
+  /** Inverter data header */
+  inverterHeader: SMARTDOG_INVERTER_HEADER,
+
+  /** Sensor data header */
+  sensorHeader: SMARTDOG_SENSOR_HEADER,
+
+  /** Single inverter data row */
+  inverterRow: (
+    ts: number,
+    pac: number,
+    opts: {
+      address?: number;
+      bus?: number;
+      strings?: number;
+      stringid?: number;
+      pdc?: number;
+      udc?: number;
+      temp?: number;
+    } = {},
+  ): string => {
+    const {
+      address = 1,
+      bus = 1,
+      strings = 4,
+      stringid = 3,
+      pdc = pac + 20,
+      udc = 550,
+      temp = 25,
+    } = opts;
+    return `${ts};${address};${bus};${strings};${stringid};${pac};${pdc};${udc};${temp}`;
+  },
+
+  /** Complete inverter file (header + rows) */
+  inverterFile: (
+    rows: Array<{
+      ts: number;
+      pac: number;
+      address?: number;
+      bus?: number;
+      strings?: number;
+      stringid?: number;
+      pdc?: number;
+      udc?: number;
+      temp?: number;
+    }>,
+  ): string[] => [
+    SMARTDOG_INVERTER_HEADER,
+    ...rows.map((r) =>
+      smartdogCsv.inverterRow(r.ts, r.pac, {
+        address: r.address,
+        bus: r.bus,
+        strings: r.strings,
+        stringid: r.stringid,
+        pdc: r.pdc,
+        udc: r.udc,
+        temp: r.temp,
+      }),
+    ),
+  ],
+
+  /** Simple inverter file with single row */
+  inverterSimple: (pac: number, ts = SMARTDOG_TIMESTAMP): string[] => [
+    SMARTDOG_INVERTER_HEADER,
+    smartdogCsv.inverterRow(ts, pac),
+  ],
+
+  /** Sensor data row (for modbus/onewire) - includes trailing -1 status */
+  sensorRow: (ts: number, value: number): string => `${ts};${value};-1`,
+
+  /** Complete sensor file (header + rows) */
+  sensorFile: (rows: Array<{ ts: number; value: number }>): string[] => [
+    SMARTDOG_SENSOR_HEADER,
+    ...rows.map((r) => smartdogCsv.sensorRow(r.ts, r.value)),
+  ],
+
+  /** Simple sensor file with single row */
+  sensorSimple: (value: number, ts = SMARTDOG_TIMESTAMP): string[] => [
+    SMARTDOG_SENSOR_HEADER,
+    smartdogCsv.sensorRow(ts, value),
+  ],
+
+  /** Headers only (no data) for error testing */
+  inverterHeaderOnly: (): string[] => [SMARTDOG_INVERTER_HEADER],
+  sensorHeaderOnly: (): string[] => [SMARTDOG_SENSOR_HEADER],
+
+  /** Empty file */
+  empty: (): string[] => [],
+};
+
 // Meteo Control constants
 export const METEOCONTROL_TIMESTAMP = '12:45:00';
 export const METEOCONTROL_DATUM = '251106'; // YYMMDD = Nov 6, 2025
