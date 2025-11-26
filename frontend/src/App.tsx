@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import axios from 'axios'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar, SiteHeader } from '@/components/layout'
@@ -82,6 +82,18 @@ function App() {
   const dateLabel =
     measurementData.length > 0 ? formatDateLabel(measurementData[0].timestamp) : null
 
+  // Get the type of the currently selected logger
+  const selectedLoggerType =
+    availableLoggers.find((l) => l.id === selectedLogger)?.type ?? null
+
+  // Refs for stable callback (prevents BulkUploader re-renders during upload)
+  const fetchLoggersRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  const fetchMeasurementsRef = useRef<(useSmartSync?: boolean) => Promise<void>>(
+    () => Promise.resolve()
+  )
+  const fetchDateRangeRef = useRef<(loggerId: string) => Promise<void>>(() => Promise.resolve())
+  const selectedLoggerRef = useRef<string | null>(null)
+
   // Fetch available loggers
   const fetchLoggers = useCallback(async () => {
     try {
@@ -94,7 +106,12 @@ function App() {
       }))
       setAvailableLoggers(loggers)
       if (loggers.length > 0 && !selectedLogger) {
-        setSelectedLogger(loggers[0].id)
+        const firstLogger = loggers[0]
+        setSelectedLogger(firstLogger.id)
+        // Auto-enable irradiance for meteo loggers
+        if (firstLogger.type === 'mbmet') {
+          setShowIrradiance(true)
+        }
       }
     } catch (error) {
       console.error('Failed to fetch loggers:', error)
@@ -138,7 +155,12 @@ function App() {
         }))
         setAvailableLoggers(loggers)
         if (loggers.length > 0) {
-          setSelectedLogger(loggers[0].id)
+          const firstLogger = loggers[0]
+          setSelectedLogger(firstLogger.id)
+          // Auto-enable irradiance for meteo loggers
+          if (firstLogger.type === 'mbmet') {
+            setShowIrradiance(true)
+          }
         }
       } catch {
         setBackendStatus('error')
@@ -239,19 +261,42 @@ function App() {
     void loadData()
   }, [customDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle upload complete
-  const handleUploadComplete = useCallback(async () => {
-    await fetchLoggers()
-    await fetchMeasurements()
-    if (selectedLogger) {
-      await fetchDateRange(selectedLogger)
-    }
+
+  // Keep refs updated for stable callback
+  useEffect(() => {
+    fetchLoggersRef.current = fetchLoggers
+    fetchMeasurementsRef.current = fetchMeasurements
+    fetchDateRangeRef.current = fetchDateRange
+    selectedLoggerRef.current = selectedLogger
   }, [fetchLoggers, fetchMeasurements, fetchDateRange, selectedLogger])
+
+  // Handle upload complete - STABLE callback using refs
+  // This prevents BulkUploader from re-rendering during upload
+  const handleUploadComplete = useCallback(async () => {
+    await fetchLoggersRef.current()
+    await fetchMeasurementsRef.current()
+    if (selectedLoggerRef.current) {
+      await fetchDateRangeRef.current(selectedLoggerRef.current)
+    }
+  }, []) // Empty deps = stable reference
 
   // Handle refresh
   const handleRefresh = useCallback(() => {
     void fetchMeasurements(false)
   }, [fetchMeasurements])
+
+  // Handle logger selection with auto-enable irradiance for meteo loggers
+  const handleSelectLogger = useCallback(
+    (loggerId: string) => {
+      setSelectedLogger(loggerId)
+      // Auto-enable irradiance for meteo loggers (they have no power data)
+      const loggerType = availableLoggers.find((l) => l.id === loggerId)?.type
+      if (loggerType === 'mbmet') {
+        setShowIrradiance(true)
+      }
+    },
+    [availableLoggers]
+  )
 
   // Render main content based on view
   const renderContent = () => {
@@ -290,8 +335,9 @@ function App() {
             measurementData={measurementData}
             isLoading={dataStatus === 'loading'}
             selectedLogger={selectedLogger}
+            selectedLoggerType={selectedLoggerType}
             availableLoggers={availableLoggers}
-            onSelectLogger={setSelectedLogger}
+            onSelectLogger={handleSelectLogger}
             dateLabel={dateLabel}
             dataDateRange={dataDateRange}
             dataCount={dataCount}
@@ -313,7 +359,7 @@ function App() {
       <AppSidebar
         loggers={availableLoggers}
         selectedLogger={selectedLogger}
-        onSelectLogger={setSelectedLogger}
+        onSelectLogger={handleSelectLogger}
         backendStatus={backendStatus}
         currentView={currentView}
         onViewChange={setCurrentView}

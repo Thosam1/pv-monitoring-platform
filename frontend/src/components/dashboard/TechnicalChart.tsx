@@ -28,6 +28,7 @@ interface TechnicalDataPoint {
   temperature: number | null
   reactivePower: number | null
   windSpeed: number | null
+  frequency: number | null
 }
 
 // DC Voltage keys (expanded for all logger types)
@@ -46,10 +47,14 @@ const CURRENT_DC_KEYS = ['currentDC', 'I_DC', 'idc', 'pv1curr', 'dcCurrent', 'ip
 // AC Current keys
 const CURRENT_AC_KEYS = ['currentAC', 'I_AC', 'iac', 'gridCurrent', 'acCurrent']
 
-// Temperature keys (expanded with normalized keys)
+// Temperature keys (expanded with normalized keys and directional variants)
 const TEMPERATURE_KEYS = [
   'ambientTemperature',        // Priority 1: Ambient
+  'ambientTemperatureWest',    // MBMET directional variant
+  'ambientTemperatureEast',    // MBMET directional variant
   'cellTemperature',           // Priority 2: Cell/Module
+  'cellTemperatureWest',       // MBMET directional variant
+  'cellTemperatureEast',       // MBMET directional variant
   'temperatureHeatsink',       // Priority 3: Heatsink
   'temperatureInternal',       // Priority 4: Internal
   'temperature', 'T_HS',       // Legacy keys
@@ -61,6 +66,9 @@ const REACTIVE_POWER_KEYS = ['reactivePowerVar', 'Q', 'var', 'reactivePower']
 
 // Wind Speed keys
 const WIND_SPEED_KEYS = ['windSpeed', 'wind', 'windVelocity']
+
+// Grid Frequency keys (Hz)
+const FREQUENCY_KEYS = ['fac', 'frequency', 'gridFrequency', 'freq', 'f_ac']
 
 /**
  * Generic metadata value extractor
@@ -125,6 +133,13 @@ function extractWindSpeed(metadata: Record<string, unknown>): number | null {
 }
 
 /**
+ * Extract grid frequency from metadata
+ */
+function extractFrequency(metadata: Record<string, unknown>): number | null {
+  return extractValue(metadata, FREQUENCY_KEYS)
+}
+
+/**
  * Format timestamp to HH:mm for X-axis
  */
 function formatTime(timestamp: Date): string {
@@ -148,7 +163,8 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
       currentAC: extractCurrentAC(m.metadata),
       temperature: extractTemperature(m.metadata),
       reactivePower: extractReactivePower(m.metadata),
-      windSpeed: extractWindSpeed(m.metadata)
+      windSpeed: extractWindSpeed(m.metadata),
+      frequency: extractFrequency(m.metadata)
     }))
 
     // Sort by timestamp
@@ -172,11 +188,12 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
   const hasTempData = chartData.some((d) => d.temperature !== null)
   const hasReactivePower = chartData.some((d) => d.reactivePower !== null)
   const hasWindSpeed = chartData.some((d) => d.windSpeed !== null)
+  const hasFrequency = chartData.some((d) => d.frequency !== null)
 
   // Combined checks for rendering logic
   const hasAnyVoltage = hasVoltageDC || hasVoltageAC
   const hasAnyCurrent = hasCurrentDC || hasCurrentAC
-  const hasAnyData = hasAnyVoltage || hasAnyCurrent || hasTempData || hasReactivePower || hasWindSpeed
+  const hasAnyData = hasAnyVoltage || hasAnyCurrent || hasTempData || hasReactivePower || hasWindSpeed || hasFrequency
 
   if (isLoading) {
     return (
@@ -252,6 +269,18 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
                 domain={['auto', 'auto']}
               />
             )}
+            {/* Frequency Y-Axis (right, separate scale for ~49-51 Hz) */}
+            {hasFrequency && (
+              <YAxis
+                yAxisId="frequency"
+                orientation="right"
+                stroke="#0EA5E9"
+                unit=" Hz"
+                tick={{ fontSize: 10 }}
+                width={55}
+                domain={['auto', 'auto']}
+              />
+            )}
             <Tooltip
               contentStyle={{
                 backgroundColor: '#1F2937',
@@ -271,6 +300,7 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
                   case 'temperature': return [`${numValue.toFixed(1)} °C`, 'Temperature']
                   case 'reactivePower': return [`${numValue.toFixed(0)} VAR`, 'Reactive Power']
                   case 'windSpeed': return [`${numValue.toFixed(1)} m/s`, 'Wind Speed']
+                  case 'frequency': return [`${numValue.toFixed(2)} Hz`, 'Grid Frequency']
                   default: return [String(value), name]
                 }
               }}
@@ -366,6 +396,20 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
                 dataKey="windSpeed"
                 name="windSpeed"
                 stroke="#06B6D4"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls
+              />
+            )}
+
+            {/* Grid Frequency Line */}
+            {hasFrequency && (
+              <Line
+                yAxisId="frequency"
+                type="monotone"
+                dataKey="frequency"
+                name="frequency"
+                stroke="#0EA5E9"
                 strokeWidth={1.5}
                 dot={false}
                 connectNulls

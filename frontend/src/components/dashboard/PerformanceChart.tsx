@@ -146,14 +146,21 @@ export function PerformanceChart({
     )
   }
 
-  const hasSecondaryAxis = showEnergy || showIrradiance
+  // Check if power data exists (meteo stations have null power)
+  const hasPowerData = data.some((d) => d.activePowerWatts !== null)
 
   // Check if irradiance data exists
   const hasIrradianceData = chartData.some((d) => d.irradiance > 0)
 
+  // Determine if this is an irradiance-only view (meteo stations)
+  const isIrradianceOnlyView = !hasPowerData && hasIrradianceData
+
+  // Secondary axis is needed if showing energy or irradiance (and we have power data)
+  const hasSecondaryAxis = hasPowerData && (showEnergy || showIrradiance)
+
   // Build chart title with context
   const chartTitle = [
-    'Performance Overview',
+    isIrradianceOnlyView ? 'Irradiance Overview' : 'Performance Overview',
     loggerId && `• ${loggerId}`,
     dateLabel && `• ${dateLabel}`
   ].filter(Boolean).join(' ')
@@ -182,8 +189,8 @@ export function PerformanceChart({
             />
             <YAxis
               yAxisId="left"
-              stroke="#F59E0B"
-              unit=" W"
+              stroke={isIrradianceOnlyView ? '#EAB308' : '#F59E0B'}
+              unit={isIrradianceOnlyView ? ' W/m²' : ' W'}
               tick={{ fontSize: 11 }}
               width={70}
             />
@@ -214,8 +221,42 @@ export function PerformanceChart({
             />
             <Legend />
 
-            {/* Primary Metric - Active Power */}
-            {chartStyle === 'area' && (
+            {/* Irradiance-Only Mode (Meteo Stations) - Irradiance as Primary */}
+            {isIrradianceOnlyView && chartStyle === 'area' && (
+              <Area
+                yAxisId="left"
+                type="monotone"
+                dataKey="irradiance"
+                name="irradiance"
+                stroke="#EAB308"
+                fill="#EAB308"
+                fillOpacity={0.3}
+                strokeWidth={2}
+              />
+            )}
+            {isIrradianceOnlyView && chartStyle === 'line' && (
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="irradiance"
+                name="irradiance"
+                stroke="#EAB308"
+                strokeWidth={2}
+                dot={false}
+              />
+            )}
+            {isIrradianceOnlyView && chartStyle === 'bar' && (
+              <Bar
+                yAxisId="left"
+                dataKey="irradiance"
+                name="irradiance"
+                fill="#EAB308"
+                fillOpacity={0.8}
+              />
+            )}
+
+            {/* Normal Mode - Power as Primary */}
+            {!isIrradianceOnlyView && chartStyle === 'area' && (
               <Area
                 yAxisId="left"
                 type="monotone"
@@ -227,7 +268,7 @@ export function PerformanceChart({
                 strokeWidth={2}
               />
             )}
-            {chartStyle === 'line' && (
+            {!isIrradianceOnlyView && chartStyle === 'line' && (
               <Line
                 yAxisId="left"
                 type="monotone"
@@ -238,7 +279,7 @@ export function PerformanceChart({
                 dot={false}
               />
             )}
-            {chartStyle === 'bar' && (
+            {!isIrradianceOnlyView && chartStyle === 'bar' && (
               <Bar
                 yAxisId="left"
                 dataKey="power"
@@ -248,8 +289,8 @@ export function PerformanceChart({
               />
             )}
 
-            {/* Secondary Metric - Energy */}
-            {showEnergy && (
+            {/* Secondary Metric - Energy (only in normal mode) */}
+            {!isIrradianceOnlyView && showEnergy && (
               <Line
                 yAxisId="right"
                 type="monotone"
@@ -262,8 +303,8 @@ export function PerformanceChart({
               />
             )}
 
-            {/* Secondary Metric - Irradiance */}
-            {showIrradiance && (
+            {/* Secondary Metric - Irradiance (only in normal mode when toggled) */}
+            {!isIrradianceOnlyView && showIrradiance && (
               <Line
                 yAxisId={showEnergy ? 'left' : 'right'}
                 type="monotone"
