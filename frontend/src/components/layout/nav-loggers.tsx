@@ -1,4 +1,3 @@
-import { Fragment } from 'react'
 import { ChevronRight, Server, Thermometer } from 'lucide-react'
 import {
   Collapsible,
@@ -84,29 +83,43 @@ export function NavLoggers({ loggers, selectedLogger, onSelectLogger }: Readonly
                 <CollapsibleContent>
                   <SidebarMenuSub>
                     {loggersByType.map(({ type, loggers: typeLoggers }) => (
-                      <Fragment key={type.value}>
-                        {/* Type subtitle */}
-                        <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
-                          <span
-                            className={`size-1.5 rounded-full ${LOGGER_CONFIG[type.value].color}`}
-                          />
-                          <span>{type.label}</span>
-                        </div>
-                        {/* Logger items */}
-                        {typeLoggers
-                          .sort((a, b) => a.id.localeCompare(b.id))
-                          .map((logger) => (
-                            <SidebarMenuSubItem key={logger.id}>
-                              <SidebarMenuSubButton
-                                isActive={logger.id === selectedLogger}
-                                onClick={() => onSelectLogger(logger.id)}
-                                className="cursor-pointer"
-                              >
-                                <span className="truncate">{logger.id}</span>
-                              </SidebarMenuSubButton>
-                            </SidebarMenuSubItem>
-                          ))}
-                      </Fragment>
+                      <Collapsible
+                        key={type.value}
+                        defaultOpen={false}
+                        className="group/type"
+                      >
+                        <SidebarMenuSubItem>
+                          <CollapsibleTrigger asChild>
+                            <SidebarMenuSubButton className="cursor-pointer">
+                              <span
+                                className={`size-1.5 rounded-full ${LOGGER_CONFIG[type.value].color}`}
+                              />
+                              <span>{type.label}</span>
+                              <span className="ml-auto text-xs text-muted-foreground">
+                                {typeLoggers.length}
+                              </span>
+                              <ChevronRight className="size-3 transition-transform duration-200 group-data-[state=open]/type:rotate-90" />
+                            </SidebarMenuSubButton>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <SidebarMenuSub>
+                              {typeLoggers
+                                .sort((a, b) => a.id.localeCompare(b.id))
+                                .map((logger) => (
+                                  <SidebarMenuSubItem key={logger.id}>
+                                    <SidebarMenuSubButton
+                                      isActive={logger.id === selectedLogger}
+                                      onClick={() => onSelectLogger(logger.id)}
+                                      className="cursor-pointer pl-6"
+                                    >
+                                      <span className="truncate">{logger.id}</span>
+                                    </SidebarMenuSubButton>
+                                  </SidebarMenuSubItem>
+                                ))}
+                            </SidebarMenuSub>
+                          </CollapsibleContent>
+                        </SidebarMenuSubItem>
+                      </Collapsible>
                     ))}
                   </SidebarMenuSub>
                 </CollapsibleContent>
