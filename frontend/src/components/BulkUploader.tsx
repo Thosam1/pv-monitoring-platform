@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useDropzone, type FileRejection } from 'react-dropzone'
 import { motion, AnimatePresence } from 'framer-motion'
 import axios from 'axios'
@@ -108,7 +108,7 @@ function getDropzoneText(uploading: boolean, isDragActive: boolean): string {
   if (isDragActive) {
     return 'Drop files or folders here'
   }
-  return 'Drag & drop CSV files or folders'
+  return 'Drag & drop data files or folders'
 }
 
 /**
@@ -138,20 +138,41 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
   const [showStats, setShowStats] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
 
+  // Refs to prevent request cancellation during re-renders
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const selectedLoggerRef = useRef(selectedLogger)
+
+  // Keep selectedLoggerRef in sync with state
+  useEffect(() => {
+    selectedLoggerRef.current = selectedLogger
+  }, [selectedLogger])
+
   /**
    * Process the upload queue in batches
    */
   const processQueue = useCallback(async (files: File[]) => {
-    const csvFiles = files.filter((f) => f.name.toLowerCase().endsWith('.csv'))
+    // Supported file extensions for all parsers
+    const SUPPORTED_EXTENSIONS = ['.csv', '.txt', '.xml', '.s3db']
+    const dataFiles = files.filter((f) => {
+      const name = f.name.toLowerCase()
+      return SUPPORTED_EXTENSIONS.some((ext) => name.endsWith(ext))
+    })
 
-    if (csvFiles.length === 0) {
+    if (dataFiles.length === 0) {
       return
     }
+
+    // Create new AbortController for this upload session
+    abortControllerRef.current = new AbortController()
+    const signal = abortControllerRef.current.signal
+
+    // Capture logger type at start of upload (prevents mid-upload changes)
+    const loggerType = selectedLoggerRef.current
 
     setUploading(true)
     setShowStats(true)
     setProgress(0)
-    setStats({ success: 0, failed: 0, total: csvFiles.length, recordsInserted: 0 })
+    setStats({ success: 0, failed: 0, total: dataFiles.length, recordsInserted: 0 })
 
     const batchSize = 5
     let completedFiles = 0
@@ -160,8 +181,8 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
     let totalRecords = 0
 
     // Process files in batches
-    for (let i = 0; i < csvFiles.length; i += batchSize) {
-      const batch = csvFiles.slice(i, i + batchSize)
+    for (let i = 0; i < dataFiles.length; i += batchSize) {
+      const batch = dataFiles.slice(i, i + batchSize)
       const formData = new FormData()
 
       batch.forEach((file) => {
@@ -170,12 +191,13 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
 
       try {
         const response = await axios.post<BulkIngestionResponse>(
-          `${API_BASE}/ingest/${selectedLogger}`,
+          `${API_BASE}/ingest/${loggerType}`,
           formData,
           {
             headers: {
               'Content-Type': 'multipart/form-data'
-            }
+            },
+            signal
           }
         )
 
@@ -183,17 +205,17 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
         totalFailed += response.data.errorCount
         totalRecords += response.data.totalRecordsInserted
       } catch {
-        // If request fails, count all files in batch as failed
         totalFailed += batch.length
       }
 
+      // Update progress after each batch
       completedFiles += batch.length
-      const newProgress = Math.round((completedFiles / csvFiles.length) * 100)
+      const newProgress = Math.round((completedFiles / dataFiles.length) * 100)
       setProgress(newProgress)
       setStats({
         success: totalSuccess,
         failed: totalFailed,
-        total: csvFiles.length,
+        total: dataFiles.length,
         recordsInserted: totalRecords
       })
     }
@@ -201,7 +223,7 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
     setUploading(false)
     setQueue([])
     onUploadComplete?.()
-  }, [selectedLogger, onUploadComplete])
+  }, [onUploadComplete])
 
   /**
    * Handle drop event with folder support
@@ -230,7 +252,12 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
       onDrop(acceptedFiles, fileRejections, event as { dataTransfer?: DataTransfer }).catch(console.error)
     },
     accept: {
-      'text/csv': ['.csv']
+      'text/csv': ['.csv'],
+      'text/plain': ['.txt'],
+      'text/xml': ['.xml'],
+      'application/xml': ['.xml'],
+      'application/octet-stream': ['.s3db'],
+      'application/x-sqlite3': ['.s3db']
     },
     multiple: true,
     noClick: uploading
