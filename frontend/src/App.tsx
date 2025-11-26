@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import axios from 'axios'
 import { BulkUploader } from './components/BulkUploader'
 import {
@@ -28,7 +28,7 @@ import {
   type BackendStatus,
   type DataStatus
 } from './lib/date-utils'
-import { type LoggerType, LOGGER_CONFIG, LOGGER_GROUPS } from './types/logger'
+import { type LoggerType, type LoggerOption, LOGGER_CONFIG, LOGGER_GROUPS } from './types/logger'
 
 // API base URL
 const API_BASE = 'http://localhost:3000'
@@ -315,19 +315,39 @@ function App() {
                               group.options.some(opt => opt.value === l.type)
                             )
                             if (groupLoggers.length === 0) return null
+
+                            // Group loggers by type for subtitles
+                            const loggersByType = group.options.reduce((acc, opt) => {
+                              const loggersOfType = groupLoggers.filter(l => l.type === opt.value)
+                              if (loggersOfType.length > 0) {
+                                acc.push({ type: opt, loggers: loggersOfType })
+                              }
+                              return acc
+                            }, [] as Array<{ type: LoggerOption; loggers: LoggerInfo[] }>)
+
                             return (
                               <SelectGroup key={group.label}>
-                                <SelectLabel>{group.label}</SelectLabel>
-                                {groupLoggers
-                                  .sort((a, b) => a.id.localeCompare(b.id))
-                                  .map((logger) => (
-                                    <SelectItem key={logger.id} value={logger.id}>
-                                      <span className="flex items-center gap-2">
-                                        <span className={`inline-block w-2 h-2 rounded-full ${LOGGER_CONFIG[logger.type].color}`} />
-                                        {logger.id}
-                                      </span>
-                                    </SelectItem>
-                                  ))}
+                                <SelectLabel className="bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 sticky top-0 py-2 -mx-1 px-2">
+                                  {group.label}
+                                </SelectLabel>
+                                {loggersByType.map(({ type, loggers }) => (
+                                  <Fragment key={type.value}>
+                                    {/* Type subtitle */}
+                                    <div className="px-2 py-1.5 text-xs text-muted-foreground bg-gray-50 dark:bg-gray-700/50 flex items-center gap-1.5">
+                                      <span className={`w-1.5 h-1.5 rounded-full ${LOGGER_CONFIG[type.value].color}`} />
+                                      {type.label}
+                                    </div>
+                                    {loggers
+                                      .sort((a, b) => a.id.localeCompare(b.id))
+                                      .map((logger) => (
+                                        <SelectItem key={logger.id} value={logger.id}>
+                                          <span className="flex items-center gap-2 pl-2">
+                                            {logger.id}
+                                          </span>
+                                        </SelectItem>
+                                      ))}
+                                  </Fragment>
+                                ))}
                               </SelectGroup>
                             )
                           })}

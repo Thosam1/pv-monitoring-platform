@@ -273,7 +273,7 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 overflow-hidden z-10"
+                className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 max-h-72 overflow-y-auto z-10"
               >
                 {LOGGER_GROUPS.map((group, groupIndex) => (
                   <div key={group.label}>
@@ -282,7 +282,7 @@ export function BulkUploader({ onUploadComplete }: Readonly<BulkUploaderProps>) 
                       <div className="border-t border-gray-200 dark:border-gray-600 my-1" />
                     )}
                     {/* Group label */}
-                    <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 sticky top-0">
                       {group.label}
                     </div>
                     {/* Group options */}
