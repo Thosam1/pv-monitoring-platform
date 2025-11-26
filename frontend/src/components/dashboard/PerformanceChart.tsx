@@ -28,6 +28,7 @@ interface PerformanceChartProps {
   loggerId?: string | null
   dateLabel?: string | null
   dataDateRange?: DataDateRange | null
+  onDateSelect?: (date: string) => void
 }
 
 interface ChartDataPoint {
@@ -60,6 +61,16 @@ function formatDateDisplay(date: Date): string {
   })
 }
 
+/**
+ * Format a date to yyyy-MM-dd for the date picker
+ */
+function formatDateForPicker(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export function PerformanceChart({
   data,
   chartStyle,
@@ -68,7 +79,8 @@ export function PerformanceChart({
   isLoading,
   loggerId,
   dateLabel,
-  dataDateRange
+  dataDateRange,
+  onDateSelect,
 }: Readonly<PerformanceChartProps>) {
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return []
@@ -110,13 +122,21 @@ export function PerformanceChart({
           {dataDateRange ? (
             <p className="text-sm">
               Data available from{' '}
-              <span className="font-medium text-blue-500">
+              <button
+                type="button"
+                onClick={() => onDateSelect?.(formatDateForPicker(dataDateRange.earliest))}
+                className="font-medium text-blue-500 hover:text-blue-600 hover:underline cursor-pointer transition-colors"
+              >
                 {formatDateDisplay(dataDateRange.earliest)}
-              </span>
+              </button>
               {' '}to{' '}
-              <span className="font-medium text-blue-500">
+              <button
+                type="button"
+                onClick={() => onDateSelect?.(formatDateForPicker(dataDateRange.latest))}
+                className="font-medium text-blue-500 hover:text-blue-600 hover:underline cursor-pointer transition-colors"
+              >
                 {formatDateDisplay(dataDateRange.latest)}
-              </span>
+              </button>
             </p>
           ) : (
             <p className="text-sm">Upload CSV files to see the chart</p>

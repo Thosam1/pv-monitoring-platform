@@ -106,6 +106,7 @@ export function DashboardContent({
           loggerId={selectedLogger}
           dateLabel={dateLabel}
           dataDateRange={dataDateRange}
+          onDateSelect={onCustomDateChange}
         />
       </div>
 
