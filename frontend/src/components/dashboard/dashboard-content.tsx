@@ -6,7 +6,10 @@ import {
   type ChartStyle,
   type MeasurementDataPoint,
 } from '@/components/dashboard'
-import { type LoggerType, LOGGER_CONFIG } from '@/types/logger'
+import { LoggerContextBar } from './logger-context-bar'
+import { Badge } from '@/components/ui/badge'
+import { type LoggerType } from '@/types/logger'
+import { Calendar, Activity, BarChart3, Sun, Zap } from 'lucide-react'
 
 interface LoggerInfo {
   id: string
@@ -23,6 +26,7 @@ interface DashboardContentProps {
   isLoading: boolean
   selectedLogger: string | null
   availableLoggers: LoggerInfo[]
+  onSelectLogger: (loggerId: string) => void
   dateLabel: string | null
   dataDateRange: DataDateRange | null
   dataCount: number
@@ -37,11 +41,23 @@ interface DashboardContentProps {
   onShowIrradianceChange: (show: boolean) => void
 }
 
+function formatDateRange(range: DataDateRange | null): string {
+  if (!range) return 'No data'
+  const format = (d: Date) =>
+    d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  return `${format(range.earliest)} → ${format(range.latest)}`
+}
+
 export function DashboardContent({
   measurementData,
   isLoading,
   selectedLogger,
   availableLoggers,
+  onSelectLogger,
   dateLabel,
   dataDateRange,
   dataCount,
@@ -54,11 +70,16 @@ export function DashboardContent({
   showIrradiance,
   onShowIrradianceChange,
 }: Readonly<DashboardContentProps>) {
-  const selectedLoggerInfo = availableLoggers.find((l) => l.id === selectedLogger)
-  const loggerConfig = selectedLoggerInfo ? LOGGER_CONFIG[selectedLoggerInfo.type] : null
-
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
+    <div className="flex flex-1 flex-col gap-6 p-4">
+      {/* Logger Context Bar */}
+      <LoggerContextBar
+        loggers={availableLoggers}
+        selectedLogger={selectedLogger}
+        onSelectLogger={onSelectLogger}
+        dataCount={dataCount}
+      />
+
       {/* KPI Grid */}
       <KPIGrid data={measurementData} isLoading={isLoading} />
 
@@ -88,7 +109,7 @@ export function DashboardContent({
         />
       </div>
 
-      {/* Bottom Grid: Technical Chart + Quick Info */}
+      {/* Bottom Grid: Technical Chart + Logger Summary */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Technical Chart */}
         <div className="h-64">
@@ -100,55 +121,71 @@ export function DashboardContent({
           />
         </div>
 
-        {/* Quick Info Card */}
+        {/* Logger Summary Card */}
         <div className="h-64">
           <div className="h-full bg-card rounded-lg border shadow-sm p-4">
-            <h3 className="text-sm font-semibold mb-4">Quick Info</h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Selected Logger</span>
-                <span className="font-medium truncate max-w-[150px]">
-                  {selectedLogger ?? 'None'}
-                </span>
+            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+              <Activity className="size-4" />
+              Logger Summary
+            </h3>
+
+            <div className="space-y-4">
+              {/* Data Range */}
+              <div className="flex items-start gap-3">
+                <Calendar className="size-4 text-muted-foreground mt-0.5" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Data Range</p>
+                  <p className="text-sm font-medium">
+                    {formatDateRange(dataDateRange)}
+                  </p>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Logger Type</span>
-                <span className="font-medium">
-                  {loggerConfig ? (
-                    <span className="inline-flex items-center">
-                      <span
-                        className={`inline-block w-2 h-2 rounded-full ${loggerConfig.color} mr-1.5`}
-                      />
-                      <span>{loggerConfig.label}</span>
-                    </span>
-                  ) : (
-                    'None'
+
+              {/* Currently Viewing */}
+              {dateLabel && (
+                <div className="flex items-start gap-3">
+                  <Calendar className="size-4 text-blue-500 mt-0.5" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Currently Viewing
+                    </p>
+                    <p className="text-sm font-medium">{dateLabel}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Active Settings */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Active Settings
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Badge
+                    variant="secondary"
+                    className="gap-1.5 text-xs capitalize"
+                  >
+                    <BarChart3 className="size-3" />
+                    {chartStyle}
+                  </Badge>
+                  {showEnergy && (
+                    <Badge
+                      variant="secondary"
+                      className="gap-1.5 text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                    >
+                      <Zap className="size-3" />
+                      Energy
+                    </Badge>
                   )}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total Records</span>
-                <span className="font-medium">{dataCount.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Chart Style</span>
-                <span className="font-medium capitalize">{chartStyle}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Energy Overlay</span>
-                <span
-                  className={`font-medium ${showEnergy ? 'text-green-500' : 'text-muted-foreground'}`}
-                >
-                  {showEnergy ? 'On' : 'Off'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Irradiance Overlay</span>
-                <span
-                  className={`font-medium ${showIrradiance ? 'text-yellow-500' : 'text-muted-foreground'}`}
-                >
-                  {showIrradiance ? 'On' : 'Off'}
-                </span>
+                  {showIrradiance && (
+                    <Badge
+                      variant="secondary"
+                      className="gap-1.5 text-xs bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                    >
+                      <Sun className="size-3" />
+                      Irradiance
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
           </div>

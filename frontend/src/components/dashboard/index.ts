@@ -9,3 +9,5 @@ export { PerformanceChart } from './PerformanceChart'
 export { TechnicalChart } from './TechnicalChart'
 
 export { DashboardContent } from './dashboard-content'
+
+export { LoggerContextBar } from './logger-context-bar'

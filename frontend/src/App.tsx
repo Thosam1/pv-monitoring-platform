@@ -258,14 +258,14 @@ function App() {
     switch (currentView) {
       case 'upload':
         return (
-          <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
+          <div className="flex flex-1 flex-col gap-6 p-4">
             <BulkUploader onUploadComplete={handleUploadComplete} />
           </div>
         )
 
       case 'analytics':
         return (
-          <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
+          <div className="flex flex-1 flex-col gap-6 p-4">
             <div className="flex items-center justify-center h-64 bg-card rounded-lg border">
               <p className="text-muted-foreground">
                 Analytics view coming soon...
@@ -276,7 +276,7 @@ function App() {
 
       case 'reports':
         return (
-          <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
+          <div className="flex flex-1 flex-col gap-6 p-4">
             <div className="flex items-center justify-center h-64 bg-card rounded-lg border">
               <p className="text-muted-foreground">Reports view coming soon...</p>
             </div>
@@ -291,6 +291,7 @@ function App() {
             isLoading={dataStatus === 'loading'}
             selectedLogger={selectedLogger}
             availableLoggers={availableLoggers}
+            onSelectLogger={setSelectedLogger}
             dateLabel={dateLabel}
             dataDateRange={dataDateRange}
             dataCount={dataCount}
