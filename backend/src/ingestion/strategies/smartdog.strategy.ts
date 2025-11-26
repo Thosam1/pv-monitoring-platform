@@ -125,10 +125,10 @@ export class SmartdogParser implements IParser {
         yield* this.parseInverterData(lines, this.currentFilename);
         break;
       case 'modbus':
-        yield* this.parseModbusSensor(lines, this.currentFilename);
+        yield* this.parseSensorData(lines, this.currentFilename, 'modbus');
         break;
       case 'onewire':
-        yield* this.parseOneWireSensor(lines, this.currentFilename);
+        yield* this.parseSensorData(lines, this.currentFilename, 'onewire');
         break;
       default:
         throw new ParserError(
@@ -290,15 +290,19 @@ export class SmartdogParser implements IParser {
   }
 
   /**
-   * Parse Modbus TCP sensor files (irradiance)
+   * Parse sensor files (modbus = irradiance, onewire = temperature)
    * Format: timestamp;value (with trailing -1 status column)
    */
-  private async *parseModbusSensor(
+  private async *parseSensorData(
     lines: string[],
     filename: string,
+    sensorType: 'modbus' | 'onewire',
   ): AsyncGenerator<UnifiedMeasurementDTO> {
     await Promise.resolve();
-    const loggerId = this.extractModbusLoggerId(filename);
+    const loggerId =
+      sensorType === 'modbus'
+        ? this.extractModbusLoggerId(filename)
+        : this.extractOnewireLoggerId(filename);
     let dataRowCount = 0;
 
     // First line is header
@@ -315,7 +319,7 @@ export class SmartdogParser implements IParser {
       const line = lines[i].trim();
       if (!line) continue;
 
-      const dto = this.parseSensorRow(line, loggerId, 'modbus', i);
+      const dto = this.parseSensorRow(line, loggerId, sensorType, i);
       if (dto) {
         dataRowCount++;
         yield dto;
@@ -323,49 +327,7 @@ export class SmartdogParser implements IParser {
     }
 
     this.logger.log(
-      `Parsed ${dataRowCount} modbus sensor rows from ${filename}`,
-    );
-
-    if (dataRowCount === 0) {
-      throw new ParserError(this.name, 'No valid data rows found in file');
-    }
-  }
-
-  /**
-   * Parse OneWire sensor files (temperature)
-   * Format: timestamp;value (with trailing -1 status column)
-   */
-  private async *parseOneWireSensor(
-    lines: string[],
-    filename: string,
-  ): AsyncGenerator<UnifiedMeasurementDTO> {
-    await Promise.resolve();
-    const loggerId = this.extractOnewireLoggerId(filename);
-    let dataRowCount = 0;
-
-    // First line is header
-    const headerLine = lines[0]?.trim().toLowerCase();
-    if (!headerLine?.includes('timestamp') || !headerLine?.includes('value')) {
-      throw new ParserError(
-        this.name,
-        'Invalid sensor header. Expected timestamp;value',
-      );
-    }
-
-    // Process data rows (skip header)
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-
-      const dto = this.parseSensorRow(line, loggerId, 'onewire', i);
-      if (dto) {
-        dataRowCount++;
-        yield dto;
-      }
-    }
-
-    this.logger.log(
-      `Parsed ${dataRowCount} onewire sensor rows from ${filename}`,
+      `Parsed ${dataRowCount} ${sensorType} sensor rows from ${filename}`,
     );
 
     if (dataRowCount === 0) {
