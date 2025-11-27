@@ -193,6 +193,8 @@ export function PerformanceChart({
               unit={isIrradianceOnlyView ? ' W/m²' : ' W'}
               tick={{ fontSize: 11 }}
               width={70}
+              domain={[0, 'auto']}
+              allowDataOverflow={true}
             />
             {hasSecondaryAxis && (
               <YAxis
@@ -202,6 +204,8 @@ export function PerformanceChart({
                 unit={showEnergy ? ' kWh' : ' W/m²'}
                 tick={{ fontSize: 11 }}
                 width={70}
+                domain={[0, 'auto']}
+                allowDataOverflow={true}
               />
             )}
             <Tooltip
