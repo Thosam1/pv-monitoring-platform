@@ -234,87 +234,10 @@ export class GoodWeParser implements IParser {
   private async *parseHeaderlessEAV(
     fileBuffer: Buffer,
   ): AsyncGenerator<UnifiedMeasurementDTO> {
-    const rows: Record<string, string>[] = [];
+    const rows = await this.readCsvRows(fileBuffer);
+    this.logger.log(`Read ${rows.length} rows from CSV`);
 
-    // Configure csv-parser for headerless CSV
-    const stream = Readable.from(fileBuffer).pipe(
-      csvParser({
-        headers: false,
-        separator: ',',
-      }),
-    );
-
-    let rowCount = 0;
-
-    for await (const row of stream) {
-      // Debug: Log first row structure to understand the data
-      if (rowCount === 0) {
-        this.logger.debug('First Row Structure:', JSON.stringify(row));
-      }
-      rows.push(row as Record<string, string>);
-      rowCount++;
-    }
-
-    this.logger.log(`Read ${rowCount} rows from CSV`);
-
-    // Group by timestamp + loggerId
-    const groups = new Map<string, Map<string, unknown>>();
-    let skippedCount = 0;
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-
-      // Extract values by index, with trimming
-      const rawTimestamp = this.safeGetAndTrim(row, '0');
-      const rawLoggerId = this.safeGetAndTrim(row, '1');
-      const rawKey = this.safeGetAndTrim(row, '2');
-      const rawValue = this.safeGetAndTrim(row, '3');
-
-      // Parse timestamp
-      const timestamp = this.parseTimestamp(rawTimestamp);
-      if (!timestamp) {
-        skippedCount++;
-        if (i < 5) {
-          // Log first few failures for debugging
-          this.logger.warn(
-            `Row ${i + 1}: No valid timestamp found. Raw value: "${rawTimestamp}"`,
-          );
-        }
-        continue;
-      }
-
-      // Extract loggerId and strip any leading/trailing quotes (handles malformed CSV)
-      const loggerId = rawLoggerId.replace(/^["']+|["']+$/g, '') || 'unknown';
-
-      // Validate logger ID format (reject garbage from binary files like .DS_Store)
-      if (!this.isValidLoggerId(loggerId)) {
-        skippedCount++;
-        if (i < 5) {
-          this.logger.warn(
-            `Row ${i + 1}: Invalid logger ID "${loggerId}" (too short or numeric-only)`,
-          );
-        }
-        continue;
-      }
-
-      // Create group key
-      const groupKey = `${timestamp.toISOString()}|${loggerId}`;
-      if (!groups.has(groupKey)) {
-        const groupMap = new Map<string, unknown>();
-        groupMap.set('timestamp', timestamp);
-        groupMap.set('loggerId', loggerId);
-        groups.set(groupKey, groupMap);
-      }
-
-      const group = groups.get(groupKey)!;
-
-      // Store metric: key -> value
-      if (rawKey) {
-        const normalizedKey = rawKey.toLowerCase().trim();
-        const numericValue = this.parseNumber(rawValue);
-        group.set(normalizedKey, numericValue);
-      }
-    }
+    const { groups, skippedCount } = this.groupRowsByTimestampAndLogger(rows);
 
     this.logger.log(
       `Grouped into ${groups.size} measurements (${skippedCount} rows skipped)`,
@@ -323,6 +246,121 @@ export class GoodWeParser implements IParser {
     // Yield unified records
     for (const group of groups.values()) {
       yield this.transformToDTO(Object.fromEntries(group));
+    }
+  }
+
+  /**
+   * Read CSV rows from buffer using csv-parser
+   */
+  private async readCsvRows(
+    fileBuffer: Buffer,
+  ): Promise<Record<string, string>[]> {
+    const rows: Record<string, string>[] = [];
+
+    const stream = Readable.from(fileBuffer).pipe(
+      csvParser({
+        headers: false,
+        separator: ',',
+      }),
+    );
+
+    let rowCount = 0;
+    for await (const row of stream) {
+      if (rowCount === 0) {
+        this.logger.debug('First Row Structure:', JSON.stringify(row));
+      }
+      rows.push(row as Record<string, string>);
+      rowCount++;
+    }
+
+    return rows;
+  }
+
+  /**
+   * Group rows by timestamp + loggerId, extracting metrics
+   */
+  private groupRowsByTimestampAndLogger(rows: Record<string, string>[]): {
+    groups: Map<string, Map<string, unknown>>;
+    skippedCount: number;
+  } {
+    const groups = new Map<string, Map<string, unknown>>();
+    let skippedCount = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const result = this.processEavRow(rows[i], i);
+      if (!result) {
+        skippedCount++;
+        continue;
+      }
+
+      const { timestamp, loggerId, key, value } = result;
+      const groupKey = `${timestamp.toISOString()}|${loggerId}`;
+
+      if (!groups.has(groupKey)) {
+        const groupMap = new Map<string, unknown>();
+        groupMap.set('timestamp', timestamp);
+        groupMap.set('loggerId', loggerId);
+        groups.set(groupKey, groupMap);
+      }
+
+      const group = groups.get(groupKey)!;
+      if (key) {
+        group.set(key, value);
+      }
+    }
+
+    return { groups, skippedCount };
+  }
+
+  /**
+   * Process a single EAV row, returning extracted data or null if invalid
+   */
+  private processEavRow(
+    row: Record<string, string>,
+    rowIndex: number,
+  ): {
+    timestamp: Date;
+    loggerId: string;
+    key: string;
+    value: number | null;
+  } | null {
+    const rawTimestamp = this.safeGetAndTrim(row, '0');
+    const rawLoggerId = this.safeGetAndTrim(row, '1');
+    const rawKey = this.safeGetAndTrim(row, '2');
+    const rawValue = this.safeGetAndTrim(row, '3');
+
+    const timestamp = this.parseTimestamp(rawTimestamp);
+    if (!timestamp) {
+      this.logRowWarning(
+        rowIndex,
+        `No valid timestamp found. Raw value: "${rawTimestamp}"`,
+      );
+      return null;
+    }
+
+    const loggerId = this.stripQuotes(rawLoggerId) || 'unknown';
+    if (!this.isValidLoggerId(loggerId)) {
+      this.logRowWarning(
+        rowIndex,
+        `Invalid logger ID "${loggerId}" (too short or numeric-only)`,
+      );
+      return null;
+    }
+
+    return {
+      timestamp,
+      loggerId,
+      key: rawKey.toLowerCase().trim(),
+      value: this.parseNumber(rawValue),
+    };
+  }
+
+  /**
+   * Log a warning for a row, but only for the first few rows
+   */
+  private logRowWarning(rowIndex: number, message: string): void {
+    if (rowIndex < 5) {
+      this.logger.warn(`Row ${rowIndex + 1}: ${message}`);
     }
   }
 
@@ -502,8 +540,7 @@ export class GoodWeParser implements IParser {
     if (indexValue !== null && indexValue !== undefined) {
       const strValue = this.toSafeString(indexValue).trim();
       if (strValue) {
-        // Strip any leading/trailing quotes (handles malformed CSV)
-        return strValue.replace(/^["']+|["']+$/g, '') || 'unknown';
+        return this.stripQuotes(strValue) || 'unknown';
       }
     }
 
@@ -513,12 +550,20 @@ export class GoodWeParser implements IParser {
       if (value !== null && value !== undefined) {
         const strValue = this.toSafeString(value).trim();
         if (strValue) {
-          // Strip any leading/trailing quotes (handles malformed CSV)
-          return strValue.replace(/^["']+|["']+$/g, '') || 'unknown';
+          return this.stripQuotes(strValue) || 'unknown';
         }
       }
     }
     return 'unknown';
+  }
+
+  /**
+   * Strip leading/trailing quotes from a string
+   * Handles malformed CSV fields with single or double quotes
+   */
+  private stripQuotes(value: string): string {
+    // Use explicit grouping for regex alternation precedence
+    return value.replaceAll(/^(["']+)|(["']+)$/g, '');
   }
 
   /**

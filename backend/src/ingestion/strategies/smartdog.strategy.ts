@@ -300,7 +300,7 @@ export class SmartdogParser implements IParser {
     // Calculate interval energy from power (5-minute intervals)
     // Formula: Energy (kWh) = Power (W) × Time (hours) / 1000
     //        = pac × (5 min / 60 min) / 1000 = pac / 12,000
-    const energyIntervalKwh = pac !== null ? pac / 12000 : null;
+    const energyIntervalKwh = pac === null ? null : pac / 12000;
 
     // Build metadata with semantic normalization
     const metadata: Record<string, unknown> = {};

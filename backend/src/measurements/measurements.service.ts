@@ -110,7 +110,7 @@ export class MeasurementsService {
         loggerType ?? '',
       );
       this.logger.debug(
-        `${loggerType} cumulative energy: 0 -> ${cumulativeEnergies[cumulativeEnergies.length - 1]?.toFixed(2)} kWh`,
+        `${loggerType} cumulative energy: 0 -> ${cumulativeEnergies.at(-1)?.toFixed(2)} kWh`,
       );
 
       return measurements.map((m, index) => ({
@@ -158,36 +158,52 @@ export class MeasurementsService {
     let hasValidData = false;
 
     for (const m of measurements) {
-      // Get interval energy based on logger type
-      let intervalEnergy: number | null = null;
+      const intervalEnergy = this.extractIntervalEnergy(m, loggerType);
 
-      if (loggerType === 'smartdog') {
-        // SmartDog: interval energy derived from power, stored in metadata
-        const metaEnergy = m.metadata?.energyIntervalKwh;
-        if (typeof metaEnergy === 'number' && !Number.isNaN(metaEnergy)) {
-          intervalEnergy = metaEnergy;
-        }
-      } else if (loggerType === 'lti') {
-        // LTI: interval energy stored as metadata.energyInterval (kWh)
-        const metaEnergy = m.metadata?.energyInterval;
-        if (typeof metaEnergy === 'number' && !Number.isNaN(metaEnergy)) {
-          intervalEnergy = metaEnergy;
-        }
-      } else if (loggerType === 'meier') {
-        // Meier: "Yield" is stored in energyDailyKwh but it's actually interval energy
-        intervalEnergy = m.energyDailyKwh;
-      }
-
-      if (intervalEnergy !== null && !Number.isNaN(intervalEnergy)) {
+      if (intervalEnergy !== null) {
         runningTotal += intervalEnergy;
         hasValidData = true;
       }
 
-      // Push current cumulative total (or null if no valid data yet)
       cumulativeEnergies.push(hasValidData ? runningTotal : null);
     }
 
     return cumulativeEnergies;
+  }
+
+  /**
+   * Extract interval energy from a measurement based on logger type
+   *
+   * - SmartDog: metadata.energyIntervalKwh (derived from pac / 12000)
+   * - LTI: metadata.energyInterval (e_int field from file)
+   * - Meier: energyDailyKwh column (from GENERAL.Yield, actually interval energy)
+   */
+  private extractIntervalEnergy(
+    measurement: {
+      energyDailyKwh: number | null;
+      metadata: Record<string, unknown>;
+    },
+    loggerType: string,
+  ): number | null {
+    const metadataKey =
+      loggerType === 'smartdog'
+        ? 'energyIntervalKwh'
+        : loggerType === 'lti'
+          ? 'energyInterval'
+          : null;
+
+    if (metadataKey) {
+      const value = measurement.metadata?.[metadataKey];
+      return typeof value === 'number' && !Number.isNaN(value) ? value : null;
+    }
+
+    // Meier: uses energyDailyKwh field directly
+    if (loggerType === 'meier') {
+      const value = measurement.energyDailyKwh;
+      return value !== null && !Number.isNaN(value) ? value : null;
+    }
+
+    return null;
   }
 
   /**

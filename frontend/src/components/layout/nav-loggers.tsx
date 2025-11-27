@@ -32,6 +32,29 @@ interface NavLoggersProps {
   onSelectLogger: (loggerId: string) => void
 }
 
+/** Extracted component to reduce nesting depth */
+function LoggerMenuItem({
+  loggerId,
+  isActive,
+  onSelect,
+}: Readonly<{
+  loggerId: string
+  isActive: boolean
+  onSelect: (id: string) => void
+}>) {
+  return (
+    <SidebarMenuSubItem>
+      <SidebarMenuSubButton
+        isActive={isActive}
+        onClick={() => onSelect(loggerId)}
+        className="cursor-pointer pl-6"
+      >
+        <span className="truncate">{loggerId}</span>
+      </SidebarMenuSubButton>
+    </SidebarMenuSubItem>
+  )
+}
+
 export function NavLoggers({ loggers, selectedLogger, onSelectLogger }: Readonly<NavLoggersProps>) {
   if (loggers.length === 0) {
     return (
@@ -103,19 +126,14 @@ export function NavLoggers({ loggers, selectedLogger, onSelectLogger }: Readonly
                           </CollapsibleTrigger>
                           <CollapsibleContent>
                             <SidebarMenuSub>
-                              {typeLoggers
-                                .sort((a, b) => a.id.localeCompare(b.id))
-                                .map((logger) => (
-                                  <SidebarMenuSubItem key={logger.id}>
-                                    <SidebarMenuSubButton
-                                      isActive={logger.id === selectedLogger}
-                                      onClick={() => onSelectLogger(logger.id)}
-                                      className="cursor-pointer pl-6"
-                                    >
-                                      <span className="truncate">{logger.id}</span>
-                                    </SidebarMenuSubButton>
-                                  </SidebarMenuSubItem>
-                                ))}
+                              {[...typeLoggers].sort((a, b) => a.id.localeCompare(b.id)).map((logger) => (
+                                <LoggerMenuItem
+                                  key={logger.id}
+                                  loggerId={logger.id}
+                                  isActive={logger.id === selectedLogger}
+                                  onSelect={onSelectLogger}
+                                />
+                              ))}
                             </SidebarMenuSub>
                           </CollapsibleContent>
                         </SidebarMenuSubItem>

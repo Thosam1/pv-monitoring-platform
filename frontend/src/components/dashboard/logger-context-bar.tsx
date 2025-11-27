@@ -95,13 +95,11 @@ export function LoggerContextBar({
                             />
                             {type.label}
                           </div>
-                          {typeLoggers
-                            .sort((a, b) => a.id.localeCompare(b.id))
-                            .map((logger) => (
-                              <SelectItem key={logger.id} value={logger.id}>
-                                <span className="pl-2">{logger.id}</span>
-                              </SelectItem>
-                            ))}
+                          {[...typeLoggers].sort((a, b) => a.id.localeCompare(b.id)).map((logger) => (
+                            <SelectItem key={logger.id} value={logger.id}>
+                              <span className="pl-2">{logger.id}</span>
+                            </SelectItem>
+                          ))}
                         </Fragment>
                       ))}
                     </SelectGroup>

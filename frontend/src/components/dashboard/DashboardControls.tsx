@@ -82,7 +82,7 @@ export function DashboardControls({
                   mode="single"
                   selected={selectedDate}
                   onSelect={handleDateSelect}
-                  initialFocus
+                  autoFocus
                 />
               </PopoverContent>
             </Popover>
