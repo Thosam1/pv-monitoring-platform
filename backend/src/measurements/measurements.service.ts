@@ -27,6 +27,15 @@ export interface LoggerInfo {
 export class MeasurementsService {
   private readonly logger = new Logger(MeasurementsService.name);
 
+  /**
+   * Map of logger types to their metadata keys for interval energy extraction
+   * Used by extractIntervalEnergy() to look up the correct field
+   */
+  private readonly ENERGY_METADATA_KEYS: Record<string, string> = {
+    smartdog: 'energyIntervalKwh',
+    lti: 'energyInterval',
+  };
+
   constructor(
     @InjectRepository(Measurement)
     private readonly measurementRepository: Repository<Measurement>,
@@ -185,13 +194,8 @@ export class MeasurementsService {
     },
     loggerType: string,
   ): number | null {
-    const metadataKey =
-      loggerType === 'smartdog'
-        ? 'energyIntervalKwh'
-        : loggerType === 'lti'
-          ? 'energyInterval'
-          : null;
-
+    // Check metadata-based logger types first (SmartDog, LTI)
+    const metadataKey = this.ENERGY_METADATA_KEYS[loggerType];
     if (metadataKey) {
       const value = measurement.metadata?.[metadataKey];
       return typeof value === 'number' && !Number.isNaN(value) ? value : null;

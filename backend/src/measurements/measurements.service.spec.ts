@@ -362,4 +362,254 @@ describe('MeasurementsService', () => {
       expect(result).toBe(0);
     });
   });
+
+  describe('getEarliestTimestamp', () => {
+    it('should return the earliest timestamp for a logger', async () => {
+      const loggerId = 'LOGGER001';
+      const earliestTimestamp = new Date('2023-01-01T00:00:00.000Z');
+
+      mockRepository.findOne.mockResolvedValue({
+        timestamp: earliestTimestamp,
+      });
+
+      const result = await service.getEarliestTimestamp(loggerId);
+
+      expect(result).toEqual(earliestTimestamp);
+      expect(mockRepository.findOne).toHaveBeenCalledWith({
+        select: ['timestamp'],
+        where: { loggerId },
+        order: { timestamp: 'ASC' },
+      });
+    });
+
+    it('should return null when no data exists', async () => {
+      mockRepository.findOne.mockResolvedValue(null);
+
+      const result = await service.getEarliestTimestamp('NONEXISTENT');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getDateRange', () => {
+    it('should return both earliest and latest timestamps', async () => {
+      const loggerId = 'LOGGER001';
+      const earliestTimestamp = new Date('2023-01-01T00:00:00.000Z');
+      const latestTimestamp = new Date('2023-12-31T23:59:59.000Z');
+
+      // Mock findOne to return different values based on order
+      mockRepository.findOne
+        .mockResolvedValueOnce({ timestamp: earliestTimestamp }) // ASC
+        .mockResolvedValueOnce({ timestamp: latestTimestamp }); // DESC
+
+      const result = await service.getDateRange(loggerId);
+
+      expect(result).toEqual({
+        earliest: earliestTimestamp,
+        latest: latestTimestamp,
+      });
+    });
+
+    it('should return nulls when no data exists', async () => {
+      mockRepository.findOne.mockResolvedValue(null);
+
+      const result = await service.getDateRange('NONEXISTENT');
+
+      expect(result).toEqual({
+        earliest: null,
+        latest: null,
+      });
+    });
+  });
+
+  describe('Cumulative Energy Calculation', () => {
+    const start = new Date('2023-06-15T00:00:00.000Z');
+    const end = new Date('2023-06-15T23:59:59.999Z');
+
+    it('should calculate cumulative energy for SmartDog logger', async () => {
+      const loggerId = 'SMARTDOG_001';
+
+      const mockMeasurements = [
+        {
+          timestamp: new Date('2023-06-15T10:00:00.000Z'),
+          loggerType: 'smartdog',
+          activePowerWatts: 1000,
+          energyDailyKwh: null,
+          irradiance: null,
+          metadata: { energyIntervalKwh: 0.083 }, // 1kW * 5min/60 = 0.083 kWh
+        },
+        {
+          timestamp: new Date('2023-06-15T10:05:00.000Z'),
+          loggerType: 'smartdog',
+          activePowerWatts: 1200,
+          energyDailyKwh: null,
+          irradiance: null,
+          metadata: { energyIntervalKwh: 0.1 },
+        },
+        {
+          timestamp: new Date('2023-06-15T10:10:00.000Z'),
+          loggerType: 'smartdog',
+          activePowerWatts: 1500,
+          energyDailyKwh: null,
+          irradiance: null,
+          metadata: { energyIntervalKwh: 0.125 },
+        },
+      ];
+
+      mockRepository.find.mockResolvedValue(mockMeasurements);
+
+      const results = await service.getMeasurements(loggerId, start, end);
+
+      // Cumulative energy should be: 0.083, 0.183, 0.308
+      expect(results).toHaveLength(3);
+      expect(results[0].energyDailyKwh).toBeCloseTo(0.083, 3);
+      expect(results[1].energyDailyKwh).toBeCloseTo(0.183, 3);
+      expect(results[2].energyDailyKwh).toBeCloseTo(0.308, 3);
+    });
+
+    it('should calculate cumulative energy for LTI logger', async () => {
+      const loggerId = 'LTI_001';
+
+      const mockMeasurements = [
+        {
+          timestamp: new Date('2023-06-15T10:00:00.000Z'),
+          loggerType: 'lti',
+          activePowerWatts: 1000,
+          energyDailyKwh: null,
+          irradiance: null,
+          metadata: { energyInterval: 0.5 },
+        },
+        {
+          timestamp: new Date('2023-06-15T10:15:00.000Z'),
+          loggerType: 'lti',
+          activePowerWatts: 1200,
+          energyDailyKwh: null,
+          irradiance: null,
+          metadata: { energyInterval: 0.6 },
+        },
+      ];
+
+      mockRepository.find.mockResolvedValue(mockMeasurements);
+
+      const results = await service.getMeasurements(loggerId, start, end);
+
+      expect(results).toHaveLength(2);
+      expect(results[0].energyDailyKwh).toBeCloseTo(0.5, 3);
+      expect(results[1].energyDailyKwh).toBeCloseTo(1.1, 3);
+    });
+
+    it('should calculate cumulative energy for Meier logger', async () => {
+      const loggerId = 'MEIER_001';
+
+      const mockMeasurements = [
+        {
+          timestamp: new Date('2023-06-15T10:00:00.000Z'),
+          loggerType: 'meier',
+          activePowerWatts: 1000,
+          energyDailyKwh: 0.25,
+          irradiance: null,
+          metadata: {},
+        },
+        {
+          timestamp: new Date('2023-06-15T10:15:00.000Z'),
+          loggerType: 'meier',
+          activePowerWatts: 1200,
+          energyDailyKwh: 0.3,
+          irradiance: null,
+          metadata: {},
+        },
+      ];
+
+      mockRepository.find.mockResolvedValue(mockMeasurements);
+
+      const results = await service.getMeasurements(loggerId, start, end);
+
+      expect(results).toHaveLength(2);
+      expect(results[0].energyDailyKwh).toBeCloseTo(0.25, 3);
+      expect(results[1].energyDailyKwh).toBeCloseTo(0.55, 3);
+    });
+
+    it('should handle null energy values gracefully', async () => {
+      const loggerId = 'SMARTDOG_002';
+
+      const mockMeasurements = [
+        {
+          timestamp: new Date('2023-06-15T10:00:00.000Z'),
+          loggerType: 'smartdog',
+          activePowerWatts: 1000,
+          energyDailyKwh: null,
+          irradiance: null,
+          metadata: { energyIntervalKwh: 0.1 },
+        },
+        {
+          timestamp: new Date('2023-06-15T10:05:00.000Z'),
+          loggerType: 'smartdog',
+          activePowerWatts: 0,
+          energyDailyKwh: null,
+          irradiance: null,
+          metadata: {}, // Missing energyIntervalKwh
+        },
+        {
+          timestamp: new Date('2023-06-15T10:10:00.000Z'),
+          loggerType: 'smartdog',
+          activePowerWatts: 1200,
+          energyDailyKwh: null,
+          irradiance: null,
+          metadata: { energyIntervalKwh: 0.1 },
+        },
+      ];
+
+      mockRepository.find.mockResolvedValue(mockMeasurements);
+
+      const results = await service.getMeasurements(loggerId, start, end);
+
+      // Should skip null values but continue accumulating
+      expect(results).toHaveLength(3);
+      expect(results[0].energyDailyKwh).toBeCloseTo(0.1, 3);
+      expect(results[1].energyDailyKwh).toBeCloseTo(0.1, 3); // Same as previous (null skipped)
+      expect(results[2].energyDailyKwh).toBeCloseTo(0.2, 3);
+    });
+
+    it('should NOT calculate cumulative energy for non-cumulative loggers', async () => {
+      const loggerId = 'GOODWE_001';
+
+      const mockMeasurements = [
+        {
+          timestamp: new Date('2023-06-15T10:00:00.000Z'),
+          loggerType: 'goodwe',
+          activePowerWatts: 1000,
+          energyDailyKwh: 5.5,
+          irradiance: null,
+          metadata: {},
+        },
+        {
+          timestamp: new Date('2023-06-15T10:15:00.000Z'),
+          loggerType: 'goodwe',
+          activePowerWatts: 1200,
+          energyDailyKwh: 6.2,
+          irradiance: null,
+          metadata: {},
+        },
+      ];
+
+      mockRepository.find.mockResolvedValue(mockMeasurements);
+
+      const results = await service.getMeasurements(loggerId, start, end);
+
+      // GoodWe should return original energyDailyKwh values (not cumulative)
+      expect(results).toHaveLength(2);
+      expect(results[0].energyDailyKwh).toBe(5.5);
+      expect(results[1].energyDailyKwh).toBe(6.2);
+    });
+
+    it('should handle empty measurements for cumulative logger', async () => {
+      const loggerId = 'SMARTDOG_EMPTY';
+
+      mockRepository.find.mockResolvedValue([]);
+
+      const results = await service.getMeasurements(loggerId, start, end);
+
+      expect(results).toHaveLength(0);
+    });
+  });
 });

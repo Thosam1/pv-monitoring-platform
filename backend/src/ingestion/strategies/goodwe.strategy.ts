@@ -562,8 +562,8 @@ export class GoodWeParser implements IParser {
    * Handles malformed CSV fields with single or double quotes
    */
   private stripQuotes(value: string): string {
-    // Use explicit grouping for regex alternation precedence
-    return value.replaceAll(/^(["']+)|(["']+)$/g, '');
+    // Use non-capturing groups for explicit regex alternation precedence
+    return value.replaceAll(/^(?:["']+)|(?:["']+)$/g, '');
   }
 
   /**
