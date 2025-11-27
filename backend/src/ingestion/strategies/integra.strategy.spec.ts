@@ -77,7 +77,7 @@ describe('IntegraParser', () => {
       expect(results[0].irradiance).toBeNull();
     });
 
-    it('should store unmapped fields in metadata', async () => {
+    it('should store unmapped fields in metadata with normalized keys', async () => {
       const buffer = Buffer.from(
         integraXml.withMetrics({
           P_AC: '1000',
@@ -90,9 +90,10 @@ describe('IntegraParser', () => {
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results[0].activePowerWatts).toBe(1000);
-      expect(results[0].metadata).toHaveProperty('fAc', 50.02);
-      expect(results[0].metadata).toHaveProperty('iAc1', 4.5);
-      expect(results[0].metadata).toHaveProperty('eTotal', 12345);
+      // New normalized key names for frontend compatibility
+      expect(results[0].metadata).toHaveProperty('frequency', 50.02);
+      expect(results[0].metadata).toHaveProperty('currentAC', 4.5);
+      expect(results[0].metadata).toHaveProperty('energyTotal', 12345);
     });
 
     it('should include inverterType in metadata', async () => {
@@ -173,14 +174,14 @@ describe('IntegraParser', () => {
       const buffer = Buffer.from(integraXml.withErrors(), 'utf-8');
       const results = await collectDTOs(parser.parse(buffer));
 
-      expect(results[0].metadata).toHaveProperty('error', null);
+      expect(results[0].metadata).toHaveProperty('errorStatus', null);
     });
 
     it('should strip ": " prefix from state values', async () => {
       const buffer = Buffer.from(integraXml.withErrors(), 'utf-8');
       const results = await collectDTOs(parser.parse(buffer));
 
-      expect(results[0].metadata).toHaveProperty('state', 'Run');
+      expect(results[0].metadata).toHaveProperty('inverterState', 'Run');
     });
 
     it('should parse zero as 0, not null', async () => {

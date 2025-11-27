@@ -128,6 +128,63 @@ export class GoodWeParser implements IParser {
     'station_id',
   ];
 
+  /**
+   * Metadata key translation map for frontend compatibility
+   * Maps GoodWe field names (lowercase) to normalized semantic keys
+   */
+  private readonly TRANSLATION_MAP: Record<string, string> = {
+    // AC Voltage variants
+    vac: 'voltageAC',
+    u_ac: 'voltageAC',
+    uac: 'voltageAC',
+    gridvoltage: 'voltageAC',
+    grid_voltage: 'voltageAC',
+    acvoltage: 'voltageAC',
+    ac_voltage: 'voltageAC',
+    // DC Voltage variants
+    vdc: 'voltageDC',
+    u_dc: 'voltageDC',
+    udc: 'voltageDC',
+    pv1volt: 'voltageDC',
+    pv1voltage: 'voltageDC',
+    vpv1: 'voltageDC',
+    dcvoltage: 'voltageDC',
+    dc_voltage: 'voltageDC',
+    // AC Current variants
+    iac: 'currentAC',
+    i_ac: 'currentAC',
+    gridcurrent: 'currentAC',
+    grid_current: 'currentAC',
+    accurrent: 'currentAC',
+    ac_current: 'currentAC',
+    // DC Current variants
+    idc: 'currentDC',
+    i_dc: 'currentDC',
+    pv1curr: 'currentDC',
+    pv1current: 'currentDC',
+    ipv1: 'currentDC',
+    dccurrent: 'currentDC',
+    dc_current: 'currentDC',
+    // Frequency variants
+    fac: 'frequency',
+    f_ac: 'frequency',
+    freq: 'frequency',
+    gridfrequency: 'frequency',
+    grid_frequency: 'frequency',
+    // Temperature variants
+    temp: 'temperature',
+    temperature: 'temperature',
+    internaltemp: 'temperatureInternal',
+    internal_temp: 'temperatureInternal',
+    heatsinktemp: 'temperatureHeatsink',
+    heatsink_temp: 'temperatureHeatsink',
+    // Power factor
+    powerfactor: 'powerFactor',
+    power_factor: 'powerFactor',
+    pf: 'powerFactor',
+    cosphi: 'powerFactor',
+  };
+
   canHandle(filename: string, snippet: string): boolean {
     // Check filename patterns
     const filenameMatch = this.filenamePatterns.some((pattern) =>
@@ -529,9 +586,10 @@ export class GoodWeParser implements IParser {
       return 'activePowerWatts';
     }
 
-    // Daily energy variations
+    // Daily energy variations - use specific patterns to avoid false positives
     if (
-      (normalizedKey.includes('e') && normalizedKey.includes('day')) ||
+      /^e[_-]?day/i.test(normalizedKey) || // e_day, eday, e-day at start
+      /[_-]e[_-]?day/i.test(normalizedKey) || // _e_day, _eday in middle
       (normalizedKey.includes('energy') && normalizedKey.includes('today')) ||
       (normalizedKey.includes('daily') && normalizedKey.includes('energy')) ||
       normalizedKey === 'eday' ||
@@ -577,11 +635,26 @@ export class GoodWeParser implements IParser {
 
   /**
    * Normalize field name for metadata storage
-   * Converts "DC Voltage 1" -> "dcVoltage1"
+   * First checks TRANSLATION_MAP for semantic mapping, then falls back to camelCase
+   * Example: "pv1volt" -> "voltageDC", "DC Voltage 1" -> "dcVoltage1"
    */
   private normalizeFieldName(name: string): string {
-    return name
-      .trim()
+    const trimmed = name.trim();
+    const lowerKey = trimmed.toLowerCase().replaceAll(/[\s_-]+/g, '');
+
+    // Check translation map first (try with and without separators)
+    if (this.TRANSLATION_MAP[lowerKey]) {
+      return this.TRANSLATION_MAP[lowerKey];
+    }
+
+    // Try with underscores preserved
+    const withUnderscores = trimmed.toLowerCase().replaceAll(/[\s-]+/g, '_');
+    if (this.TRANSLATION_MAP[withUnderscores]) {
+      return this.TRANSLATION_MAP[withUnderscores];
+    }
+
+    // Fall back to camelCase conversion
+    return trimmed
       .replaceAll(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
       .replaceAll(/\s+(\S)/g, (_, char: string) => char.toUpperCase()) // camelCase
       .replace(/^\w/, (char) => char.toLowerCase()); // lowercase first

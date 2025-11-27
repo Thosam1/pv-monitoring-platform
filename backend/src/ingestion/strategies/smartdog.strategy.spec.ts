@@ -208,7 +208,7 @@ describe('SmartdogParser', () => {
 
       expect(results[0].metadata).toMatchObject({
         dcPowerWatts: 550,
-        dcVoltage: 600,
+        voltageDC: 600, // Changed from dcVoltage for frontend compatibility
         inverterTemperature: 35,
       });
     });

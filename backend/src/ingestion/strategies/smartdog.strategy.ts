@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Scope } from '@nestjs/common';
 import { IParser, ParserError } from '../interfaces/parser.interface';
 import { UnifiedMeasurementDTO } from '../dto/unified-measurement.dto';
 
@@ -22,15 +22,23 @@ import { UnifiedMeasurementDTO } from '../dto/unified-measurement.dto';
  * Skipped file types (not measurement data):
  * - *_avg_*.txt (pre-aggregated data)
  * - events_*.txt (alarm/event logs)
+ *
+ * THREAD SAFETY NOTE:
+ * This parser uses request-scoped instantiation (Scope.REQUEST) to ensure
+ * thread safety. Each request gets a fresh parser instance, preventing
+ * filename state from being shared between concurrent file uploads.
  */
-@Injectable()
+@Injectable({ scope: Scope.REQUEST })
 export class SmartdogParser implements IParser {
   private readonly logger = new Logger(SmartdogParser.name);
 
   readonly name = 'smartdog';
   readonly description = 'SmartDog Logger CSV Export';
 
-  /** Current filename being parsed (set by canHandle) */
+  /**
+   * Current filename being parsed (set by canHandle)
+   * Safe due to request-scoped instantiation (each request gets fresh instance)
+   */
   private currentFilename = '';
 
   /** File type patterns (allow optional smartdog_ prefix from controller) */
@@ -55,15 +63,38 @@ export class SmartdogParser implements IParser {
 
   /**
    * Semantic translation map for metadata keys
+   * Maps SmartDog field names to normalized semantic keys for frontend compatibility
    */
   private readonly TRANSLATION_MAP: Record<string, string> = {
+    // Power metrics
     pdc: 'dcPowerWatts',
-    udc: 'dcVoltage',
+    pac: 'acPowerWatts',
+    // Voltage
+    udc: 'voltageDC',
+    uac: 'voltageAC',
+    vpv: 'voltageDC',
+    vac: 'voltageAC',
+    // Current
+    idc: 'currentDC',
+    iac: 'currentAC',
+    ipv: 'currentDC',
+    // Frequency
+    fac: 'frequency',
+    freq: 'frequency',
+    // Temperature
     temp: 'inverterTemperature',
+    temperature: 'inverterTemperature',
+    // Energy
+    etotal: 'energyTotal',
+    etoday: 'energyToday',
+    // Device info
     address: 'deviceAddress',
     bus: 'busNumber',
     strings: 'stringCount',
     stringid: 'stringId',
+    // Efficiency
+    efficiency: 'efficiency',
+    eff: 'efficiency',
   };
 
   /**

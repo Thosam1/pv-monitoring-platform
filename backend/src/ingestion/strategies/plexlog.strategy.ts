@@ -55,8 +55,24 @@ export class PlexlogParser implements IParser {
   private readonly DATA_TABLE = 'tbl_inverterdata';
 
   /**
-   * Known sensor device IDs (irradiance sensors)
-   * These devices report irradiance in acproduction instead of AC power
+   * Known sensor device IDs (irradiance/environmental sensors)
+   *
+   * IMPORTANT: These device IDs determine how `acproduction` is interpreted:
+   * - Sensor devices (listed here): acproduction = irradiance (W/m²)
+   * - All other devices: acproduction = activePowerWatts (W)
+   *
+   * Device ID mapping (based on Plexlog configuration):
+   * - 10: Irradiance sensor (pyranometer)
+   *
+   * LIMITATIONS:
+   * - Only device ID 10 is currently recognized as a sensor
+   * - If your installation has other sensor device IDs, add them to this set
+   * - Device IDs not in this set will incorrectly map irradiance to activePowerWatts
+   *
+   * To identify sensor device IDs in your data:
+   * 1. Query: SELECT DISTINCT id_inverter, optionalvalue FROM tbl_inverterdata
+   * 2. Sensors typically have optionalvalue with keys like: tce, tex, wds
+   * 3. Inverters typically have: tot, uac, p01, u01
    */
   private readonly SENSOR_DEVICE_IDS = new Set([10]);
 
