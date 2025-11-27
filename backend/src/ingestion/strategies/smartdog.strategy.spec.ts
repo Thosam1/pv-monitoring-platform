@@ -213,6 +213,28 @@ describe('SmartdogParser', () => {
       });
     });
 
+    it('calculates energyIntervalKwh from pac (5-minute interval)', async () => {
+      const lines = smartdogCsv.inverterFile([
+        { ts: SMARTDOG_TIMESTAMP, pac: 1200, pdc: 1300, udc: 600, temp: 35 },
+      ]);
+      const results = await parseAndCollect(parser, lines);
+
+      // 1200W × (5min/60min) / 1000 = 0.1 kWh
+      expect(results[0].metadata).toHaveProperty('energyIntervalKwh');
+      expect(results[0].metadata['energyIntervalKwh']).toBeCloseTo(0.1, 4);
+    });
+
+    it('sets energyIntervalKwh to null when pac is null', async () => {
+      // Create a file with empty pac value
+      const lines = [
+        'timestamp;address;bus;strings;stringid;pac;pdc;udc;temp',
+        `${SMARTDOG_TIMESTAMP};9;1;6;1;;550;600;35`,
+      ];
+      const results = await parseAndCollect(parser, lines);
+
+      expect(results[0].metadata['energyIntervalKwh']).toBeNull();
+    });
+
     it('sets energyDailyKwh to null (not available)', async () => {
       const lines = smartdogCsv.inverterSimple(500);
       const results = await parseAndCollect(parser, lines);

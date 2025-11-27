@@ -81,6 +81,7 @@ export class MeasurementsService {
     const measurements = await this.measurementRepository.find({
       select: [
         'timestamp',
+        'loggerType',
         'activePowerWatts',
         'energyDailyKwh',
         'irradiance',
@@ -95,6 +96,32 @@ export class MeasurementsService {
 
     this.logger.debug(`Found ${measurements.length} measurements`);
 
+    // Logger types that store interval energy (not cumulative)
+    // These need cumulative calculation so charts show energy increasing over time
+    const CUMULATIVE_ENERGY_LOGGERS = ['smartdog', 'meier', 'lti'];
+    const loggerType = measurements[0]?.loggerType;
+
+    if (
+      CUMULATIVE_ENERGY_LOGGERS.includes(loggerType ?? '') &&
+      measurements.length > 0
+    ) {
+      const cumulativeEnergies = this.calculateCumulativeEnergy(
+        measurements,
+        loggerType ?? '',
+      );
+      this.logger.debug(
+        `${loggerType} cumulative energy: 0 -> ${cumulativeEnergies[cumulativeEnergies.length - 1]?.toFixed(2)} kWh`,
+      );
+
+      return measurements.map((m, index) => ({
+        timestamp: m.timestamp,
+        activePowerWatts: m.activePowerWatts,
+        energyDailyKwh: cumulativeEnergies[index],
+        irradiance: m.irradiance,
+        metadata: m.metadata ?? {},
+      }));
+    }
+
     return measurements.map((m) => ({
       timestamp: m.timestamp,
       activePowerWatts: m.activePowerWatts,
@@ -102,6 +129,65 @@ export class MeasurementsService {
       irradiance: m.irradiance,
       metadata: m.metadata ?? {},
     }));
+  }
+
+  /**
+   * Calculate cumulative energy from interval values
+   *
+   * Different loggers store interval energy differently:
+   * - SmartDog: metadata.energyIntervalKwh (derived from pac / 12000)
+   * - LTI: metadata.energyInterval (e_int field from file)
+   * - Meier: energyDailyKwh column (from GENERAL.Yield, actually interval energy)
+   *
+   * Returns an array of cumulative energy values, one per record,
+   * so the chart shows energy increasing throughout the day.
+   *
+   * @param measurements Array of measurement records
+   * @param loggerType Logger type to determine energy source
+   * @returns Array of cumulative energy values in kWh
+   */
+  private calculateCumulativeEnergy(
+    measurements: Array<{
+      energyDailyKwh: number | null;
+      metadata: Record<string, unknown>;
+    }>,
+    loggerType: string,
+  ): Array<number | null> {
+    const cumulativeEnergies: Array<number | null> = [];
+    let runningTotal = 0;
+    let hasValidData = false;
+
+    for (const m of measurements) {
+      // Get interval energy based on logger type
+      let intervalEnergy: number | null = null;
+
+      if (loggerType === 'smartdog') {
+        // SmartDog: interval energy derived from power, stored in metadata
+        const metaEnergy = m.metadata?.energyIntervalKwh;
+        if (typeof metaEnergy === 'number' && !Number.isNaN(metaEnergy)) {
+          intervalEnergy = metaEnergy;
+        }
+      } else if (loggerType === 'lti') {
+        // LTI: interval energy stored as metadata.energyInterval (kWh)
+        const metaEnergy = m.metadata?.energyInterval;
+        if (typeof metaEnergy === 'number' && !Number.isNaN(metaEnergy)) {
+          intervalEnergy = metaEnergy;
+        }
+      } else if (loggerType === 'meier') {
+        // Meier: "Yield" is stored in energyDailyKwh but it's actually interval energy
+        intervalEnergy = m.energyDailyKwh;
+      }
+
+      if (intervalEnergy !== null && !Number.isNaN(intervalEnergy)) {
+        runningTotal += intervalEnergy;
+        hasValidData = true;
+      }
+
+      // Push current cumulative total (or null if no valid data yet)
+      cumulativeEnergies.push(hasValidData ? runningTotal : null);
+    }
+
+    return cumulativeEnergies;
   }
 
   /**
