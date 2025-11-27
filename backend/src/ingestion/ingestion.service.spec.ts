@@ -350,6 +350,48 @@ describe('IngestionService', () => {
 
       expect(mockQueryBuilder.values).toHaveBeenCalled();
     });
+
+    it('should skip .DS_Store system files', async () => {
+      const fileBuffer = Buffer.from('binary content');
+
+      const result = await service.ingestFile('.DS_Store', fileBuffer);
+
+      expect(result.success).toBe(false);
+      expect(result.parserUsed).toBe('none');
+      expect(result.errors).toContain('System file skipped');
+    });
+
+    it('should skip hidden files starting with dot', async () => {
+      const fileBuffer = Buffer.from('hidden content');
+
+      const result = await service.ingestFile('.hidden_config', fileBuffer);
+
+      expect(result.success).toBe(false);
+      expect(result.parserUsed).toBe('none');
+      expect(result.errors).toContain('System file skipped');
+    });
+
+    it('should skip Thumbs.db system files', async () => {
+      const fileBuffer = Buffer.from('thumbnail data');
+
+      const result = await service.ingestFile('Thumbs.db', fileBuffer);
+
+      expect(result.success).toBe(false);
+      expect(result.parserUsed).toBe('none');
+      expect(result.errors).toContain('System file skipped');
+    });
+
+    it('should handle system files in folder paths', async () => {
+      const fileBuffer = Buffer.from('content');
+
+      const result = await service.ingestFile(
+        'uploads/folder/.DS_Store',
+        fileBuffer,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toContain('System file skipped');
+    });
   });
 
   describe('getSupportedParsers', () => {

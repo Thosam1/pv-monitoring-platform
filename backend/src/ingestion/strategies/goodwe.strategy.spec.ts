@@ -233,6 +233,50 @@ describe('GoodWeParser', () => {
       expect(results[0].metadata).toHaveProperty('voltagedc1', 350);
       expect(results[0].metadata).toHaveProperty('temperature', 45);
     });
+
+    it('should skip rows with short logger IDs (< 10 chars)', async () => {
+      // Logger ID "ABC" is only 3 chars - should be skipped
+      const results = await parseAndCollect(parser, [
+        goodweCsv.row('pac', '1000', GOODWE_TIMESTAMP, 'ABC'),
+        goodweCsv.row('pac', '2000'), // Uses DEFAULT_LOGGER which is valid
+      ]);
+
+      // Only the second row with valid logger should be parsed
+      expect(results).toHaveLength(1);
+      expect(results[0].activePowerWatts).toBe(2000);
+    });
+
+    it('should skip rows with numeric-only logger IDs', async () => {
+      // Logger ID with only digits should be skipped (garbage from binary parsing)
+      const results = await parseAndCollect(parser, [
+        goodweCsv.row('pac', '1000', GOODWE_TIMESTAMP, '123456789012'),
+        goodweCsv.row('pac', '2000'), // Valid logger
+      ]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].activePowerWatts).toBe(2000);
+    });
+
+    it('should accept valid alphanumeric logger IDs', async () => {
+      // Valid GoodWe logger ID: 16 chars, alphanumeric
+      const results = await parseAndCollect(parser, [
+        goodweCsv.row('pac', '1500', GOODWE_TIMESTAMP, '9250KHTU22BP0338'),
+      ]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].loggerId).toBe('9250KHTU22BP0338');
+      expect(results[0].activePowerWatts).toBe(1500);
+    });
+
+    it('should skip rows with "unknown" logger ID', async () => {
+      const results = await parseAndCollect(parser, [
+        goodweCsv.row('pac', '1000', GOODWE_TIMESTAMP, 'unknown'),
+        goodweCsv.row('pac', '2000'), // Valid logger
+      ]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].activePowerWatts).toBe(2000);
+    });
   });
 
   describe('Golden Metric Mapping (findGoldenMetricMapping)', () => {
