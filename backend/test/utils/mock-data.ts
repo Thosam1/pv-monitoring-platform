@@ -6,7 +6,7 @@
 // Common timestamp constants
 export const LTI_TIMESTAMP = '2025-10-01 10:00:00';
 export const GOODWE_TIMESTAMP = '20251001T100000';
-export const DEFAULT_LOGGER = 'LOGGER001';
+export const DEFAULT_LOGGER = 'TESTLOGGER01'; // 12 chars - passes GoodWe validation (min 10, not all digits)
 
 /**
  * LTI CSV data builders

@@ -44,6 +44,15 @@ export class IngestionService {
   private readonly parsers: IParser[];
   private readonly BATCH_SIZE = 1000;
 
+  /** System files to skip during ingestion (macOS, Windows, etc.) */
+  private readonly IGNORED_FILES = [
+    '.DS_Store',
+    'Thumbs.db',
+    '.gitkeep',
+    'desktop.ini',
+    '.localized',
+  ];
+
   constructor(
     @InjectRepository(Measurement)
     private readonly measurementRepository: Repository<Measurement>,
@@ -96,6 +105,15 @@ export class IngestionService {
       errors: [],
       durationMs: 0,
     };
+
+    // Skip system files (e.g., .DS_Store from macOS folder uploads)
+    const basename = filename.split('/').pop() || filename;
+    if (this.IGNORED_FILES.includes(basename) || basename.startsWith('.')) {
+      this.logger.debug(`Skipping system file: ${filename}`);
+      result.errors.push('System file skipped');
+      result.durationMs = Date.now() - startTime;
+      return result;
+    }
 
     try {
       // Get file snippet for parser detection

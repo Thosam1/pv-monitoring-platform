@@ -183,14 +183,14 @@ describe('GoodWeParser', () => {
 
     it('should handle multiple loggers in same file', async () => {
       const results = await parseAndCollect(parser, [
-        goodweCsv.row('pac', '500', GOODWE_TIMESTAMP, 'LOGGER_A'),
-        goodweCsv.row('pac', '600', GOODWE_TIMESTAMP, 'LOGGER_B'),
+        goodweCsv.row('pac', '500', GOODWE_TIMESTAMP, 'LOGGER_AAA01'),
+        goodweCsv.row('pac', '600', GOODWE_TIMESTAMP, 'LOGGER_BBB02'),
       ]);
 
       expect(results).toHaveLength(2);
       expect(
         results.map((r) => r.loggerId).sort((a, b) => a.localeCompare(b)),
-      ).toEqual(['LOGGER_A', 'LOGGER_B']);
+      ).toEqual(['LOGGER_AAA01', 'LOGGER_BBB02']);
     });
 
     it('should handle missing values gracefully', async () => {

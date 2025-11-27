@@ -283,8 +283,19 @@ export class GoodWeParser implements IParser {
         continue;
       }
 
-      // Extract loggerId
-      const loggerId = rawLoggerId || 'unknown';
+      // Extract loggerId and strip any leading/trailing quotes (handles malformed CSV)
+      const loggerId = rawLoggerId.replace(/^["']+|["']+$/g, '') || 'unknown';
+
+      // Validate logger ID format (reject garbage from binary files like .DS_Store)
+      if (!this.isValidLoggerId(loggerId)) {
+        skippedCount++;
+        if (i < 5) {
+          this.logger.warn(
+            `Row ${i + 1}: Invalid logger ID "${loggerId}" (too short or numeric-only)`,
+          );
+        }
+        continue;
+      }
 
       // Create group key
       const groupKey = `${timestamp.toISOString()}|${loggerId}`;
@@ -313,6 +324,34 @@ export class GoodWeParser implements IParser {
     for (const group of groups.values()) {
       yield this.transformToDTO(Object.fromEntries(group));
     }
+  }
+
+  /**
+   * Validate logger ID format
+   *
+   * Valid GoodWe logger IDs are typically 16 characters like "9250KHTU22BP0338"
+   * containing both letters and numbers.
+   *
+   * This rejects:
+   * - Short IDs (< 10 chars) - likely garbage from binary file parsing
+   * - Numeric-only IDs (like "925") - likely garbage
+   * - "unknown" placeholder
+   *
+   * @param loggerId - Logger ID to validate
+   * @returns true if valid, false if should be skipped
+   */
+  private isValidLoggerId(loggerId: string): boolean {
+    // Reject empty, unknown, or very short IDs
+    if (!loggerId || loggerId === 'unknown' || loggerId.length < 10) {
+      return false;
+    }
+
+    // Reject IDs that are only digits (garbage from binary parsing)
+    if (/^\d+$/.test(loggerId)) {
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -455,14 +494,16 @@ export class GoodWeParser implements IParser {
   /**
    * Extract logger ID from row, with fallback to 'unknown'
    * Supports both named columns and index-based access (headerless CSV)
+   * Strips leading/trailing quotes to handle malformed CSV fields
    */
   private extractLoggerId(row: Record<string, unknown>): string {
     // Try index-based access first (headerless CSV)
     const indexValue = row['1'];
     if (indexValue !== null && indexValue !== undefined) {
-      const strValue = this.toSafeString(indexValue);
-      if (strValue.trim()) {
-        return strValue.trim();
+      const strValue = this.toSafeString(indexValue).trim();
+      if (strValue) {
+        // Strip any leading/trailing quotes (handles malformed CSV)
+        return strValue.replace(/^["']+|["']+$/g, '') || 'unknown';
       }
     }
 
@@ -470,9 +511,10 @@ export class GoodWeParser implements IParser {
     for (const field of this.loggerIdFields) {
       const value = row[field];
       if (value !== null && value !== undefined) {
-        const strValue = this.toSafeString(value);
-        if (strValue.trim()) {
-          return strValue.trim();
+        const strValue = this.toSafeString(value).trim();
+        if (strValue) {
+          // Strip any leading/trailing quotes (handles malformed CSV)
+          return strValue.replace(/^["']+|["']+$/g, '') || 'unknown';
         }
       }
     }
