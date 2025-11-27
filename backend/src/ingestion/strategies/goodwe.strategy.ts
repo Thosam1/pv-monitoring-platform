@@ -128,6 +128,63 @@ export class GoodWeParser implements IParser {
     'station_id',
   ];
 
+  /**
+   * Metadata key translation map for frontend compatibility
+   * Maps GoodWe field names (lowercase) to normalized semantic keys
+   */
+  private readonly TRANSLATION_MAP: Record<string, string> = {
+    // AC Voltage variants
+    vac: 'voltageAC',
+    u_ac: 'voltageAC',
+    uac: 'voltageAC',
+    gridvoltage: 'voltageAC',
+    grid_voltage: 'voltageAC',
+    acvoltage: 'voltageAC',
+    ac_voltage: 'voltageAC',
+    // DC Voltage variants
+    vdc: 'voltageDC',
+    u_dc: 'voltageDC',
+    udc: 'voltageDC',
+    pv1volt: 'voltageDC',
+    pv1voltage: 'voltageDC',
+    vpv1: 'voltageDC',
+    dcvoltage: 'voltageDC',
+    dc_voltage: 'voltageDC',
+    // AC Current variants
+    iac: 'currentAC',
+    i_ac: 'currentAC',
+    gridcurrent: 'currentAC',
+    grid_current: 'currentAC',
+    accurrent: 'currentAC',
+    ac_current: 'currentAC',
+    // DC Current variants
+    idc: 'currentDC',
+    i_dc: 'currentDC',
+    pv1curr: 'currentDC',
+    pv1current: 'currentDC',
+    ipv1: 'currentDC',
+    dccurrent: 'currentDC',
+    dc_current: 'currentDC',
+    // Frequency variants
+    fac: 'frequency',
+    f_ac: 'frequency',
+    freq: 'frequency',
+    gridfrequency: 'frequency',
+    grid_frequency: 'frequency',
+    // Temperature variants
+    temp: 'temperature',
+    temperature: 'temperature',
+    internaltemp: 'temperatureInternal',
+    internal_temp: 'temperatureInternal',
+    heatsinktemp: 'temperatureHeatsink',
+    heatsink_temp: 'temperatureHeatsink',
+    // Power factor
+    powerfactor: 'powerFactor',
+    power_factor: 'powerFactor',
+    pf: 'powerFactor',
+    cosphi: 'powerFactor',
+  };
+
   canHandle(filename: string, snippet: string): boolean {
     // Check filename patterns
     const filenameMatch = this.filenamePatterns.some((pattern) =>
@@ -177,76 +234,10 @@ export class GoodWeParser implements IParser {
   private async *parseHeaderlessEAV(
     fileBuffer: Buffer,
   ): AsyncGenerator<UnifiedMeasurementDTO> {
-    const rows: Record<string, string>[] = [];
+    const rows = await this.readCsvRows(fileBuffer);
+    this.logger.log(`Read ${rows.length} rows from CSV`);
 
-    // Configure csv-parser for headerless CSV
-    const stream = Readable.from(fileBuffer).pipe(
-      csvParser({
-        headers: false,
-        separator: ',',
-      }),
-    );
-
-    let rowCount = 0;
-
-    for await (const row of stream) {
-      // Debug: Log first row structure to understand the data
-      if (rowCount === 0) {
-        this.logger.debug('First Row Structure:', JSON.stringify(row));
-      }
-      rows.push(row as Record<string, string>);
-      rowCount++;
-    }
-
-    this.logger.log(`Read ${rowCount} rows from CSV`);
-
-    // Group by timestamp + loggerId
-    const groups = new Map<string, Map<string, unknown>>();
-    let skippedCount = 0;
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-
-      // Extract values by index, with trimming
-      const rawTimestamp = this.safeGetAndTrim(row, '0');
-      const rawLoggerId = this.safeGetAndTrim(row, '1');
-      const rawKey = this.safeGetAndTrim(row, '2');
-      const rawValue = this.safeGetAndTrim(row, '3');
-
-      // Parse timestamp
-      const timestamp = this.parseTimestamp(rawTimestamp);
-      if (!timestamp) {
-        skippedCount++;
-        if (i < 5) {
-          // Log first few failures for debugging
-          this.logger.warn(
-            `Row ${i + 1}: No valid timestamp found. Raw value: "${rawTimestamp}"`,
-          );
-        }
-        continue;
-      }
-
-      // Extract loggerId
-      const loggerId = rawLoggerId || 'unknown';
-
-      // Create group key
-      const groupKey = `${timestamp.toISOString()}|${loggerId}`;
-      if (!groups.has(groupKey)) {
-        const groupMap = new Map<string, unknown>();
-        groupMap.set('timestamp', timestamp);
-        groupMap.set('loggerId', loggerId);
-        groups.set(groupKey, groupMap);
-      }
-
-      const group = groups.get(groupKey)!;
-
-      // Store metric: key -> value
-      if (rawKey) {
-        const normalizedKey = rawKey.toLowerCase().trim();
-        const numericValue = this.parseNumber(rawValue);
-        group.set(normalizedKey, numericValue);
-      }
-    }
+    const { groups, skippedCount } = this.groupRowsByTimestampAndLogger(rows);
 
     this.logger.log(
       `Grouped into ${groups.size} measurements (${skippedCount} rows skipped)`,
@@ -256,6 +247,149 @@ export class GoodWeParser implements IParser {
     for (const group of groups.values()) {
       yield this.transformToDTO(Object.fromEntries(group));
     }
+  }
+
+  /**
+   * Read CSV rows from buffer using csv-parser
+   */
+  private async readCsvRows(
+    fileBuffer: Buffer,
+  ): Promise<Record<string, string>[]> {
+    const rows: Record<string, string>[] = [];
+
+    const stream = Readable.from(fileBuffer).pipe(
+      csvParser({
+        headers: false,
+        separator: ',',
+      }),
+    );
+
+    let rowCount = 0;
+    for await (const row of stream) {
+      if (rowCount === 0) {
+        this.logger.debug('First Row Structure:', JSON.stringify(row));
+      }
+      rows.push(row as Record<string, string>);
+      rowCount++;
+    }
+
+    return rows;
+  }
+
+  /**
+   * Group rows by timestamp + loggerId, extracting metrics
+   */
+  private groupRowsByTimestampAndLogger(rows: Record<string, string>[]): {
+    groups: Map<string, Map<string, unknown>>;
+    skippedCount: number;
+  } {
+    const groups = new Map<string, Map<string, unknown>>();
+    let skippedCount = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const result = this.processEavRow(rows[i], i);
+      if (!result) {
+        skippedCount++;
+        continue;
+      }
+
+      const { timestamp, loggerId, key, value } = result;
+      const groupKey = `${timestamp.toISOString()}|${loggerId}`;
+
+      if (!groups.has(groupKey)) {
+        const groupMap = new Map<string, unknown>();
+        groupMap.set('timestamp', timestamp);
+        groupMap.set('loggerId', loggerId);
+        groups.set(groupKey, groupMap);
+      }
+
+      const group = groups.get(groupKey)!;
+      if (key) {
+        group.set(key, value);
+      }
+    }
+
+    return { groups, skippedCount };
+  }
+
+  /**
+   * Process a single EAV row, returning extracted data or null if invalid
+   */
+  private processEavRow(
+    row: Record<string, string>,
+    rowIndex: number,
+  ): {
+    timestamp: Date;
+    loggerId: string;
+    key: string;
+    value: number | null;
+  } | null {
+    const rawTimestamp = this.safeGetAndTrim(row, '0');
+    const rawLoggerId = this.safeGetAndTrim(row, '1');
+    const rawKey = this.safeGetAndTrim(row, '2');
+    const rawValue = this.safeGetAndTrim(row, '3');
+
+    const timestamp = this.parseTimestamp(rawTimestamp);
+    if (!timestamp) {
+      this.logRowWarning(
+        rowIndex,
+        `No valid timestamp found. Raw value: "${rawTimestamp}"`,
+      );
+      return null;
+    }
+
+    const loggerId = this.stripQuotes(rawLoggerId) || 'unknown';
+    if (!this.isValidLoggerId(loggerId)) {
+      this.logRowWarning(
+        rowIndex,
+        `Invalid logger ID "${loggerId}" (too short or numeric-only)`,
+      );
+      return null;
+    }
+
+    return {
+      timestamp,
+      loggerId,
+      key: rawKey.toLowerCase().trim(),
+      value: this.parseNumber(rawValue),
+    };
+  }
+
+  /**
+   * Log a warning for a row, but only for the first few rows
+   */
+  private logRowWarning(rowIndex: number, message: string): void {
+    if (rowIndex < 5) {
+      this.logger.warn(`Row ${rowIndex + 1}: ${message}`);
+    }
+  }
+
+  /**
+   * Validate logger ID format
+   *
+   * Valid GoodWe logger IDs are typically 16 characters like "9250KHTU22BP0338"
+   * containing both letters and numbers.
+   *
+   * This rejects:
+   * - Short IDs (< 10 chars) - likely garbage from binary file parsing
+   * - Numeric-only IDs (like "925") - likely garbage
+   * - "unknown" placeholder
+   *
+   * @param loggerId - Logger ID to validate
+   * @returns true if valid, false if should be skipped
+   */
+  private isValidLoggerId(loggerId: string): boolean {
+    // Reject empty, unknown, or very short IDs
+    if (!loggerId || loggerId === 'unknown' || loggerId.length < 10) {
+      return false;
+    }
+
+    // Reject IDs that are only digits (garbage from binary parsing)
+    if (/^\d+$/.test(loggerId)) {
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -398,14 +532,15 @@ export class GoodWeParser implements IParser {
   /**
    * Extract logger ID from row, with fallback to 'unknown'
    * Supports both named columns and index-based access (headerless CSV)
+   * Strips leading/trailing quotes to handle malformed CSV fields
    */
   private extractLoggerId(row: Record<string, unknown>): string {
     // Try index-based access first (headerless CSV)
     const indexValue = row['1'];
     if (indexValue !== null && indexValue !== undefined) {
-      const strValue = this.toSafeString(indexValue);
-      if (strValue.trim()) {
-        return strValue.trim();
+      const strValue = this.toSafeString(indexValue).trim();
+      if (strValue) {
+        return this.stripQuotes(strValue) || 'unknown';
       }
     }
 
@@ -413,13 +548,32 @@ export class GoodWeParser implements IParser {
     for (const field of this.loggerIdFields) {
       const value = row[field];
       if (value !== null && value !== undefined) {
-        const strValue = this.toSafeString(value);
-        if (strValue.trim()) {
-          return strValue.trim();
+        const strValue = this.toSafeString(value).trim();
+        if (strValue) {
+          return this.stripQuotes(strValue) || 'unknown';
         }
       }
     }
     return 'unknown';
+  }
+
+  /**
+   * Strip leading/trailing quotes from a string
+   * Handles malformed CSV fields with single or double quotes
+   */
+  private stripQuotes(value: string): string {
+    let start = 0;
+    let end = value.length;
+
+    while (start < end && (value[start] === '"' || value[start] === "'")) {
+      start++;
+    }
+
+    while (end > start && (value[end - 1] === '"' || value[end - 1] === "'")) {
+      end--;
+    }
+
+    return value.slice(start, end);
   }
 
   /**
@@ -529,9 +683,10 @@ export class GoodWeParser implements IParser {
       return 'activePowerWatts';
     }
 
-    // Daily energy variations
+    // Daily energy variations - use specific patterns to avoid false positives
     if (
-      (normalizedKey.includes('e') && normalizedKey.includes('day')) ||
+      /^e[_-]?day/i.test(normalizedKey) || // e_day, eday, e-day at start
+      /[_-]e[_-]?day/i.test(normalizedKey) || // _e_day, _eday in middle
       (normalizedKey.includes('energy') && normalizedKey.includes('today')) ||
       (normalizedKey.includes('daily') && normalizedKey.includes('energy')) ||
       normalizedKey === 'eday' ||
@@ -577,11 +732,26 @@ export class GoodWeParser implements IParser {
 
   /**
    * Normalize field name for metadata storage
-   * Converts "DC Voltage 1" -> "dcVoltage1"
+   * First checks TRANSLATION_MAP for semantic mapping, then falls back to camelCase
+   * Example: "pv1volt" -> "voltageDC", "DC Voltage 1" -> "dcVoltage1"
    */
   private normalizeFieldName(name: string): string {
-    return name
-      .trim()
+    const trimmed = name.trim();
+    const lowerKey = trimmed.toLowerCase().replaceAll(/[\s_-]+/g, '');
+
+    // Check translation map first (try with and without separators)
+    if (this.TRANSLATION_MAP[lowerKey]) {
+      return this.TRANSLATION_MAP[lowerKey];
+    }
+
+    // Try with underscores preserved
+    const withUnderscores = trimmed.toLowerCase().replaceAll(/[\s-]+/g, '_');
+    if (this.TRANSLATION_MAP[withUnderscores]) {
+      return this.TRANSLATION_MAP[withUnderscores];
+    }
+
+    // Fall back to camelCase conversion
+    return trimmed
       .replaceAll(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
       .replaceAll(/\s+(\S)/g, (_, char: string) => char.toUpperCase()) // camelCase
       .replace(/^\w/, (char) => char.toLowerCase()); // lowercase first

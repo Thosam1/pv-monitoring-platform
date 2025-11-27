@@ -27,6 +27,15 @@ export interface LoggerInfo {
 export class MeasurementsService {
   private readonly logger = new Logger(MeasurementsService.name);
 
+  /**
+   * Map of logger types to their metadata keys for interval energy extraction
+   * Used by extractIntervalEnergy() to look up the correct field
+   */
+  private readonly ENERGY_METADATA_KEYS: Record<string, string> = {
+    smartdog: 'energyIntervalKwh',
+    lti: 'energyInterval',
+  };
+
   constructor(
     @InjectRepository(Measurement)
     private readonly measurementRepository: Repository<Measurement>,
@@ -81,6 +90,7 @@ export class MeasurementsService {
     const measurements = await this.measurementRepository.find({
       select: [
         'timestamp',
+        'loggerType',
         'activePowerWatts',
         'energyDailyKwh',
         'irradiance',
@@ -95,6 +105,32 @@ export class MeasurementsService {
 
     this.logger.debug(`Found ${measurements.length} measurements`);
 
+    // Logger types that store interval energy (not cumulative)
+    // These need cumulative calculation so charts show energy increasing over time
+    const CUMULATIVE_ENERGY_LOGGERS = ['smartdog', 'meier', 'lti'];
+    const loggerType = measurements[0]?.loggerType;
+
+    if (
+      CUMULATIVE_ENERGY_LOGGERS.includes(loggerType ?? '') &&
+      measurements.length > 0
+    ) {
+      const cumulativeEnergies = this.calculateCumulativeEnergy(
+        measurements,
+        loggerType ?? '',
+      );
+      this.logger.debug(
+        `${loggerType} cumulative energy: 0 -> ${cumulativeEnergies.at(-1)?.toFixed(2)} kWh`,
+      );
+
+      return measurements.map((m, index) => ({
+        timestamp: m.timestamp,
+        activePowerWatts: m.activePowerWatts,
+        energyDailyKwh: cumulativeEnergies[index],
+        irradiance: m.irradiance,
+        metadata: m.metadata ?? {},
+      }));
+    }
+
     return measurements.map((m) => ({
       timestamp: m.timestamp,
       activePowerWatts: m.activePowerWatts,
@@ -102,6 +138,76 @@ export class MeasurementsService {
       irradiance: m.irradiance,
       metadata: m.metadata ?? {},
     }));
+  }
+
+  /**
+   * Calculate cumulative energy from interval values
+   *
+   * Different loggers store interval energy differently:
+   * - SmartDog: metadata.energyIntervalKwh (derived from pac / 12000)
+   * - LTI: metadata.energyInterval (e_int field from file)
+   * - Meier: energyDailyKwh column (from GENERAL.Yield, actually interval energy)
+   *
+   * Returns an array of cumulative energy values, one per record,
+   * so the chart shows energy increasing throughout the day.
+   *
+   * @param measurements Array of measurement records
+   * @param loggerType Logger type to determine energy source
+   * @returns Array of cumulative energy values in kWh
+   */
+  private calculateCumulativeEnergy(
+    measurements: Array<{
+      energyDailyKwh: number | null;
+      metadata: Record<string, unknown>;
+    }>,
+    loggerType: string,
+  ): Array<number | null> {
+    const cumulativeEnergies: Array<number | null> = [];
+    let runningTotal = 0;
+    let hasValidData = false;
+
+    for (const m of measurements) {
+      const intervalEnergy = this.extractIntervalEnergy(m, loggerType);
+
+      if (intervalEnergy !== null) {
+        runningTotal += intervalEnergy;
+        hasValidData = true;
+      }
+
+      cumulativeEnergies.push(hasValidData ? runningTotal : null);
+    }
+
+    return cumulativeEnergies;
+  }
+
+  /**
+   * Extract interval energy from a measurement based on logger type
+   *
+   * - SmartDog: metadata.energyIntervalKwh (derived from pac / 12000)
+   * - LTI: metadata.energyInterval (e_int field from file)
+   * - Meier: energyDailyKwh column (from GENERAL.Yield, actually interval energy)
+   */
+  private extractIntervalEnergy(
+    measurement: {
+      energyDailyKwh: number | null;
+      metadata: Record<string, unknown>;
+    },
+    loggerType: string,
+  ): number | null {
+    // Check metadata-based logger types first (SmartDog, LTI)
+    const metadataKey = this.ENERGY_METADATA_KEYS[loggerType];
+    if (metadataKey) {
+      const value = measurement.metadata?.[metadataKey];
+      return typeof value === 'number' && !Number.isNaN(value) ? value : null;
+    }
+
+    // Meier: uses energyDailyKwh field directly
+    if (loggerType === 'meier') {
+      const value = measurement.energyDailyKwh;
+      return value !== null && !Number.isNaN(value) ? value : null;
+    }
+
+    return null;
   }
 
   /**

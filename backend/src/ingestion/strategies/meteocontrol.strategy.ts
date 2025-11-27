@@ -182,10 +182,84 @@ export class MeteoControlParser implements IParser {
   }
 
   /**
+   * Parser context holding state machine variables
+   */
+  private createParserContext(): {
+    state: ParseState;
+    dateComponents: DateComponents | null;
+    fallbackLoggerId: string;
+    headers: string[];
+    fileType: MeteoControlFileType;
+    dataRowCount: number;
+  } {
+    return {
+      state: ParseState.INITIAL,
+      dateComponents: null,
+      fallbackLoggerId: 'METEOCONTROL_Unknown',
+      headers: [],
+      fileType: 'analog',
+      dataRowCount: 0,
+    };
+  }
+
+  /**
+   * Process INFO state line
+   */
+  private processInfoState(
+    line: string,
+    ctx: ReturnType<typeof this.createParserContext>,
+  ): void {
+    this.processInfoLine(
+      line,
+      (datum) => {
+        ctx.dateComponents = this.parseDatum(datum);
+      },
+      (anlage) => {
+        ctx.fallbackLoggerId = this.sanitizeLoggerId(anlage);
+      },
+    );
+  }
+
+  /**
+   * Process MESSUNG state line (headers)
+   */
+  private processMessungState(
+    line: string,
+    ctx: ReturnType<typeof this.createParserContext>,
+  ): void {
+    if (ctx.headers.length === 0) {
+      ctx.headers = this.parseHeaders(line);
+      ctx.fileType = this.detectFileType(ctx.headers);
+      this.logger.debug(`Detected file type: ${ctx.fileType}`);
+    }
+  }
+
+  /**
+   * Process DATA state line
+   * Returns DTO if valid data row, null otherwise
+   */
+  private processDataState(
+    line: string,
+    ctx: ReturnType<typeof this.createParserContext>,
+  ): UnifiedMeasurementDTO | null {
+    if (this.isMarkerLine(line)) return null;
+    if (!ctx.dateComponents) {
+      this.logger.warn('No Datum found in [info] section, skipping data');
+      return null;
+    }
+    return this.transformRowToDTO(
+      line,
+      ctx.headers,
+      ctx.dateComponents,
+      ctx.fallbackLoggerId,
+      ctx.fileType,
+    );
+  }
+
+  /**
    * Parse Meteo Control INI file using state machine
    */
   async *parse(fileBuffer: Buffer): AsyncGenerator<UnifiedMeasurementDTO> {
-    // Yield control to event loop for large files
     await Promise.resolve();
 
     const content = fileBuffer.toString('utf-8');
@@ -195,90 +269,55 @@ export class MeteoControlParser implements IParser {
       throw new ParserError(this.name, 'File is empty');
     }
 
-    let state = ParseState.INITIAL;
-    let dateComponents: DateComponents | null = null;
-    let fallbackLoggerId = 'METEOCONTROL_Unknown'; // From Anlage (used for analog)
-    let headers: string[] = [];
-    let fileType: MeteoControlFileType = 'analog';
-    let dataRowCount = 0;
+    const ctx = this.createParserContext();
 
     for (const line of lines) {
       const trimmedLine = line.trim();
-
-      // Skip empty lines
       if (trimmedLine === '') continue;
 
-      // State transitions on section markers
       const newState = this.handleStateTransition(trimmedLine);
       if (newState !== null) {
-        state = newState;
+        ctx.state = newState;
         continue;
       }
 
-      // Process line based on current state
-      switch (state) {
-        case ParseState.INFO:
-          this.processInfoLine(
-            trimmedLine,
-            (datum) => {
-              dateComponents = this.parseDatum(datum);
-            },
-            (anlage) => {
-              fallbackLoggerId = this.sanitizeLoggerId(anlage);
-            },
-          );
-          break;
-
-        case ParseState.MESSUNG:
-          // First non-empty line is headers, second is units (skip)
-          if (headers.length === 0) {
-            headers = this.parseHeaders(trimmedLine);
-            fileType = this.detectFileType(headers);
-            this.logger.debug(`Detected file type: ${fileType}`);
-          }
-          // Units row starts with ; - skip it
-          break;
-
-        case ParseState.DATA: {
-          // Skip marker lines like "Info;Time"
-          if (this.isMarkerLine(trimmedLine)) {
-            continue;
-          }
-
-          if (!dateComponents) {
-            this.logger.warn('No Datum found in [info] section, skipping data');
-            continue;
-          }
-
-          const dto = this.transformRowToDTO(
-            trimmedLine,
-            headers,
-            dateComponents,
-            fallbackLoggerId,
-            fileType,
-          );
-          if (dto) {
-            dataRowCount++;
-            yield dto;
-          }
-          break;
-        }
-
-        default:
-          // Before any section marker, ignore lines
-          break;
+      const dto = this.processLineByState(trimmedLine, ctx);
+      if (dto) {
+        ctx.dataRowCount++;
+        yield dto;
       }
     }
 
     this.logger.log(
-      `Parsed ${dataRowCount} data rows from Meteo Control ${fileType} file`,
+      `Parsed ${ctx.dataRowCount} data rows from Meteo Control ${ctx.fileType} file`,
     );
 
-    if (dataRowCount === 0) {
+    if (ctx.dataRowCount === 0) {
       throw new ParserError(
         this.name,
         'No valid data rows found. Check file format.',
       );
+    }
+  }
+
+  /**
+   * Process a line based on current parser state
+   */
+  private processLineByState(
+    line: string,
+    ctx: ReturnType<typeof this.createParserContext>,
+  ): UnifiedMeasurementDTO | null {
+    switch (ctx.state) {
+      case ParseState.INFO:
+        this.processInfoState(line, ctx);
+        return null;
+      case ParseState.MESSUNG:
+        this.processMessungState(line, ctx);
+        return null;
+      case ParseState.DATA:
+        return this.processDataState(line, ctx);
+      default:
+        return null;
     }
   }
 

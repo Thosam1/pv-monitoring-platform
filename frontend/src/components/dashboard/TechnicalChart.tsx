@@ -18,52 +18,125 @@ interface TechnicalChartProps {
   dateLabel?: string | null
 }
 
-interface VoltageDataPoint {
+interface TechnicalDataPoint {
   time: string
   timestamp: Date
-  voltage: number | null
+  voltageDC: number | null
+  voltageAC: number | null
+  currentDC: number | null
+  currentAC: number | null
   temperature: number | null
+  reactivePower: number | null
+  windSpeed: number | null
+  frequency: number | null
 }
 
-// GoodWe voltage keys
-const GOODWE_VOLTAGE_KEYS = ['pv1volt', 'voltagedc1', 'voltage_dc1', 'dcVoltage1', 'vpv1']
-// LTI voltage keys
-const LTI_VOLTAGE_KEYS = ['U_DC', 'voltage', 'dcVoltage', 'udc']
-// Temperature keys
-const TEMP_KEYS = ['temperature', 'T_HS', 'internaltemp', 'temp', 'moduleTemp']
+// DC Voltage keys (expanded for all logger types)
+const VOLTAGE_DC_KEYS = [
+  'voltageDC', 'U_DC', 'vdc',                    // Normalized + common
+  'pv1volt', 'voltagedc1', 'voltage_dc1',        // GoodWe variants
+  'dcVoltage1', 'vpv1', 'dcVoltage', 'udc'       // Other variants
+]
+
+// AC Voltage keys
+const VOLTAGE_AC_KEYS = ['voltageAC', 'U_AC', 'vac', 'gridVoltage', 'acVoltage']
+
+// DC Current keys
+const CURRENT_DC_KEYS = ['currentDC', 'I_DC', 'idc', 'pv1curr', 'dcCurrent', 'ipv1']
+
+// AC Current keys
+const CURRENT_AC_KEYS = ['currentAC', 'I_AC', 'iac', 'gridCurrent', 'acCurrent']
+
+// Temperature keys (expanded with normalized keys and directional variants)
+const TEMPERATURE_KEYS = [
+  'ambientTemperature',        // Priority 1: Ambient
+  'ambientTemperatureWest',    // MBMET directional variant
+  'ambientTemperatureEast',    // MBMET directional variant
+  'cellTemperature',           // Priority 2: Cell/Module
+  'cellTemperatureWest',       // MBMET directional variant
+  'cellTemperatureEast',       // MBMET directional variant
+  'temperatureHeatsink',       // Priority 3: Heatsink
+  'temperatureInternal',       // Priority 4: Internal
+  'temperature', 'T_HS',       // Legacy keys
+  'internaltemp', 'temp', 'moduleTemp'
+]
+
+// Reactive Power keys
+const REACTIVE_POWER_KEYS = ['reactivePowerVar', 'Q', 'var', 'reactivePower']
+
+// Wind Speed keys
+const WIND_SPEED_KEYS = ['windSpeed', 'wind', 'windVelocity']
+
+// Grid Frequency keys (Hz)
+const FREQUENCY_KEYS = ['fac', 'frequency', 'gridFrequency', 'freq', 'f_ac']
 
 /**
- * Extract voltage from metadata - handles both GoodWe and LTI formats
+ * Generic metadata value extractor
  */
-function extractVoltage(metadata: Record<string, unknown>): number | null {
-  // Try GoodWe keys first
-  for (const key of GOODWE_VOLTAGE_KEYS) {
-    const value = metadata[key]
-    if (typeof value === 'number' && !Number.isNaN(value)) {
-      return value
-    }
-  }
-  // Try LTI keys
-  for (const key of LTI_VOLTAGE_KEYS) {
+function extractValue(metadata: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
     const value = metadata[key]
     if (typeof value === 'number' && !Number.isNaN(value)) {
       return value
     }
   }
   return null
+}
+
+/**
+ * Extract DC voltage from metadata
+ */
+function extractVoltageDC(metadata: Record<string, unknown>): number | null {
+  return extractValue(metadata, VOLTAGE_DC_KEYS)
+}
+
+/**
+ * Extract AC voltage from metadata
+ */
+function extractVoltageAC(metadata: Record<string, unknown>): number | null {
+  return extractValue(metadata, VOLTAGE_AC_KEYS)
+}
+
+/**
+ * Extract DC current from metadata
+ */
+function extractCurrentDC(metadata: Record<string, unknown>): number | null {
+  return extractValue(metadata, CURRENT_DC_KEYS)
+}
+
+/**
+ * Extract AC current from metadata
+ */
+function extractCurrentAC(metadata: Record<string, unknown>): number | null {
+  return extractValue(metadata, CURRENT_AC_KEYS)
 }
 
 /**
  * Extract temperature from metadata
  */
 function extractTemperature(metadata: Record<string, unknown>): number | null {
-  for (const key of TEMP_KEYS) {
-    const value = metadata[key]
-    if (typeof value === 'number' && !Number.isNaN(value)) {
-      return value
-    }
-  }
-  return null
+  return extractValue(metadata, TEMPERATURE_KEYS)
+}
+
+/**
+ * Extract reactive power from metadata
+ */
+function extractReactivePower(metadata: Record<string, unknown>): number | null {
+  return extractValue(metadata, REACTIVE_POWER_KEYS)
+}
+
+/**
+ * Extract wind speed from metadata
+ */
+function extractWindSpeed(metadata: Record<string, unknown>): number | null {
+  return extractValue(metadata, WIND_SPEED_KEYS)
+}
+
+/**
+ * Extract grid frequency from metadata
+ */
+function extractFrequency(metadata: Record<string, unknown>): number | null {
+  return extractValue(metadata, FREQUENCY_KEYS)
 }
 
 /**
@@ -81,11 +154,17 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return []
 
-    const transformed: VoltageDataPoint[] = data.map((m) => ({
+    const transformed: TechnicalDataPoint[] = data.map((m) => ({
       time: formatTime(m.timestamp),
       timestamp: m.timestamp,
-      voltage: extractVoltage(m.metadata),
-      temperature: extractTemperature(m.metadata)
+      voltageDC: extractVoltageDC(m.metadata),
+      voltageAC: extractVoltageAC(m.metadata),
+      currentDC: extractCurrentDC(m.metadata),
+      currentAC: extractCurrentAC(m.metadata),
+      temperature: extractTemperature(m.metadata),
+      reactivePower: extractReactivePower(m.metadata),
+      windSpeed: extractWindSpeed(m.metadata),
+      frequency: extractFrequency(m.metadata)
     }))
 
     // Sort by timestamp
@@ -101,9 +180,20 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
     return transformed
   }, [data])
 
-  // Check if we have any voltage or temperature data
-  const hasVoltageData = chartData.some((d) => d.voltage !== null)
+  // Check which data types are available
+  const hasVoltageDC = chartData.some((d) => d.voltageDC !== null)
+  const hasVoltageAC = chartData.some((d) => d.voltageAC !== null)
+  const hasCurrentDC = chartData.some((d) => d.currentDC !== null)
+  const hasCurrentAC = chartData.some((d) => d.currentAC !== null)
   const hasTempData = chartData.some((d) => d.temperature !== null)
+  const hasReactivePower = chartData.some((d) => d.reactivePower !== null)
+  const hasWindSpeed = chartData.some((d) => d.windSpeed !== null)
+  const hasFrequency = chartData.some((d) => d.frequency !== null)
+
+  // Combined checks for rendering logic
+  const hasAnyVoltage = hasVoltageDC || hasVoltageAC
+  const hasAnyCurrent = hasCurrentDC || hasCurrentAC
+  const hasAnyData = hasAnyVoltage || hasAnyCurrent || hasTempData || hasReactivePower || hasWindSpeed || hasFrequency
 
   if (isLoading) {
     return (
@@ -113,12 +203,12 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
     )
   }
 
-  if (chartData.length === 0 || (!hasVoltageData && !hasTempData)) {
+  if (chartData.length === 0 || !hasAnyData) {
     return (
       <div className="h-full flex items-center justify-center bg-white dark:bg-gray-800 rounded-lg shadow">
         <div className="text-center text-gray-500 dark:text-gray-400">
           <p className="text-sm">No technical data available</p>
-          <p className="text-xs mt-1">Voltage/temperature data not found in metadata</p>
+          <p className="text-xs mt-1">Voltage/current/temperature data not found in metadata</p>
         </div>
       </div>
     )
@@ -146,7 +236,8 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
               tick={{ fontSize: 10 }}
               interval="preserveStartEnd"
             />
-            {hasVoltageData && (
+            {/* Voltage Y-Axis (left) */}
+            {hasAnyVoltage && (
               <YAxis
                 yAxisId="voltage"
                 stroke="#8B5CF6"
@@ -156,14 +247,37 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
                 domain={['auto', 'auto']}
               />
             )}
-            {hasTempData && (
+            {/* Current Y-Axis (left, hidden if voltage exists) */}
+            {hasAnyCurrent && !hasAnyVoltage && (
               <YAxis
-                yAxisId="temp"
-                orientation={hasVoltageData ? 'right' : 'left'}
-                stroke="#EF4444"
-                unit=" °C"
+                yAxisId="current"
+                stroke="#10B981"
+                unit=" A"
                 tick={{ fontSize: 10 }}
                 width={50}
+                domain={['auto', 'auto']}
+              />
+            )}
+            {/* Temperature/Other Y-Axis (right) */}
+            {(hasTempData || hasWindSpeed || hasReactivePower) && (
+              <YAxis
+                yAxisId="secondary"
+                orientation="right"
+                stroke="#EF4444"
+                tick={{ fontSize: 10 }}
+                width={50}
+                domain={['auto', 'auto']}
+              />
+            )}
+            {/* Frequency Y-Axis (right, separate scale for ~49-51 Hz) */}
+            {hasFrequency && (
+              <YAxis
+                yAxisId="frequency"
+                orientation="right"
+                stroke="#0EA5E9"
+                unit=" Hz"
+                tick={{ fontSize: 10 }}
+                width={55}
                 domain={['auto', 'auto']}
               />
             )}
@@ -178,34 +292,124 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
               formatter={(value, name: string) => {
                 if (value === null || value === undefined) return ['--', name]
                 const numValue = Number(value)
-                if (name === 'voltage') return [`${numValue.toFixed(1)} V`, 'DC Voltage']
-                if (name === 'temperature') return [`${numValue.toFixed(1)} °C`, 'Temperature']
-                return [String(value), name]
+                switch (name) {
+                  case 'voltageDC': return [`${numValue.toFixed(1)} V`, 'DC Voltage']
+                  case 'voltageAC': return [`${numValue.toFixed(1)} V`, 'AC Voltage']
+                  case 'currentDC': return [`${numValue.toFixed(2)} A`, 'DC Current']
+                  case 'currentAC': return [`${numValue.toFixed(2)} A`, 'AC Current']
+                  case 'temperature': return [`${numValue.toFixed(1)} °C`, 'Temperature']
+                  case 'reactivePower': return [`${numValue.toFixed(0)} VAR`, 'Reactive Power']
+                  case 'windSpeed': return [`${numValue.toFixed(1)} m/s`, 'Wind Speed']
+                  case 'frequency': return [`${numValue.toFixed(2)} Hz`, 'Grid Frequency']
+                  default: return [String(value), name]
+                }
               }}
               labelFormatter={(label) => `Time: ${label}`}
             />
             <Legend />
 
-            {hasVoltageData && (
+            {/* Voltage Lines */}
+            {hasVoltageDC && (
               <Line
                 yAxisId="voltage"
                 type="monotone"
-                dataKey="voltage"
-                name="voltage"
+                dataKey="voltageDC"
+                name="voltageDC"
                 stroke="#8B5CF6"
                 strokeWidth={1.5}
                 dot={false}
                 connectNulls
               />
             )}
+            {hasVoltageAC && (
+              <Line
+                yAxisId="voltage"
+                type="monotone"
+                dataKey="voltageAC"
+                name="voltageAC"
+                stroke="#A78BFA"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls
+              />
+            )}
 
+            {/* Current Lines */}
+            {hasCurrentDC && (
+              <Line
+                yAxisId={hasAnyVoltage ? "voltage" : "current"}
+                type="monotone"
+                dataKey="currentDC"
+                name="currentDC"
+                stroke="#10B981"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls
+              />
+            )}
+            {hasCurrentAC && (
+              <Line
+                yAxisId={hasAnyVoltage ? "voltage" : "current"}
+                type="monotone"
+                dataKey="currentAC"
+                name="currentAC"
+                stroke="#34D399"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls
+              />
+            )}
+
+            {/* Temperature Line */}
             {hasTempData && (
               <Line
-                yAxisId="temp"
+                yAxisId="secondary"
                 type="monotone"
                 dataKey="temperature"
                 name="temperature"
                 stroke="#EF4444"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls
+              />
+            )}
+
+            {/* Reactive Power Line */}
+            {hasReactivePower && (
+              <Line
+                yAxisId="secondary"
+                type="monotone"
+                dataKey="reactivePower"
+                name="reactivePower"
+                stroke="#F59E0B"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls
+              />
+            )}
+
+            {/* Wind Speed Line */}
+            {hasWindSpeed && (
+              <Line
+                yAxisId="secondary"
+                type="monotone"
+                dataKey="windSpeed"
+                name="windSpeed"
+                stroke="#06B6D4"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls
+              />
+            )}
+
+            {/* Grid Frequency Line */}
+            {hasFrequency && (
+              <Line
+                yAxisId="frequency"
+                type="monotone"
+                dataKey="frequency"
+                name="frequency"
+                stroke="#0EA5E9"
                 strokeWidth={1.5}
                 dot={false}
                 connectNulls

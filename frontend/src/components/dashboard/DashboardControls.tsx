@@ -1,6 +1,23 @@
+import { CalendarIcon } from 'lucide-react'
+import { format, parse } from 'date-fns'
+import { Button } from '@/components/ui/button'
+import { Calendar } from '@/components/ui/calendar'
+import { Card, CardContent } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import { ChevronDown } from 'lucide-react'
-import { useState } from 'react'
 
 export type DateRange = 'day'
 export type ChartStyle = 'area' | 'line' | 'bar'
@@ -16,12 +33,6 @@ interface DashboardControlsProps {
   onShowIrradianceChange: (show: boolean) => void
 }
 
-const CHART_STYLE_OPTIONS: { value: ChartStyle; label: string }[] = [
-  { value: 'area', label: 'Area' },
-  { value: 'line', label: 'Line' },
-  { value: 'bar', label: 'Bar' }
-]
-
 export function DashboardControls({
   customDate,
   onCustomDateChange,
@@ -30,112 +41,96 @@ export function DashboardControls({
   showEnergy,
   onShowEnergyChange,
   showIrradiance,
-  onShowIrradianceChange
+  onShowIrradianceChange,
 }: Readonly<DashboardControlsProps>) {
-  const [styleDropdownOpen, setStyleDropdownOpen] = useState(false)
+  // Convert string date to Date object for Calendar
+  const selectedDate = customDate
+    ? parse(customDate, 'yyyy-MM-dd', new Date())
+    : undefined
 
-  const selectedStyleLabel = CHART_STYLE_OPTIONS.find((opt) => opt.value === chartStyle)?.label ?? 'Area'
+  // Handle date selection from Calendar
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date) {
+      onCustomDateChange(format(date, 'yyyy-MM-dd'))
+    } else {
+      onCustomDateChange(null)
+    }
+  }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <div className="flex flex-wrap items-center gap-6">
-        {/* Custom Date Picker */}
-        <div className="flex flex-col gap-2">
-          <label htmlFor="custom-date-picker" className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            Custom Date
-          </label>
-          <input
-            id="custom-date-picker"
-            type="date"
-            value={customDate ?? ''}
-            onChange={(e) => onCustomDateChange(e.target.value || null)}
-            className={cn(
-              "px-3 py-1.5 text-sm rounded-lg border transition-colors cursor-pointer",
-              "bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600",
-              "text-gray-900 dark:text-white",
-              "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent",
-              customDate && "ring-2 ring-blue-500"
-            )}
-          />
-        </div>
+    <Card>
+      <CardContent className="pt-4">
+        <div className="flex flex-wrap items-end gap-6">
+          {/* Date Picker */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground">Custom Date</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    'w-[200px] justify-start text-left font-normal',
+                    !selectedDate && 'text-muted-foreground'
+                  )}
+                >
+                  <CalendarIcon className="mr-2 size-4" />
+                  {selectedDate ? format(selectedDate, 'PPP') : 'Pick a date'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={handleDateSelect}
+                  autoFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
 
-        {/* Chart Style Dropdown */}
-        <div className="flex flex-col gap-2">
-          <label htmlFor="chart-style-button" className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            Chart Style
-          </label>
-          <div className="relative">
-            <button
-              id="chart-style-button"
-              type="button"
-              onClick={() => setStyleDropdownOpen(!styleDropdownOpen)}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors cursor-pointer",
-                "bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600",
-                "hover:border-blue-400 dark:hover:border-blue-500",
-                "text-gray-900 dark:text-white text-sm font-medium"
-              )}
-            >
-              {selectedStyleLabel}
-              <ChevronDown className={cn(
-                "w-4 h-4 transition-transform",
-                styleDropdownOpen && "rotate-180"
-              )} />
-            </button>
+          {/* Chart Style Select */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground">Chart Style</Label>
+            <Select value={chartStyle} onValueChange={(v) => onChartStyleChange(v as ChartStyle)}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue placeholder="Style" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="area">Area</SelectItem>
+                <SelectItem value="line">Line</SelectItem>
+                <SelectItem value="bar">Bar</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-            {styleDropdownOpen && (
-              <div className="absolute left-0 mt-1 w-32 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 overflow-hidden z-10">
-                {CHART_STYLE_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => {
-                      onChartStyleChange(option.value)
-                      setStyleDropdownOpen(false)
-                    }}
-                    className={cn(
-                      "w-full px-3 py-2 text-left text-sm transition-colors cursor-pointer",
-                      "hover:bg-gray-100 dark:hover:bg-gray-600",
-                      chartStyle === option.value
-                        ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                        : "text-gray-700 dark:text-gray-200"
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+          {/* Overlay Toggles */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground">Overlays</Label>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="energy-toggle"
+                  checked={showEnergy}
+                  onCheckedChange={onShowEnergyChange}
+                />
+                <Label htmlFor="energy-toggle" className="text-sm cursor-pointer">
+                  Energy (kWh)
+                </Label>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="irradiance-toggle"
+                  checked={showIrradiance}
+                  onCheckedChange={onShowIrradianceChange}
+                />
+                <Label htmlFor="irradiance-toggle" className="text-sm cursor-pointer">
+                  Irradiance
+                </Label>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Metric Toggles */}
-        <fieldset className="flex flex-col gap-2">
-          <legend className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            Overlays
-          </legend>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showEnergy}
-                onChange={(e) => onShowEnergyChange(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
-              />
-              <span className="text-sm text-gray-700 dark:text-gray-200">Energy (kWh)</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showIrradiance}
-                onChange={(e) => onShowIrradianceChange(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-yellow-500 focus:ring-yellow-500 cursor-pointer"
-              />
-              <span className="text-sm text-gray-700 dark:text-gray-200">Irradiance</span>
-            </label>
-          </div>
-        </fieldset>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }

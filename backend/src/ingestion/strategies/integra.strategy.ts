@@ -44,6 +44,41 @@ export class IntegraParser implements IParser {
   > = {
     p_ac: 'activePowerWatts',
     e_day: 'energyDailyKwh',
+    // Irradiance variants (plane of array, horizontal, module)
+    g_poa: 'irradiance',
+    g_hor: 'irradiance',
+    g_m: 'irradiance',
+    irradiance: 'irradiance',
+  };
+
+  /**
+   * Metadata key mapping for frontend compatibility
+   * Maps XML field names (lowercase) to normalized keys expected by frontend charts
+   */
+  private readonly metadataKeyMap: Record<string, string> = {
+    // AC Voltage (3-phase)
+    u_ac1: 'voltageAC',
+    u_ac2: 'voltageAC2',
+    u_ac3: 'voltageAC3',
+    // DC Voltage (multiple strings)
+    u_dc1: 'voltageDC',
+    u_dc2: 'voltageDC2',
+    u_dc3: 'voltageDC3',
+    // AC Current (3-phase)
+    i_ac1: 'currentAC',
+    i_ac2: 'currentAC2',
+    i_ac3: 'currentAC3',
+    // DC Current
+    i_dc1: 'currentDC',
+    i_dc2: 'currentDC2',
+    i_dc3: 'currentDC3',
+    // Grid Frequency
+    f_ac: 'frequency',
+    // Additional metrics
+    e_total: 'energyTotal',
+    r_iso: 'insulationResistance',
+    state: 'inverterState',
+    error: 'errorStatus',
   };
 
   /**
@@ -192,9 +227,15 @@ export class IntegraParser implements IParser {
       if (goldenField && typeof processedValue === 'number') {
         dto[goldenField] = processedValue;
       } else {
-        metadata[this.normalizeFieldName(type)] = processedValue;
+        // Use metadataKeyMap for frontend compatibility, fallback to camelCase
+        const normalizedKey =
+          this.metadataKeyMap[type] ?? this.normalizeFieldName(type);
+        metadata[normalizedKey] = processedValue;
       }
     }
+
+    // Calculate generator phase power from voltage and current
+    this.calculateGeneratorPhasePower(metadata);
 
     dto.metadata = metadata;
     return dto;
@@ -228,5 +269,50 @@ export class IntegraParser implements IParser {
     return name
       .toLowerCase()
       .replaceAll(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase());
+  }
+
+  /**
+   * Calculate generator phase power from voltage and current
+   * P = U × I (assumes power factor = 1, which is an approximation)
+   */
+  private calculateGeneratorPhasePower(
+    metadata: Record<string, unknown>,
+  ): void {
+    const phases = [
+      {
+        voltage: 'voltageAC',
+        current: 'currentAC',
+        power: 'generatorPowerPhaseA',
+      },
+      {
+        voltage: 'voltageAC2',
+        current: 'currentAC2',
+        power: 'generatorPowerPhaseB',
+      },
+      {
+        voltage: 'voltageAC3',
+        current: 'currentAC3',
+        power: 'generatorPowerPhaseC',
+      },
+    ];
+
+    let totalPower = 0;
+    let hasAnyPhase = false;
+
+    for (const phase of phases) {
+      const voltage = metadata[phase.voltage];
+      const current = metadata[phase.current];
+
+      if (typeof voltage === 'number' && typeof current === 'number') {
+        const phasePower = voltage * current;
+        metadata[phase.power] = phasePower;
+        totalPower += phasePower;
+        hasAnyPhase = true;
+      }
+    }
+
+    if (hasAnyPhase) {
+      metadata['generatorPowerTotal'] = totalPower;
+    }
   }
 }

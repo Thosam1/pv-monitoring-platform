@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Scope } from '@nestjs/common';
 import { Readable } from 'node:stream';
 import csvParser from 'csv-parser';
 import { IParser, ParserError } from '../interfaces/parser.interface';
@@ -20,14 +20,23 @@ import { UnifiedMeasurementDTO } from '../dto/unified-measurement.dto';
  * - Filename -> loggerId (extract digits after underscore)
  * - Einstrahlung (Einstrahlung West) -> irradiance (golden metric)
  * - All temperature and East fields -> metadata
+ *
+ * THREAD SAFETY NOTE:
+ * This parser uses request-scoped instantiation (Scope.REQUEST) to ensure
+ * thread safety. Each request gets a fresh parser instance, preventing
+ * filename state from being shared between concurrent file uploads.
  */
-@Injectable()
+@Injectable({ scope: Scope.REQUEST })
 export class MbmetParser implements IParser {
   private readonly logger = new Logger(MbmetParser.name);
 
   readonly name = 'mbmet';
   readonly description = 'MBMET 501FB Meteo Station CSV Export';
 
+  /**
+   * Stores filename from canHandle() for use in parse()
+   * Safe due to request-scoped instantiation (each request gets fresh instance)
+   */
   private lastFilename = '';
 
   /**

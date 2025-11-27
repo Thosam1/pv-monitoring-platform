@@ -77,7 +77,7 @@ describe('IntegraParser', () => {
       expect(results[0].irradiance).toBeNull();
     });
 
-    it('should store unmapped fields in metadata', async () => {
+    it('should store unmapped fields in metadata with normalized keys', async () => {
       const buffer = Buffer.from(
         integraXml.withMetrics({
           P_AC: '1000',
@@ -90,9 +90,10 @@ describe('IntegraParser', () => {
       const results = await collectDTOs(parser.parse(buffer));
 
       expect(results[0].activePowerWatts).toBe(1000);
-      expect(results[0].metadata).toHaveProperty('fAc', 50.02);
-      expect(results[0].metadata).toHaveProperty('iAc1', 4.5);
-      expect(results[0].metadata).toHaveProperty('eTotal', 12345);
+      // New normalized key names for frontend compatibility
+      expect(results[0].metadata).toHaveProperty('frequency', 50.02);
+      expect(results[0].metadata).toHaveProperty('currentAC', 4.5);
+      expect(results[0].metadata).toHaveProperty('energyTotal', 12345);
     });
 
     it('should include inverterType in metadata', async () => {
@@ -173,14 +174,14 @@ describe('IntegraParser', () => {
       const buffer = Buffer.from(integraXml.withErrors(), 'utf-8');
       const results = await collectDTOs(parser.parse(buffer));
 
-      expect(results[0].metadata).toHaveProperty('error', null);
+      expect(results[0].metadata).toHaveProperty('errorStatus', null);
     });
 
     it('should strip ": " prefix from state values', async () => {
       const buffer = Buffer.from(integraXml.withErrors(), 'utf-8');
       const results = await collectDTOs(parser.parse(buffer));
 
-      expect(results[0].metadata).toHaveProperty('state', 'Run');
+      expect(results[0].metadata).toHaveProperty('inverterState', 'Run');
     });
 
     it('should parse zero as 0, not null', async () => {
@@ -234,6 +235,43 @@ describe('IntegraParser', () => {
         '<root><system><md>',
         '<dp timestamp="invalid-timestamp">',
         '<inverter serial="INV001"><mv type="P_AC">100</mv></inverter>',
+        '</dp>',
+        '</md></system></root>',
+      ].join('');
+      const buffer = Buffer.from(xml, 'utf-8');
+
+      await expect(collectDTOs(parser.parse(buffer))).rejects.toThrow(
+        'No valid inverter records',
+      );
+    });
+
+    it('should skip inverters missing serial attribute', async () => {
+      // XML with two inverters: one without serial (should be skipped), one with serial
+      const xml = [
+        '<?xml version="1.0"?>',
+        '<root><system><md>',
+        '<dp timestamp="2025-10-01 10:00:00">',
+        '<inverter type="SG36KTL-M"><mv type="P_AC">1000</mv></inverter>',
+        '<inverter serial="INV002" type="SG36KTL-M"><mv type="P_AC">2000</mv></inverter>',
+        '</dp>',
+        '</md></system></root>',
+      ].join('');
+      const buffer = Buffer.from(xml, 'utf-8');
+
+      const results = await collectDTOs(parser.parse(buffer));
+
+      // Only the inverter with serial should be parsed
+      expect(results).toHaveLength(1);
+      expect(results[0].loggerId).toBe('INV002');
+      expect(results[0].activePowerWatts).toBe(2000);
+    });
+
+    it('should throw when all inverters missing serial', async () => {
+      const xml = [
+        '<?xml version="1.0"?>',
+        '<root><system><md>',
+        '<dp timestamp="2025-10-01 10:00:00">',
+        '<inverter type="SG36KTL-M"><mv type="P_AC">1000</mv></inverter>',
         '</dp>',
         '</md></system></root>',
       ].join('');

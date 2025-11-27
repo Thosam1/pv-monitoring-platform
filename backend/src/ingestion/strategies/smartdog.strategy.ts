@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Scope } from '@nestjs/common';
 import { IParser, ParserError } from '../interfaces/parser.interface';
 import { UnifiedMeasurementDTO } from '../dto/unified-measurement.dto';
 
@@ -22,15 +22,23 @@ import { UnifiedMeasurementDTO } from '../dto/unified-measurement.dto';
  * Skipped file types (not measurement data):
  * - *_avg_*.txt (pre-aggregated data)
  * - events_*.txt (alarm/event logs)
+ *
+ * THREAD SAFETY NOTE:
+ * This parser uses request-scoped instantiation (Scope.REQUEST) to ensure
+ * thread safety. Each request gets a fresh parser instance, preventing
+ * filename state from being shared between concurrent file uploads.
  */
-@Injectable()
+@Injectable({ scope: Scope.REQUEST })
 export class SmartdogParser implements IParser {
   private readonly logger = new Logger(SmartdogParser.name);
 
   readonly name = 'smartdog';
   readonly description = 'SmartDog Logger CSV Export';
 
-  /** Current filename being parsed (set by canHandle) */
+  /**
+   * Current filename being parsed (set by canHandle)
+   * Safe due to request-scoped instantiation (each request gets fresh instance)
+   */
   private currentFilename = '';
 
   /** File type patterns (allow optional smartdog_ prefix from controller) */
@@ -55,15 +63,38 @@ export class SmartdogParser implements IParser {
 
   /**
    * Semantic translation map for metadata keys
+   * Maps SmartDog field names to normalized semantic keys for frontend compatibility
    */
   private readonly TRANSLATION_MAP: Record<string, string> = {
+    // Power metrics
     pdc: 'dcPowerWatts',
-    udc: 'dcVoltage',
+    pac: 'acPowerWatts',
+    // Voltage
+    udc: 'voltageDC',
+    uac: 'voltageAC',
+    vpv: 'voltageDC',
+    vac: 'voltageAC',
+    // Current
+    idc: 'currentDC',
+    iac: 'currentAC',
+    ipv: 'currentDC',
+    // Frequency
+    fac: 'frequency',
+    freq: 'frequency',
+    // Temperature
     temp: 'inverterTemperature',
+    temperature: 'inverterTemperature',
+    // Energy
+    etotal: 'energyTotal',
+    etoday: 'energyToday',
+    // Device info
     address: 'deviceAddress',
     bus: 'busNumber',
     strings: 'stringCount',
     stringid: 'stringId',
+    // Efficiency
+    efficiency: 'efficiency',
+    eff: 'efficiency',
   };
 
   /**
@@ -266,6 +297,11 @@ export class SmartdogParser implements IParser {
     // Extract golden metric: pac (AC Power in Watts)
     const pac = this.parseNumber(row['pac']);
 
+    // Calculate interval energy from power (5-minute intervals)
+    // Formula: Energy (kWh) = Power (W) × Time (hours) / 1000
+    //        = pac × (5 min / 60 min) / 1000 = pac / 12,000
+    const energyIntervalKwh = pac === null ? null : pac / 12000;
+
     // Build metadata with semantic normalization
     const metadata: Record<string, unknown> = {};
     const skipFields = new Set(['timestamp', 'pac']);
@@ -278,12 +314,15 @@ export class SmartdogParser implements IParser {
       metadata[semanticKey] = numValue ?? value;
     }
 
+    // Add calculated interval energy to metadata
+    metadata['energyIntervalKwh'] = energyIntervalKwh;
+
     return {
       timestamp,
       loggerId,
       loggerType: 'smartdog',
       activePowerWatts: pac,
-      energyDailyKwh: null, // Not available in raw data
+      energyDailyKwh: null, // Calculated at query time by aggregating interval energy
       irradiance: null,
       metadata,
     };

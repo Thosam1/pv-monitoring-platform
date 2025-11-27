@@ -4,14 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PV Monitoring Platform - High-throughput solar data ingestion platform (MVP) for processing and visualizing photovoltaic inverter data from multiple sources (GoodWe, LTI ReEnergy, etc.).
+PV Monitoring Platform - High-throughput solar data ingestion platform (MVP) for processing and visualizing photovoltaic inverter and meteo station data from 8 logger types: GoodWe, LTI ReEnergy, Integra Sun, MBMET, Meier-NT, MeteoControl, Plexlog, and SmartDog.
 
 ## Architecture
 
-- **Backend**: NestJS (port 3000) with TypeORM and PostgreSQL
-- **Frontend**: React + Vite (port 5173) with Tailwind CSS and Recharts
+- **Backend**: NestJS 11 (port 3000) with TypeORM and PostgreSQL
+- **Frontend**: React 19 + Vite 7 (port 5173) with shadcn/ui, Tailwind CSS 4, and Recharts
 - **Database**: PostgreSQL 16 (Docker, port 5432) with Adminer UI (port 8080)
 - **Pattern**: Hybrid schema (golden metrics as columns + JSONB metadata for flexibility)
+- **Runtime**: Node.js 20.x
+
+### UI Stack (Frontend)
+- **Component Library**: shadcn/ui (Radix UI primitives + Tailwind CSS)
+- **Charting**: Recharts 3.x (ComposedChart, LineChart, Area, Line, Bar)
+- **Animation**: Framer Motion 12.x
+- **Icons**: Lucide React
+- **Date Handling**: date-fns + react-day-picker
 
 ## Operating Principles & Code Standards
 
@@ -162,15 +170,27 @@ chore: upgrade TypeORM to v0.3.20
 ## Key Architecture Patterns
 
 ### Data Ingestion Flow (Backend)
-1. **Controller** (`/ingest/:loggerType`) receives multipart CSV files
-2. **Service** selects appropriate parser strategy based on logger type
-3. **Parser** streams CSV via AsyncGenerator (memory-efficient)
+1. **Controller** (`/ingest/:loggerType`) receives multipart files (CSV, TXT, XML, SQLite)
+2. **Service** auto-selects parser via `canHandle()` detection (specificity-first order)
+3. **Parser** streams data via AsyncGenerator (memory-efficient)
 4. **Batching** groups 1000 records for performance
 5. **Upsert** into database with conflict resolution (composite key: loggerId + timestamp)
 
 ### Parser Strategy Pattern
 - Interface: `IParser` with `canHandle()` and `parse()` methods
-- Implementations: `GoodWeParser`, `LtiParser`
+- **8 Implementations** (registration order - specificity first):
+
+| Parser | Logger Type | File Format | Detection | Golden Metrics |
+|--------|-------------|-------------|-----------|----------------|
+| Plexlog | `plexlog` | SQLite (.s3db) | `data_*.s3db` or SQLite magic bytes | acproduction → Power/Irradiance |
+| LTI | `lti` | Text (sectioned) | `[header]`/`[data]` markers | P_AC → Power, E_DAY → Energy |
+| Integra | `integra` | XML | `.xml` + `<root>` tag | P_AC → Power, E_DAY → Energy |
+| MeteoControl | `meteocontrol` | INI-style | `[info]` + `Datum=` | G_M6 → Irradiance, Pac → Power |
+| MBMET | `mbmet` | CSV (German) | "Zeitstempel" + "Einstrahlung" | Einstrahlung → Irradiance |
+| Meier | `meier` | CSV (prefixed) | "serial;" prefix | Feed-In_Power → Power, Yield → Energy |
+| SmartDog | `smartdog` | CSV (3 types) | Filename patterns (B{}_A{}_S{}) | pac → Power, sensors → Irradiance/Temp |
+| GoodWe | `goodwe` | CSV (headerless EAV) | Fallback parser | Power, Energy, Irradiance |
+
 - Adding new parsers: Create new strategy in `/backend/src/ingestion/strategies/`
 
 ### Database Schema
@@ -179,10 +199,12 @@ chore: upgrade TypeORM to v0.3.20
 @Entity('measurements')
 - timestamp: Date (PK)
 - loggerId: string (PK)
-- activePowerWatts: float (golden metric)
-- energyDailyKwh: float (golden metric)
-- irradiance: float (golden metric)
-- metadata: jsonb (flexible storage)
+- loggerType: varchar(20) (parser identifier)
+- activePowerWatts: float (golden metric, nullable)
+- energyDailyKwh: float (golden metric, nullable)
+- irradiance: float (golden metric, nullable)
+- metadata: jsonb (flexible storage, GIN indexed)
+- createdAt: timestamptz (auto-set)
 ```
 
 ### Smart Date Resolution (Frontend)
@@ -195,13 +217,14 @@ chore: upgrade TypeORM to v0.3.20
 ### Data Ingestion
 ```
 POST /ingest/:loggerType
-  - loggerType: "goodwe" | "lti"
+  - loggerType: "goodwe" | "lti" | "integra" | "mbmet" | "meier" | "meteocontrol" | "plexlog" | "smartdog"
   - Body: multipart/form-data (field: "files", max 10 files)
+  - Supported formats: CSV, TXT, XML, SQLite (.s3db)
 ```
 
 ### Data Retrieval
 ```
-GET /measurements                         # List all logger IDs
+GET /measurements                         # List all loggers with their types
 GET /measurements/:loggerId               # Get data (optional: ?start=&end=)
 GET /measurements/:loggerId/date-range    # Get earliest/latest timestamps
 ```
@@ -211,45 +234,103 @@ GET /measurements/:loggerId/date-range    # Get earliest/latest timestamps
 ```
 backend/
 ├── src/
-│   ├── ingestion/           # Data ingestion module
-│   │   ├── strategies/      # Parser implementations (GoodWe, LTI)
-│   │   └── dto/            # Data transfer objects
-│   ├── measurements/        # Data query module
-│   └── database/entities/   # TypeORM entities
-└── test/                   # E2E tests and fixtures
+│   ├── ingestion/              # Data ingestion module
+│   │   ├── strategies/         # 8 parser implementations
+│   │   │   ├── goodwe.strategy.ts
+│   │   │   ├── lti.strategy.ts
+│   │   │   ├── integra.strategy.ts
+│   │   │   ├── mbmet.strategy.ts
+│   │   │   ├── meier.strategy.ts
+│   │   │   ├── meteocontrol.strategy.ts
+│   │   │   ├── plexlog.strategy.ts
+│   │   │   └── smartdog.strategy.ts
+│   │   ├── dto/                # Data transfer objects
+│   │   └── interfaces/         # IParser interface
+│   ├── measurements/           # Data query module
+│   └── database/entities/      # TypeORM entities
+└── test/                       # E2E tests and fixtures
 
 frontend/
 ├── src/
-│   ├── App.tsx             # Main app with Smart Sync logic
-│   └── components/
-│       ├── BulkUploader.tsx    # Drag-n-drop file upload
-│       └── dashboard/          # Charts and KPI components
+│   ├── App.tsx                 # Main app with view modes and smart sync
+│   ├── components/
+│   │   ├── layout/             # Sidebar, header, navigation
+│   │   │   ├── app-sidebar.tsx
+│   │   │   ├── site-header.tsx
+│   │   │   ├── nav-main.tsx
+│   │   │   └── nav-loggers.tsx # Collapsible logger hierarchy
+│   │   ├── dashboard/          # Charts and KPI components
+│   │   │   ├── dashboard-content.tsx
+│   │   │   ├── KPIGrid.tsx     # Adaptive KPIs (meteo vs inverter)
+│   │   │   ├── DashboardControls.tsx
+│   │   │   ├── PerformanceChart.tsx
+│   │   │   ├── TechnicalChart.tsx
+│   │   │   └── GeneratorPowerChart.tsx
+│   │   ├── ui/                 # shadcn/ui components
+│   │   └── BulkUploader.tsx    # Drag-n-drop with folder support
+│   ├── hooks/                  # Custom React hooks
+│   ├── lib/                    # Utilities (date-utils, cn)
+│   └── types/                  # TypeScript types (logger.ts)
 ```
+
+## Logger Types & Categories
+
+The platform organizes 8 logger types into two categories:
+
+### Inverters
+| Type | Label | Description |
+|------|-------|-------------|
+| `goodwe` | GoodWe | SEMS Portal CSV export |
+| `lti` | LTI ReEnergy | Sectioned text export |
+| `integra` | Integra Sun | XML export (Meteocontrol format) |
+| `meier` | Meier-NT | CSV with metadata prefix |
+| `smartdog` | SmartDog | CSV (inverter/sensor variants) |
+
+### Meteo Stations
+| Type | Label | Description |
+|------|-------|-------------|
+| `mbmet` | MBMET 501FB | German CSV (irradiance, cell/ambient temp) |
+| `meteocontrol` | Meteo Control | INI-style (analog/inverter variants) |
+| `plexlog` | Plexlog | SQLite database export |
+
+### Adaptive Dashboard Behavior
+- **Inverter loggers**: Show Peak Power, Total Energy, Avg Temperature, Avg Irradiance
+- **Meteo loggers** (mbmet): Show Peak/Avg Irradiance, Cell Temp, Ambient Temp
+- Dashboard auto-enables irradiance overlay for meteo station types
 
 ## Testing Approach
 
 - **Unit tests**: Use Jest mocks for TypeORM repositories
 - **E2E tests**: Use Supertest for HTTP endpoint testing
-- **Parser tests**: Test with fixture CSV files in `/backend/test/fixtures/`
+- **Parser tests**: Test with fixture files in `/backend/test/fixtures/` (CSV, TXT, XML, S3DB)
 - **Private method testing**: Cast to unknown type for access (see GoodWe parser tests)
+- **Frontend tests**: Vitest with Testing Library (jsdom environment)
 
 ## Important Implementation Details
 
-### Memory-Efficient CSV Processing
+### Memory-Efficient File Processing
 Parsers use AsyncGenerator pattern to stream large files without loading into memory:
 ```typescript
 async *parse(buffer: Buffer): AsyncGenerator<UnifiedMeasurementDto>
 ```
+Supported formats: CSV, TXT (sectioned), XML, SQLite (.s3db)
 
 ### Batch Processing
 Ingestion service batches records in groups of 1000 for optimal database performance.
 
 ### CORS Configuration
 Backend enables CORS for `http://localhost:5173` in `main.ts`.
+Server timeout: 300s (5 minutes) for large file uploads.
 
 ### Date Handling
 - All timestamps stored as UTC in database
-- Parser-specific date format handling (GoodWe: compact format, LTI: ISO format)
+- Parser-specific date format handling:
+  - GoodWe: `YYYYMMDDTHHmmss` (compact) or ISO 8601
+  - LTI: `YYYY-MM-DD HH:mm:ss`
+  - MBMET: `yyyy_MM_dd HH:mm:ss` (underscores in date)
+  - Meier: `dd.MM.yyyy HH:mm:ss` (German format)
+  - MeteoControl: `YYMMDD` date + `HH:mm:ss` time (handles 24:00:00 edge case)
+  - Plexlog: ISO 8601 with 7 decimal places
 - Frontend displays in local timezone
 
 ### Error Handling Strategy
@@ -292,10 +373,10 @@ Backend enables CORS for `http://localhost:5173` in `main.ts`.
 
 ## CI/CD Pipeline
 
-GitHub Actions workflow (`.github/workflows/ci.yml`):
-1. Backend: lint → unit tests → E2E tests
-2. Frontend: TypeScript check → build
-3. Optional: SonarCloud analysis (if SONAR_TOKEN configured)
+GitHub Actions workflow (`.github/workflows/ci.yml`) using Node.js 20:
+1. **Backend**: lint → unit tests → E2E tests
+2. **Frontend**: TypeScript check → Vite build
+3. **SonarCloud** (optional): Coverage analysis for both modules (if SONAR_TOKEN configured)
 
 ## Performance Considerations
 

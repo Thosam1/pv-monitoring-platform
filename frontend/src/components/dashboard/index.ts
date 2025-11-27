@@ -7,3 +7,9 @@ export type { MeasurementDataPoint } from './KPIGrid'
 export { PerformanceChart } from './PerformanceChart'
 
 export { TechnicalChart } from './TechnicalChart'
+
+export { GeneratorPowerChart } from './GeneratorPowerChart'
+
+export { DashboardContent } from './dashboard-content'
+
+export { LoggerContextBar } from './logger-context-bar'
