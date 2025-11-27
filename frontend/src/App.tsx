@@ -289,6 +289,8 @@ function App() {
   const handleSelectLogger = useCallback(
     (loggerId: string) => {
       setSelectedLogger(loggerId)
+      // Navigate to dashboard to show the selected logger's data
+      setCurrentView('dashboard')
       // Auto-enable irradiance for meteo loggers (they have no power data)
       const loggerType = availableLoggers.find((l) => l.id === loggerId)?.type
       if (loggerType === 'mbmet') {
