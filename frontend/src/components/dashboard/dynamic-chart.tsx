@@ -254,7 +254,8 @@ export function DynamicChart({
               >
                 {data.map((entry, index) => {
                   const keyValue = entry[xAxisKey]
-                  const safeKey = typeof keyValue === 'object' || keyValue === null ? index : keyValue
+                  const safeKey =
+                    typeof keyValue === 'object' || keyValue == null ? index : String(keyValue)
                   return <Cell key={`cell-${safeKey}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                 })}
               </Pie>
