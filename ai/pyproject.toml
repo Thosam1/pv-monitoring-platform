@@ -4,14 +4,15 @@ version = "0.1.0"
 description = "Solar Analytics AI Service - FastMCP Server for PV monitoring data analysis"
 requires-python = ">=3.12"
 dependencies = [
-    "diskcache>=5.0.0",
     "fastmcp>=2.13.1",
     "numpy>=2.3.5",
     "pandas>=2.3.3",
     "psycopg2-binary>=2.9.11",
-    "py-key-value-aio[disk]>=0.2.8",
+    "pydantic-settings>=2.7.1",
     "python-dotenv>=1.2.1",
     "sqlalchemy>=2.0.44",
+    "structlog>=24.1.0",
+    "tenacity>=8.2.0",
 ]
 
 [dependency-groups]
