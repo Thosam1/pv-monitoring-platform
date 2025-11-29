@@ -16,7 +16,7 @@ describe('TechnicalChart', () => {
     it('renders empty state when data is empty', () => {
       render(<TechnicalChart data={[]} />)
       expect(screen.getByText('No technical data available')).toBeInTheDocument()
-      expect(screen.getByText('Voltage/temperature data not found in metadata')).toBeInTheDocument()
+      expect(screen.getByText('Voltage/current/temperature data not found in metadata')).toBeInTheDocument()
     })
 
     it('renders empty state when no voltage or temperature in metadata', () => {
@@ -29,27 +29,27 @@ describe('TechnicalChart', () => {
     })
 
     it('renders chart title with "Technical Metrics"', () => {
-      const data = [createMeasurementDataPoint({ metadata: { voltage: 350 } })]
+      const data = [createMeasurementDataPoint({ metadata: { voltageDC: 350 } })]
       render(<TechnicalChart data={data} />)
       expect(screen.getByText(/Technical Metrics/)).toBeInTheDocument()
     })
 
     it('includes logger ID in title when provided', () => {
-      const data = [createMeasurementDataPoint({ metadata: { voltage: 350 } })]
+      const data = [createMeasurementDataPoint({ metadata: { voltageDC: 350 } })]
       render(<TechnicalChart data={data} loggerId="LOGGER-001" />)
       expect(screen.getByText(/LOGGER-001/)).toBeInTheDocument()
     })
 
     it('includes date label in title when provided', () => {
-      const data = [createMeasurementDataPoint({ metadata: { voltage: 350 } })]
+      const data = [createMeasurementDataPoint({ metadata: { voltageDC: 350 } })]
       render(<TechnicalChart data={data} dateLabel="Mon, Jun 15, 2024" />)
       expect(screen.getByText(/Mon, Jun 15, 2024/)).toBeInTheDocument()
     })
 
     it('renders chart with combined title including all parts', () => {
-      const data = [createMeasurementDataPoint({ metadata: { voltage: 350 } })]
+      const data = [createMeasurementDataPoint({ metadata: { voltageDC: 350 } })]
       render(<TechnicalChart data={data} loggerId="LOGGER-001" dateLabel="Jun 15" />)
-      expect(screen.getByTitle('Technical Metrics • LOGGER-001 • Jun 15')).toBeInTheDocument()
+      expect(screen.getByText('Technical Metrics • LOGGER-001 • Jun 15')).toBeInTheDocument()
     })
   })
 
@@ -91,13 +91,13 @@ describe('TechnicalChart', () => {
       expect(screen.queryByText('No technical data available')).not.toBeInTheDocument()
     })
 
-    it('extracts voltage using voltage key (LTI)', () => {
-      const data = [createMeasurementDataPoint({ metadata: { voltage: 395 } })]
+    it('extracts voltage using voltageDC key (normalized)', () => {
+      const data = [createMeasurementDataPoint({ metadata: { voltageDC: 395 } })]
       render(<TechnicalChart data={data} />)
       expect(screen.queryByText('No technical data available')).not.toBeInTheDocument()
     })
 
-    it('extracts voltage using dcVoltage key (LTI)', () => {
+    it('extracts voltage using dcVoltage key', () => {
       const data = [createMeasurementDataPoint({ metadata: { dcVoltage: 390 } })]
       render(<TechnicalChart data={data} />)
       expect(screen.queryByText('No technical data available')).not.toBeInTheDocument()
@@ -167,8 +167,8 @@ describe('TechnicalChart', () => {
   describe('data transformation', () => {
     it('renders chart with both voltage and temperature data', () => {
       const data = [
-        createMeasurementDataPoint({ metadata: { voltage: 350, temperature: 35 } }),
-        createMeasurementDataPoint({ metadata: { voltage: 360, temperature: 38 } })
+        createMeasurementDataPoint({ metadata: { voltageDC: 350, temperature: 35 } }),
+        createMeasurementDataPoint({ metadata: { voltageDC: 360, temperature: 38 } })
       ]
       render(<TechnicalChart data={data} />)
       expect(screen.queryByText('No technical data available')).not.toBeInTheDocument()
@@ -177,8 +177,8 @@ describe('TechnicalChart', () => {
 
     it('renders chart with only voltage data', () => {
       const data = [
-        createMeasurementDataPoint({ metadata: { voltage: 350 } }),
-        createMeasurementDataPoint({ metadata: { voltage: 360 } })
+        createMeasurementDataPoint({ metadata: { voltageDC: 350 } }),
+        createMeasurementDataPoint({ metadata: { voltageDC: 360 } })
       ]
       render(<TechnicalChart data={data} />)
       expect(screen.queryByText('No technical data available')).not.toBeInTheDocument()
@@ -195,9 +195,9 @@ describe('TechnicalChart', () => {
 
     it('handles mixed data with some points missing voltage', () => {
       const data = [
-        createMeasurementDataPoint({ metadata: { voltage: 350, temperature: 35 } }),
+        createMeasurementDataPoint({ metadata: { voltageDC: 350, temperature: 35 } }),
         createMeasurementDataPoint({ metadata: { temperature: 38 } }), // No voltage
-        createMeasurementDataPoint({ metadata: { voltage: 370, temperature: 40 } })
+        createMeasurementDataPoint({ metadata: { voltageDC: 370, temperature: 40 } })
       ]
       render(<TechnicalChart data={data} />)
       expect(screen.queryByText('No technical data available')).not.toBeInTheDocument()
@@ -205,9 +205,9 @@ describe('TechnicalChart', () => {
 
     it('handles mixed data with some points missing temperature', () => {
       const data = [
-        createMeasurementDataPoint({ metadata: { voltage: 350, temperature: 35 } }),
-        createMeasurementDataPoint({ metadata: { voltage: 360 } }), // No temp
-        createMeasurementDataPoint({ metadata: { voltage: 370, temperature: 40 } })
+        createMeasurementDataPoint({ metadata: { voltageDC: 350, temperature: 35 } }),
+        createMeasurementDataPoint({ metadata: { voltageDC: 360 } }), // No temp
+        createMeasurementDataPoint({ metadata: { voltageDC: 370, temperature: 40 } })
       ]
       render(<TechnicalChart data={data} />)
       expect(screen.queryByText('No technical data available')).not.toBeInTheDocument()
@@ -217,7 +217,7 @@ describe('TechnicalChart', () => {
       // Create 200 data points - should be sampled down
       const data = createMeasurementSeries(200).map((point, i) => ({
         ...point,
-        metadata: { voltage: 300 + i, temperature: 25 + (i % 10) }
+        metadata: { voltageDC: 300 + i, temperature: 25 + (i % 10) }
       }))
 
       render(<TechnicalChart data={data} />)
@@ -228,7 +228,7 @@ describe('TechnicalChart', () => {
     it('does not sample data when 150 points or fewer', () => {
       const data = createMeasurementSeries(100).map((point, i) => ({
         ...point,
-        metadata: { voltage: 300 + i, temperature: 25 + (i % 10) }
+        metadata: { voltageDC: 300 + i, temperature: 25 + (i % 10) }
       }))
 
       render(<TechnicalChart data={data} />)
@@ -238,27 +238,27 @@ describe('TechnicalChart', () => {
 
   describe('edge cases', () => {
     it('handles single data point', () => {
-      const data = [createMeasurementDataPoint({ metadata: { voltage: 350 } })]
+      const data = [createMeasurementDataPoint({ metadata: { voltageDC: 350 } })]
       render(<TechnicalChart data={data} />)
       expect(screen.queryByText('No technical data available')).not.toBeInTheDocument()
     })
 
     it('handles NaN values in metadata', () => {
-      const data = [createMeasurementDataPoint({ metadata: { voltage: Number.NaN, temperature: 35 } })]
+      const data = [createMeasurementDataPoint({ metadata: { voltageDC: Number.NaN, temperature: 35 } })]
       render(<TechnicalChart data={data} />)
       // Should still render because temperature is valid
       expect(screen.queryByText('No technical data available')).not.toBeInTheDocument()
     })
 
     it('handles non-number values in metadata', () => {
-      const data = [createMeasurementDataPoint({ metadata: { voltage: 'invalid', temperature: 35 } })]
+      const data = [createMeasurementDataPoint({ metadata: { voltageDC: 'invalid', temperature: 35 } })]
       render(<TechnicalChart data={data} />)
       // Should still render because temperature is valid
       expect(screen.queryByText('No technical data available')).not.toBeInTheDocument()
     })
 
     it('ignores non-number voltage values', () => {
-      const data = [createMeasurementDataPoint({ metadata: { voltage: 'abc' } })]
+      const data = [createMeasurementDataPoint({ metadata: { voltageDC: 'abc' } })]
       render(<TechnicalChart data={data} />)
       // Should show empty state since voltage is invalid and no temp
       expect(screen.getByText('No technical data available')).toBeInTheDocument()

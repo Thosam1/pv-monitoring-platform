@@ -24,5 +24,19 @@ services:
     depends_on:
       - postgres
 
+  ai-service:
+    build:
+      context: ./ai
+      dockerfile: Dockerfile
+    container_name: pv_ai_service
+    ports:
+      - "4000:4000"
+    environment:
+      SOLAR_DATABASE_URL: postgresql://admin:admin@postgres:5432/pv_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:

@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { MeasurementsModule } from './measurements/measurements.module';
 import { Measurement } from './database/entities/measurement.entity';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { Measurement } from './database/entities/measurement.entity';
     }),
     IngestionModule,
     MeasurementsModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

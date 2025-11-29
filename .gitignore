@@ -32,6 +32,13 @@ npm-debug.log*
 .cache/
 .turbo/
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+*.egg-info/
+
 # TypeScript
 *.tsbuildinfo
 

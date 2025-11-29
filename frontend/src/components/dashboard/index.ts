@@ -13,3 +13,6 @@ export { GeneratorPowerChart } from './GeneratorPowerChart'
 export { DashboardContent } from './dashboard-content'
 
 export { LoggerContextBar } from './logger-context-bar'
+
+export { DynamicChart } from './dynamic-chart'
+export type { DynamicChartProps, ChartSeries } from './dynamic-chart'
