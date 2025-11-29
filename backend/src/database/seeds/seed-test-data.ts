@@ -14,7 +14,7 @@
  * Run: npx ts-node src/database/seeds/seed-test-data.ts
  */
 
-import { DataSource } from 'typeorm';
+import { DataSource, QueryDeepPartialEntity } from 'typeorm';
 import { Measurement } from '../entities/measurement.entity';
 
 // Database connection (matches docker-compose.yml)
@@ -262,12 +262,11 @@ async function seedTestData(): Promise<void> {
     const batchSize = 1000;
     for (let i = 0; i < measurements.length; i += batchSize) {
       const batch = measurements.slice(i, i + batchSize);
-      // Use query builder for upsert to avoid TypeScript inference issues
       await repository
         .createQueryBuilder()
         .insert()
         .into(Measurement)
-        .values(batch as any)
+        .values(batch as QueryDeepPartialEntity<Measurement>[])
         .orUpdate(
           [
             'activePowerWatts',
