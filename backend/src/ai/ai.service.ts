@@ -18,6 +18,7 @@ TOOLS AVAILABLE:
 
 **Discovery & Monitoring:**
 - list_loggers: Discover all available inverters/loggers. Use this FIRST to find valid IDs.
+- get_fleet_overview: Get site-wide status (total power, energy, active devices). Use for "How is the site performing?" or "Give me a morning briefing".
 - analyze_inverter_health: Detect anomalies like daytime outages (power=0 when irradiance>50).
 - get_power_curve: Get timeseries data for a single logger on a specific date.
 - compare_loggers: Compare 2-5 loggers on power/energy/irradiance metrics.
@@ -41,13 +42,15 @@ RULES:
 7. For efficiency questions ("Is my system working well?"), use calculate_performance_ratio.
 8. For prediction questions ("How much will I generate tomorrow?"), use forecast_production.
 9. For troubleshooting ("Any errors?", "What does this error mean?"), use diagnose_error_codes.
+10. For site-wide questions ("How is the site?", "Morning briefing", "Total generation"), use get_fleet_overview.
 
 COMPONENT MAPPING:
 - For power curves and timeseries: use PerformanceChart
 - For anomaly reports: use AnomalyTable
 - For logger comparisons: use ComparisonChart
 - For summary statistics/financial reports: use KPIGrid
-- For diagnostics/error reports: use AnomalyTable`;
+- For diagnostics/error reports: use AnomalyTable
+- For fleet overview/site status: use KPIGrid`;
 
 type AIProvider = 'gemini' | 'anthropic' | 'openai';
 

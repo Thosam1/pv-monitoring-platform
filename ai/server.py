@@ -10,6 +10,7 @@ Provides MCP tools for analyzing PV monitoring data:
 - calculate_performance_ratio: Check system efficiency
 - forecast_production: Predict future energy generation
 - diagnose_error_codes: Identify and explain system errors
+- get_fleet_overview: Site-wide aggregation for management view
 
 CRITICAL: All SQL queries use double-quoted camelCase column names
 to match TypeORM entity definitions in measurement.entity.ts.
@@ -656,6 +657,74 @@ def diagnose_error_codes(
         "issueCount": len(issues),
         "issues": issues[:20],  # Limit to top 20 issues
         "summary": f"Found {len(issues)} issue(s) - System health: {overall_health.upper()}" if issues else "No errors detected - System health: GOOD"
+    }
+
+
+# ============================================================
+# TOOL 9: get_fleet_overview - Site-wide aggregation
+# ============================================================
+@mcp.tool
+def get_fleet_overview() -> dict:
+    """
+    Get high-level status of the entire solar fleet (site-wide).
+    Returns total current power, total daily energy, and active device counts.
+    Use this for questions like "How is the site performing right now?"
+    """
+    # 1. Get real-time total power (sum of latest reading per logger)
+    # We look at data from the last 15 minutes to consider a logger "active"
+    power_query = '''
+        SELECT
+            COUNT(DISTINCT "loggerId") as "activeLoggers",
+            SUM("activePowerWatts") as "totalPowerWatts",
+            AVG("irradiance") as "avgIrradiance"
+        FROM measurements
+        WHERE "timestamp" >= NOW() - INTERVAL '15 minutes'
+    '''
+
+    power_df = pd.read_sql(power_query, engine)
+
+    # 2. Get total energy generated today
+    energy_query = '''
+        SELECT
+            SUM("dailyKwh") as "totalDailyKwh"
+        FROM (
+            SELECT MAX("energyDailyKwh") as "dailyKwh"
+            FROM measurements
+            WHERE DATE("timestamp") = CURRENT_DATE
+            GROUP BY "loggerId"
+        ) as daily_maxes
+    '''
+
+    energy_df = pd.read_sql(energy_query, engine)
+
+    # 3. Get total registered devices count
+    count_query = 'SELECT COUNT(DISTINCT "loggerId") as "totalCount" FROM measurements'
+    count_df = pd.read_sql(count_query, engine)
+
+    total_loggers = int(count_df["totalCount"].iloc[0]) if not count_df.empty else 0
+    active_loggers = int(power_df["activeLoggers"].iloc[0]) if not power_df.empty and pd.notna(power_df["activeLoggers"].iloc[0]) else 0
+    total_power = float(power_df["totalPowerWatts"].iloc[0]) if not power_df.empty and pd.notna(power_df["totalPowerWatts"].iloc[0]) else 0.0
+    total_energy = float(energy_df["totalDailyKwh"].iloc[0]) if not energy_df.empty and pd.notna(energy_df["totalDailyKwh"].iloc[0]) else 0.0
+    avg_irradiance = float(power_df["avgIrradiance"].iloc[0]) if not power_df.empty and pd.notna(power_df["avgIrradiance"].iloc[0]) else 0.0
+
+    # Simple health check
+    percent_online = (active_loggers / total_loggers * 100) if total_loggers > 0 else 0
+
+    return {
+        "type": "fleet_overview",
+        "timestamp": datetime.now().isoformat(),
+        "status": {
+            "totalLoggers": total_loggers,
+            "activeLoggers": active_loggers,
+            "percentOnline": round(percent_online, 1),
+            "fleetHealth": "Healthy" if percent_online > 90 else "Degraded" if percent_online > 50 else "Critical"
+        },
+        "production": {
+            "currentTotalPowerWatts": round(total_power, 2),
+            "todayTotalEnergyKwh": round(total_energy, 2),
+            "siteAvgIrradiance": round(avg_irradiance, 2)
+        },
+        "summary": f"Site generating {total_power/1000:.1f} kW total. {active_loggers}/{total_loggers} devices active."
     }
 
 
