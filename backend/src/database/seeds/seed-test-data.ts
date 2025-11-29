@@ -356,9 +356,7 @@ function logStatistics(loggerId: string, measurements: Measurement[]): void {
     (m) => m.activePowerWatts === 0 && m.irradiance && m.irradiance > 50,
   ).length;
 
-  const errorCount = measurements.filter(
-    (m) => m.metadata && m.metadata.errorCode,
-  ).length;
+  const errorCount = measurements.filter((m) => m.metadata?.errorCode).length;
 
   console.log(
     `  Inserted ${measurements.length} records (${anomalyCount} anomalies, ${errorCount} errors)`,

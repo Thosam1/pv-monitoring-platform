@@ -252,9 +252,11 @@ export function DynamicChart({
                 label={({ name, percent }) => `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`}
                 labelLine={true}
               >
-                {data.map((entry, index) => (
-                  <Cell key={`cell-${String(entry[xAxisKey] ?? index)}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                ))}
+                {data.map((entry, index) => {
+                  const keyValue = entry[xAxisKey]
+                  const safeKey = typeof keyValue === 'object' || keyValue === null ? index : keyValue
+                  return <Cell key={`cell-${safeKey}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                })}
               </Pie>
               {showTooltip && (
                 <Tooltip
