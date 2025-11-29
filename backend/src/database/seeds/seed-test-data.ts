@@ -6,6 +6,10 @@
  * - analyze_inverter_health: Anomalies to detect
  * - get_power_curve: Multi-day timeseries
  * - compare_loggers: Multiple loggers for comparison
+ * - calculate_financial_savings: Energy data for financial calculations
+ * - calculate_performance_ratio: Power + irradiance for efficiency
+ * - forecast_production: Historical data for forecasting
+ * - diagnose_error_codes: Error codes in metadata for diagnostics
  *
  * Run: npx ts-node src/database/seeds/seed-test-data.ts
  */
@@ -26,19 +30,53 @@ const dataSource = new DataSource({
 });
 
 // Logger configurations
+interface ErrorConfig {
+  code: string;
+  days: number[]; // Days (1-7) when error occurs
+  hours: number[]; // Hours when error occurs
+}
+
 interface LoggerConfig {
   id: string;
   type: string;
   peakPower: number;
   anomalyDays: number[]; // Days with daytime outages (1-7)
+  errors: ErrorConfig[]; // Error codes to inject
 }
 
 const LOGGERS: LoggerConfig[] = [
-  { id: 'GW-INV-001', type: 'goodwe', peakPower: 5000, anomalyDays: [] },
-  { id: 'GW-INV-002', type: 'goodwe', peakPower: 4800, anomalyDays: [2, 4, 6] },
-  { id: 'LTI-INV-001', type: 'lti', peakPower: 6000, anomalyDays: [] },
-  { id: 'MEIER-INV-001', type: 'meier', peakPower: 5500, anomalyDays: [] },
-  { id: 'SD-INV-001', type: 'smartdog', peakPower: 4500, anomalyDays: [3, 5] },
+  { id: 'GW-INV-001', type: 'goodwe', peakPower: 5000, anomalyDays: [], errors: [] },
+  {
+    id: 'GW-INV-002',
+    type: 'goodwe',
+    peakPower: 4800,
+    anomalyDays: [2, 4, 6],
+    errors: [
+      { code: 'E001', days: [2, 4], hours: [9, 10] }, // Grid voltage issues
+      { code: 'E004', days: [6], hours: [12, 13, 14] }, // Overtemperature
+    ],
+  },
+  {
+    id: 'LTI-INV-001',
+    type: 'lti',
+    peakPower: 6000,
+    anomalyDays: [],
+    errors: [{ code: 'F01', days: [3], hours: [8, 9] }], // Communication timeout
+  },
+  {
+    id: 'MEIER-INV-001',
+    type: 'meier',
+    peakPower: 5500,
+    anomalyDays: [],
+    errors: [{ code: 'W100', days: [1, 2, 3], hours: [7, 8] }], // Low production warning
+  },
+  {
+    id: 'SD-INV-001',
+    type: 'smartdog',
+    peakPower: 4500,
+    anomalyDays: [3, 5],
+    errors: [{ code: 'ERR_TEMP', days: [5], hours: [11, 12] }], // Temperature sensor fault
+  },
 ];
 
 const DAYS_OF_DATA = 7;
@@ -90,6 +128,25 @@ function isAnomaly(
 }
 
 /**
+ * Get error code for this timestamp if any.
+ */
+function getErrorCode(
+  date: Date,
+  dayOfWeek: number,
+  errors: ErrorConfig[],
+): string | null {
+  const hour = date.getUTCHours();
+
+  for (const error of errors) {
+    if (error.days.includes(dayOfWeek) && error.hours.includes(hour)) {
+      return error.code;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Generate measurements for a single logger.
  */
 function generateLoggerData(config: LoggerConfig, startDate: Date): Measurement[] {
@@ -131,6 +188,21 @@ function generateLoggerData(config: LoggerConfig, startDate: Date): Measurement[
           }
         }
 
+        // Check for error codes
+        const errorCode = getErrorCode(timestamp, dayOfWeek, config.errors);
+
+        // Build metadata with optional error
+        const metadata: Record<string, any> = {
+          temperature: solarFactor > 0 ? 25 + solarFactor * 20 + variation * 5 : null,
+          voltage: solarFactor > 0 ? 350 + variation * 30 : null,
+          current: power ? power / 350 : null,
+        };
+
+        if (errorCode) {
+          metadata.errorCode = errorCode;
+          metadata.errorTimestamp = timestamp.toISOString();
+        }
+
         const measurement = new Measurement();
         measurement.timestamp = timestamp;
         measurement.loggerId = config.id;
@@ -139,11 +211,7 @@ function generateLoggerData(config: LoggerConfig, startDate: Date): Measurement[
         measurement.energyDailyKwh =
           solarFactor > 0 ? Math.round(dailyEnergy * 100) / 100 : null;
         measurement.irradiance = irradiance > 0 ? irradiance : null;
-        measurement.metadata = {
-          temperature: solarFactor > 0 ? 25 + solarFactor * 20 + variation * 5 : null,
-          voltage: solarFactor > 0 ? 350 + variation * 30 : null,
-          current: power ? power / 350 : null,
-        };
+        measurement.metadata = metadata;
 
         measurements.push(measurement);
       }
@@ -194,12 +262,16 @@ async function seedTestData(): Promise<void> {
         .execute();
     }
 
-    // Count anomalies
+    // Count anomalies and errors
     const anomalyCount = measurements.filter(
       (m) => m.activePowerWatts === 0 && m.irradiance && m.irradiance > 50,
     ).length;
 
-    console.log(`  Inserted ${measurements.length} records (${anomalyCount} anomalies)`);
+    const errorCount = measurements.filter(
+      (m) => m.metadata && (m.metadata as Record<string, any>).errorCode,
+    ).length;
+
+    console.log(`  Inserted ${measurements.length} records (${anomalyCount} anomalies, ${errorCount} errors)`);
     totalInserted += measurements.length;
   }
 
