@@ -36,7 +36,7 @@ const CHART_COLORS = [
 /**
  * Series configuration for dynamic charts.
  */
-interface ChartSeries {
+export interface ChartSeries {
   dataKey: string
   name: string
   type?: 'area' | 'bar' | 'line' | 'scatter'
