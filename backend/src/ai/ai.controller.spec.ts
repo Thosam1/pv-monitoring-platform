@@ -120,5 +120,215 @@ describe('AiController', () => {
         'keep-alive',
       );
     });
+
+    it('should set X-Accel-Buffering header for nginx', async () => {
+      const body: ChatRequestDto = {
+        messages: [{ role: 'user', content: 'Hello' }],
+      };
+
+      const mockReadableStream = {
+        getReader: jest.fn().mockReturnValue({
+          read: jest.fn().mockResolvedValueOnce({ done: true }),
+        }),
+      };
+
+      const mockStreamResponse = {
+        body: mockReadableStream,
+      };
+
+      const mockResult = {
+        toUIMessageStreamResponse: jest
+          .fn()
+          .mockReturnValue(mockStreamResponse),
+      };
+
+      mockAiService.chat = jest.fn().mockResolvedValue(mockResult);
+
+      const mockResponse = {
+        setHeader: jest.fn(),
+        write: jest.fn(),
+        end: jest.fn(),
+        headersSent: false,
+      };
+
+      await controller.chat(body, mockResponse as never);
+
+      expect(mockResponse.setHeader).toHaveBeenCalledWith(
+        'X-Accel-Buffering',
+        'no',
+      );
+    });
+
+    it('should throw error when stream body is missing', async () => {
+      const body: ChatRequestDto = {
+        messages: [{ role: 'user', content: 'Hello' }],
+      };
+
+      const mockStreamResponse = {
+        body: null, // No body
+      };
+
+      const mockResult = {
+        toUIMessageStreamResponse: jest
+          .fn()
+          .mockReturnValue(mockStreamResponse),
+      };
+
+      mockAiService.chat = jest.fn().mockResolvedValue(mockResult);
+
+      const mockResponse = {
+        setHeader: jest.fn(),
+        write: jest.fn(),
+        end: jest.fn(),
+        headersSent: false,
+      };
+
+      await expect(
+        controller.chat(body, mockResponse as never),
+      ).rejects.toThrow('No stream body in response');
+    });
+
+    it('should handle chat service error before headers sent', async () => {
+      const body: ChatRequestDto = {
+        messages: [{ role: 'user', content: 'Hello' }],
+      };
+
+      mockAiService.chat = jest
+        .fn()
+        .mockRejectedValue(new Error('Service error'));
+
+      const mockResponse = {
+        setHeader: jest.fn(),
+        write: jest.fn(),
+        end: jest.fn(),
+        headersSent: false,
+      };
+
+      await expect(
+        controller.chat(body, mockResponse as never),
+      ).rejects.toThrow('Service error');
+    });
+
+    it('should end response gracefully when error occurs after headers sent', async () => {
+      const body: ChatRequestDto = {
+        messages: [{ role: 'user', content: 'Hello' }],
+      };
+
+      const mockReadableStream = {
+        getReader: jest.fn().mockReturnValue({
+          read: jest.fn().mockRejectedValue(new Error('Stream error')),
+        }),
+      };
+
+      const mockStreamResponse = {
+        body: mockReadableStream,
+      };
+
+      const mockResult = {
+        toUIMessageStreamResponse: jest
+          .fn()
+          .mockReturnValue(mockStreamResponse),
+      };
+
+      mockAiService.chat = jest.fn().mockResolvedValue(mockResult);
+
+      const mockResponse = {
+        setHeader: jest.fn(),
+        write: jest.fn(),
+        end: jest.fn(),
+        headersSent: true, // Headers already sent
+      };
+
+      // Should not throw, just end the response
+      await controller.chat(body, mockResponse as never);
+      expect(mockResponse.end).toHaveBeenCalled();
+    });
+
+    it('should write chunks to response', async () => {
+      const body: ChatRequestDto = {
+        messages: [{ role: 'user', content: 'Hello' }],
+      };
+
+      const chunk1 = new TextEncoder().encode('Hello');
+      const chunk2 = new TextEncoder().encode(' World');
+
+      const mockReadableStream = {
+        getReader: jest.fn().mockReturnValue({
+          read: jest
+            .fn()
+            .mockResolvedValueOnce({ done: false, value: chunk1 })
+            .mockResolvedValueOnce({ done: false, value: chunk2 })
+            .mockResolvedValueOnce({ done: true }),
+        }),
+      };
+
+      const mockStreamResponse = {
+        body: mockReadableStream,
+      };
+
+      const mockResult = {
+        toUIMessageStreamResponse: jest
+          .fn()
+          .mockReturnValue(mockStreamResponse),
+      };
+
+      mockAiService.chat = jest.fn().mockResolvedValue(mockResult);
+
+      const mockResponse = {
+        setHeader: jest.fn(),
+        write: jest.fn(),
+        end: jest.fn(),
+        headersSent: false,
+      };
+
+      await controller.chat(body, mockResponse as never);
+
+      expect(mockResponse.write).toHaveBeenCalledWith(chunk1);
+      expect(mockResponse.write).toHaveBeenCalledWith(chunk2);
+      expect(mockResponse.end).toHaveBeenCalled();
+    });
+
+    it('should convert messages to correct format', async () => {
+      const body: ChatRequestDto = {
+        messages: [
+          { role: 'user', content: 'First message' },
+          { role: 'assistant', content: 'Response' },
+          { role: 'user', content: 'Second message' },
+        ],
+      };
+
+      const mockReadableStream = {
+        getReader: jest.fn().mockReturnValue({
+          read: jest.fn().mockResolvedValueOnce({ done: true }),
+        }),
+      };
+
+      const mockStreamResponse = {
+        body: mockReadableStream,
+      };
+
+      const mockResult = {
+        toUIMessageStreamResponse: jest
+          .fn()
+          .mockReturnValue(mockStreamResponse),
+      };
+
+      mockAiService.chat = jest.fn().mockResolvedValue(mockResult);
+
+      const mockResponse = {
+        setHeader: jest.fn(),
+        write: jest.fn(),
+        end: jest.fn(),
+        headersSent: false,
+      };
+
+      await controller.chat(body, mockResponse as never);
+
+      expect(mockAiService.chat).toHaveBeenCalledWith([
+        { role: 'user', content: 'First message' },
+        { role: 'assistant', content: 'Response' },
+        { role: 'user', content: 'Second message' },
+      ]);
+    });
   });
 });

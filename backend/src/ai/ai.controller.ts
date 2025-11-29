@@ -11,7 +11,13 @@ import {
 import type { Response } from 'express';
 import { AiService } from './ai.service';
 import { ChatRequestDto } from './dto/chat-request.dto';
-import type { CoreMessage } from 'ai';
+/**
+ * Message type for AI chat (replaces deprecated CoreMessage).
+ */
+interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
 
 /**
  * AI Controller for handling chat interactions.
@@ -50,8 +56,8 @@ export class AiController {
     }
 
     try {
-      // Convert DTO messages to CoreMessage format
-      const messages: CoreMessage[] = body.messages.map((msg) => ({
+      // Convert DTO messages to ChatMessage format
+      const messages: ChatMessage[] = body.messages.map((msg) => ({
         role: msg.role,
         content: msg.content,
       }));

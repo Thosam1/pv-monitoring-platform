@@ -1,6 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { streamText, tool, CoreMessage, LanguageModel, stepCountIs } from 'ai';
+import { streamText, tool, LanguageModel, stepCountIs } from 'ai';
+
+/**
+ * Message type for AI chat (replaces deprecated CoreMessage).
+ */
+interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -233,14 +241,14 @@ export class AiService {
    * @returns Streaming result with text and tool invocations
    */
 
-  async chat(messages: CoreMessage[]): Promise<any> {
+  async chat(messages: ChatMessage[]): Promise<any> {
     const model = this.getModel();
     const tools = await this.buildTools();
 
     this.logger.log(`Processing chat with ${messages.length} messages`);
 
     // Add system message if not present
-    const fullMessages: CoreMessage[] = [
+    const fullMessages: ChatMessage[] = [
       { role: 'system', content: SYSTEM_PROMPT },
       ...messages,
     ];

@@ -44,6 +44,17 @@ interface LoggerConfig {
   errors: ErrorConfig[]; // Error codes to inject
 }
 
+// Context for measurement generation
+interface MeasurementContext {
+  timestamp: Date;
+  config: LoggerConfig;
+  dayOfWeek: number;
+  dailyEnergy: number;
+  solarFactor: number;
+  variation: number;
+  irradiance: number;
+}
+
 const LOGGERS: LoggerConfig[] = [
   {
     id: 'GW-INV-001',
@@ -155,6 +166,143 @@ function getErrorCode(
 }
 
 /**
+ * Calculate power value considering anomalies.
+ */
+function calculatePower(ctx: MeasurementContext): number | null {
+  if (ctx.solarFactor <= 0) return null;
+
+  if (isAnomaly(ctx.timestamp, ctx.dayOfWeek, ctx.config.anomalyDays)) {
+    return 0; // Outage: power is 0 but irradiance is still present
+  }
+
+  const power =
+    ctx.config.peakPower * ctx.solarFactor * (0.85 + ctx.variation * 0.15);
+  return Math.round(power);
+}
+
+/**
+ * Build metadata object with optional error code.
+ */
+function buildMetadata(
+  ctx: MeasurementContext,
+  power: number | null,
+): Record<string, unknown> {
+  const metadata: Record<string, unknown> = {
+    temperature:
+      ctx.solarFactor > 0
+        ? 25 + ctx.solarFactor * 20 + ctx.variation * 5
+        : null,
+    voltage: ctx.solarFactor > 0 ? 350 + ctx.variation * 30 : null,
+    current: power ? power / 350 : null,
+  };
+
+  const errorCode = getErrorCode(
+    ctx.timestamp,
+    ctx.dayOfWeek,
+    ctx.config.errors,
+  );
+  if (errorCode) {
+    metadata.errorCode = errorCode;
+    metadata.errorTimestamp = ctx.timestamp.toISOString();
+  }
+
+  return metadata;
+}
+
+/**
+ * Create a single measurement record.
+ */
+function createMeasurement(
+  ctx: MeasurementContext,
+  power: number | null,
+): Measurement {
+  const measurement = new Measurement();
+  measurement.timestamp = ctx.timestamp;
+  measurement.loggerId = ctx.config.id;
+  measurement.loggerType = ctx.config.type;
+  measurement.activePowerWatts = power;
+  measurement.energyDailyKwh =
+    ctx.solarFactor > 0 ? Math.round(ctx.dailyEnergy * 100) / 100 : null;
+  measurement.irradiance = ctx.irradiance > 0 ? ctx.irradiance : null;
+  measurement.metadata = buildMetadata(ctx, power);
+
+  return measurement;
+}
+
+/**
+ * Process a single time interval and generate a measurement.
+ */
+function processInterval(
+  config: LoggerConfig,
+  startDate: Date,
+  day: number,
+  hour: number,
+  minute: number,
+  dailyEnergy: number,
+): { measurement: Measurement; updatedEnergy: number } {
+  const timestamp = new Date(startDate);
+  timestamp.setUTCDate(startDate.getUTCDate() + day);
+  timestamp.setUTCHours(hour, minute, 0, 0);
+
+  const variation = Math.random();
+  const hourDecimal = hour + minute / 60;
+  const solarFactor = getSolarFactor(hourDecimal);
+  const irradiance = getIrradiance(hourDecimal, variation);
+
+  const ctx: MeasurementContext = {
+    timestamp,
+    config,
+    dayOfWeek: day + 1,
+    dailyEnergy,
+    solarFactor,
+    variation,
+    irradiance,
+  };
+
+  const power = calculatePower(ctx);
+  let updatedEnergy = dailyEnergy;
+
+  // Accumulate energy (kWh) - power * time interval
+  if (power && power > 0) {
+    updatedEnergy += (power * INTERVAL_MINUTES) / 60 / 1000;
+    ctx.dailyEnergy = updatedEnergy;
+  }
+
+  const measurement = createMeasurement(ctx, power);
+
+  return { measurement, updatedEnergy };
+}
+
+/**
+ * Generate measurements for a single day.
+ */
+function generateDayData(
+  config: LoggerConfig,
+  startDate: Date,
+  day: number,
+): Measurement[] {
+  const measurements: Measurement[] = [];
+  let dailyEnergy = 0;
+
+  for (let hour = 0; hour < 24; hour++) {
+    for (let minute = 0; minute < 60; minute += INTERVAL_MINUTES) {
+      const { measurement, updatedEnergy } = processInterval(
+        config,
+        startDate,
+        day,
+        hour,
+        minute,
+        dailyEnergy,
+      );
+      dailyEnergy = updatedEnergy;
+      measurements.push(measurement);
+    }
+  }
+
+  return measurements;
+}
+
+/**
  * Generate measurements for a single logger.
  */
 function generateLoggerData(
@@ -164,72 +312,76 @@ function generateLoggerData(
   const measurements: Measurement[] = [];
 
   for (let day = 0; day < DAYS_OF_DATA; day++) {
-    const dayOfWeek = day + 1; // 1-7
-    let dailyEnergy = 0;
-
-    for (let hour = 0; hour < 24; hour++) {
-      for (let minute = 0; minute < 60; minute += INTERVAL_MINUTES) {
-        const timestamp = new Date(startDate);
-        timestamp.setUTCDate(startDate.getUTCDate() + day);
-        timestamp.setUTCHours(hour, minute, 0, 0);
-
-        // Random variation for this interval
-        const variation = Math.random();
-
-        // Calculate irradiance
-        const irradiance = getIrradiance(hour + minute / 60, variation);
-
-        // Calculate power
-        let power: number | null = null;
-        const solarFactor = getSolarFactor(hour + minute / 60);
-
-        if (solarFactor > 0) {
-          // Check for anomaly (daytime outage)
-          if (isAnomaly(timestamp, dayOfWeek, config.anomalyDays)) {
-            power = 0; // Outage: power is 0 but irradiance is still present
-          } else {
-            power = config.peakPower * solarFactor * (0.85 + variation * 0.15);
-            power = Math.round(power);
-          }
-
-          // Accumulate energy (kWh) - power * time interval
-          if (power && power > 0) {
-            dailyEnergy += (power * INTERVAL_MINUTES) / 60 / 1000;
-          }
-        }
-
-        // Check for error codes
-        const errorCode = getErrorCode(timestamp, dayOfWeek, config.errors);
-
-        // Build metadata with optional error
-        const metadata: Record<string, any> = {
-          temperature:
-            solarFactor > 0 ? 25 + solarFactor * 20 + variation * 5 : null,
-          voltage: solarFactor > 0 ? 350 + variation * 30 : null,
-          current: power ? power / 350 : null,
-        };
-
-        if (errorCode) {
-          metadata.errorCode = errorCode;
-          metadata.errorTimestamp = timestamp.toISOString();
-        }
-
-        const measurement = new Measurement();
-        measurement.timestamp = timestamp;
-        measurement.loggerId = config.id;
-        measurement.loggerType = config.type;
-        measurement.activePowerWatts = power;
-        measurement.energyDailyKwh =
-          solarFactor > 0 ? Math.round(dailyEnergy * 100) / 100 : null;
-        measurement.irradiance = irradiance > 0 ? irradiance : null;
-        measurement.metadata = metadata;
-
-        measurements.push(measurement);
-      }
-    }
+    const dayMeasurements = generateDayData(config, startDate, day);
+    measurements.push(...dayMeasurements);
   }
 
   return measurements;
+}
+
+/**
+ * Insert measurements in batches.
+ */
+async function insertMeasurements(
+  repository: ReturnType<typeof dataSource.getRepository<Measurement>>,
+  measurements: Measurement[],
+): Promise<void> {
+  const batchSize = 1000;
+  for (let i = 0; i < measurements.length; i += batchSize) {
+    const batch = measurements.slice(i, i + batchSize);
+    await repository
+      .createQueryBuilder()
+      .insert()
+      .into(Measurement)
+      .values(batch as QueryDeepPartialEntity<Measurement>[])
+      .orUpdate(
+        [
+          'activePowerWatts',
+          'energyDailyKwh',
+          'irradiance',
+          'metadata',
+          'loggerType',
+        ],
+        ['loggerId', 'timestamp'],
+      )
+      .execute();
+  }
+}
+
+/**
+ * Count and log statistics for a logger.
+ */
+function logStatistics(loggerId: string, measurements: Measurement[]): void {
+  const anomalyCount = measurements.filter(
+    (m) => m.activePowerWatts === 0 && m.irradiance && m.irradiance > 50,
+  ).length;
+
+  const errorCount = measurements.filter(
+    (m) => m.metadata && m.metadata.errorCode,
+  ).length;
+
+  console.log(
+    `  Inserted ${measurements.length} records (${anomalyCount} anomalies, ${errorCount} errors)`,
+  );
+}
+
+/**
+ * Process a single logger: generate and insert data.
+ */
+async function processLogger(
+  logger: LoggerConfig,
+  startDate: Date,
+  repository: ReturnType<typeof dataSource.getRepository<Measurement>>,
+): Promise<number> {
+  console.log(`\nGenerating data for ${logger.id} (${logger.type})...`);
+
+  const measurements = generateLoggerData(logger, startDate);
+  console.log(`  Generated ${measurements.length} measurements`);
+
+  await insertMeasurements(repository, measurements);
+  logStatistics(logger.id, measurements);
+
+  return measurements.length;
 }
 
 /**
@@ -253,46 +405,7 @@ async function seedTestData(): Promise<void> {
   let totalInserted = 0;
 
   for (const logger of LOGGERS) {
-    console.log(`\nGenerating data for ${logger.id} (${logger.type})...`);
-
-    const measurements = generateLoggerData(logger, startDate);
-    console.log(`  Generated ${measurements.length} measurements`);
-
-    // Insert in batches of 1000
-    const batchSize = 1000;
-    for (let i = 0; i < measurements.length; i += batchSize) {
-      const batch = measurements.slice(i, i + batchSize);
-      await repository
-        .createQueryBuilder()
-        .insert()
-        .into(Measurement)
-        .values(batch as QueryDeepPartialEntity<Measurement>[])
-        .orUpdate(
-          [
-            'activePowerWatts',
-            'energyDailyKwh',
-            'irradiance',
-            'metadata',
-            'loggerType',
-          ],
-          ['loggerId', 'timestamp'],
-        )
-        .execute();
-    }
-
-    // Count anomalies and errors
-    const anomalyCount = measurements.filter(
-      (m) => m.activePowerWatts === 0 && m.irradiance && m.irradiance > 50,
-    ).length;
-
-    const errorCount = measurements.filter(
-      (m) => m.metadata && (m.metadata as Record<string, any>).errorCode,
-    ).length;
-
-    console.log(
-      `  Inserted ${measurements.length} records (${anomalyCount} anomalies, ${errorCount} errors)`,
-    );
-    totalInserted += measurements.length;
+    totalInserted += await processLogger(logger, startDate, repository);
   }
 
   console.log(`\n========================================`);
@@ -304,13 +417,12 @@ async function seedTestData(): Promise<void> {
   console.log('\nDatabase connection closed.');
 }
 
-// Run the seeder
-seedTestData()
-  .then(() => {
-    console.log('\nSeed completed successfully!');
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error('Seed failed:', error);
-    process.exit(1);
-  });
+// Run the seeder with top-level await
+try {
+  await seedTestData();
+  console.log('\nSeed completed successfully!');
+  process.exit(0);
+} catch (error) {
+  console.error('Seed failed:', error);
+  process.exit(1);
+}

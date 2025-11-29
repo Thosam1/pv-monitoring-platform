@@ -69,7 +69,7 @@ function formatTimestamp(value: unknown): string {
   if (typeof value === 'string') {
     // Try to parse as ISO date
     const date = new Date(value)
-    if (!isNaN(date.getTime())) {
+    if (!Number.isNaN(date.getTime())) {
       return date.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
@@ -131,19 +131,6 @@ export function DynamicChart({
             fillOpacity={0.8}
           />
         )
-      case 'line':
-        return (
-          <Line
-            key={s.dataKey}
-            dataKey={s.dataKey}
-            name={s.name}
-            yAxisId={yAxisId}
-            stroke={color}
-            strokeWidth={2}
-            dot={false}
-            type="monotone"
-          />
-        )
       case 'scatter':
         return (
           <Scatter
@@ -153,6 +140,7 @@ export function DynamicChart({
             fill={color}
           />
         )
+      case 'line':
       default:
         return (
           <Line
@@ -264,8 +252,8 @@ export function DynamicChart({
                 label={({ name, percent }) => `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`}
                 labelLine={true}
               >
-                {data.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                {data.map((entry, index) => (
+                  <Cell key={`cell-${String(entry[xAxisKey] ?? index)}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                 ))}
               </Pie>
               {showTooltip && (
