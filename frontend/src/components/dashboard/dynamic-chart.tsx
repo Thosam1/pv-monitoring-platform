@@ -253,10 +253,12 @@ export function DynamicChart({
                 labelLine={true}
               >
                 {data.map((entry, index) => {
-                  const keyValue = entry[xAxisKey]
-                  const safeKey =
-                    typeof keyValue === 'object' || keyValue == null ? index : String(keyValue)
-                  return <Cell key={`cell-${safeKey}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  const rawKey = entry[xAxisKey]
+                  const cellKey =
+                    typeof rawKey === 'string' || typeof rawKey === 'number'
+                      ? `cell-${rawKey}`
+                      : `cell-${index}`
+                  return <Cell key={cellKey} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                 })}
               </Pie>
               {showTooltip && (
