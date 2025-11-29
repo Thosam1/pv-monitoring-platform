@@ -135,7 +135,9 @@ describe('McpClient', () => {
         .mockRejectedValueOnce(new Error('Connection refused'))
         .mockRejectedValueOnce(new Error('Connection refused'))
         .mockResolvedValueOnce(
-          mockMcpClientInstance as unknown as ReturnType<typeof createMCPClient>,
+          mockMcpClientInstance as unknown as ReturnType<
+            typeof createMCPClient
+          >,
         );
 
       const connectPromise = mcpClient.connect();

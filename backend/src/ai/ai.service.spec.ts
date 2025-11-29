@@ -6,7 +6,8 @@ import { McpClient } from './mcp.client';
 // Mock the AI SDK modules
 jest.mock('ai', () => ({
   streamText: jest.fn(),
-  tool: jest.fn((config) => config),
+
+  tool: jest.fn((config: unknown) => config),
   stepCountIs: jest.fn().mockReturnValue(() => false),
 }));
 
@@ -177,9 +178,11 @@ describe('AiService', () => {
   describe('chat', () => {
     it('should call streamText with correct parameters', async () => {
       const mockResult = { text: 'Hello!' };
-      mockStreamText.mockReturnValue(mockResult as any);
+
+      mockStreamText.mockReturnValue(mockResult as never);
 
       const messages = [{ role: 'user' as const, content: 'Hello' }];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const result = await service.chat(messages);
 
       expect(mockStreamText).toHaveBeenCalled();
@@ -188,7 +191,8 @@ describe('AiService', () => {
 
     it('should include system prompt in messages', async () => {
       const mockResult = { text: 'Response' };
-      mockStreamText.mockReturnValue(mockResult as any);
+
+      mockStreamText.mockReturnValue(mockResult as never);
 
       const messages = [{ role: 'user' as const, content: 'Test' }];
       await service.chat(messages);
@@ -200,7 +204,8 @@ describe('AiService', () => {
 
     it('should get tools from MCP client', async () => {
       const mockResult = { text: 'Response' };
-      mockStreamText.mockReturnValue(mockResult as any);
+
+      mockStreamText.mockReturnValue(mockResult as never);
 
       await service.chat([{ role: 'user', content: 'Test' }]);
 
@@ -209,7 +214,8 @@ describe('AiService', () => {
 
     it('should include render_ui_component tool', async () => {
       const mockResult = { text: 'Response' };
-      mockStreamText.mockReturnValue(mockResult as any);
+
+      mockStreamText.mockReturnValue(mockResult as never);
 
       await service.chat([{ role: 'user', content: 'Test' }]);
 
@@ -221,7 +227,8 @@ describe('AiService', () => {
     it('should work with empty MCP tools', async () => {
       mockMcpClient.getTools = jest.fn().mockResolvedValue({});
       const mockResult = { text: 'Response' };
-      mockStreamText.mockReturnValue(mockResult as any);
+
+      mockStreamText.mockReturnValue(mockResult as never);
 
       await service.chat([{ role: 'user', content: 'Test' }]);
 
