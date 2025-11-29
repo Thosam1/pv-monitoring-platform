@@ -10,6 +10,7 @@
  * - KPIGrid: KPIGridProps
  * - AnomalyTable: Custom for AI anomaly display
  * - ComparisonChart: Custom for multi-logger comparison
+ * - DynamicChart: Generative UI chart with full configuration
  */
 
 /**
@@ -91,6 +92,35 @@ export interface ComparisonChartProps {
 }
 
 /**
+ * Series configuration for DynamicChart.
+ */
+export interface ChartSeries {
+  dataKey: string;
+  name: string;
+  type?: 'area' | 'bar' | 'line' | 'scatter';
+  color?: string;
+  yAxisId?: 'left' | 'right';
+  fillOpacity?: number;
+}
+
+/**
+ * Props for DynamicChart component (Generative UI).
+ * Enables AI to generate fully configurable charts on-the-fly.
+ */
+export interface DynamicChartProps {
+  chartType: 'area' | 'bar' | 'line' | 'scatter' | 'pie' | 'composed';
+  title: string;
+  xAxisKey: string;
+  xAxisLabel?: string;
+  yAxisLabel?: string;
+  series: ChartSeries[];
+  data: Record<string, unknown>[];
+  showLegend?: boolean;
+  showGrid?: boolean;
+  showTooltip?: boolean;
+}
+
+/**
  * Union type for all renderable components.
  */
 export type RenderableComponent =
@@ -98,7 +128,8 @@ export type RenderableComponent =
   | { component: 'TechnicalChart'; props: TechnicalChartProps }
   | { component: 'KPIGrid'; props: KPIGridProps }
   | { component: 'AnomalyTable'; props: AnomalyTableProps }
-  | { component: 'ComparisonChart'; props: ComparisonChartProps };
+  | { component: 'ComparisonChart'; props: ComparisonChartProps }
+  | { component: 'DynamicChart'; props: DynamicChartProps };
 
 /**
  * Schema for the render_ui_component tool.
@@ -107,7 +138,8 @@ export const RENDER_UI_COMPONENT_SCHEMA = {
   name: 'render_ui_component',
   description:
     'Render a UI component in the chat interface with data from analysis. ' +
-    'Use this after calling analysis tools to visualize results.',
+    'Use this after calling analysis tools to visualize results. ' +
+    'Use DynamicChart for flexible chart generation with full control over type, series, and styling.',
   parameters: {
     type: 'object',
     properties: {
@@ -119,13 +151,15 @@ export const RENDER_UI_COMPONENT_SCHEMA = {
           'KPIGrid',
           'AnomalyTable',
           'ComparisonChart',
+          'DynamicChart',
         ],
-        description: 'The component to render',
+        description:
+          'The component to render. Use DynamicChart for AI-generated visualizations with customizable chart types.',
       },
       props: {
         type: 'object',
         description:
-          'Props to pass to the component (structure depends on component type)',
+          'Props to pass to the component. For DynamicChart: { chartType, title, xAxisKey, series: [{dataKey, name, color?, yAxisId?}], data: [...] }',
       },
     },
     required: ['component', 'props'],

@@ -44,13 +44,48 @@ RULES:
 9. For troubleshooting ("Any errors?", "What does this error mean?"), use diagnose_error_codes.
 10. For site-wide questions ("How is the site?", "Morning briefing", "Total generation"), use get_fleet_overview.
 
-COMPONENT MAPPING:
+COMPONENT MAPPING (Legacy - use for simple cases):
 - For power curves and timeseries: use PerformanceChart
 - For anomaly reports: use AnomalyTable
 - For logger comparisons: use ComparisonChart
 - For summary statistics/financial reports: use KPIGrid
 - For diagnostics/error reports: use AnomalyTable
-- For fleet overview/site status: use KPIGrid`;
+- For fleet overview/site status: use KPIGrid
+
+DYNAMIC CHART GENERATION (Preferred for visualizations):
+Use DynamicChart component for flexible, AI-generated charts.
+**IMPORTANT**: If the user explicitly requests a specific chart type (e.g., "show as bar chart"), ALWAYS respect their preference.
+
+Chart Type Selection:
+| Data Type                              | chartType  | Example Prompts                                    |
+|----------------------------------------|------------|---------------------------------------------------|
+| Single logger power/irradiance         | composed   | "Show power curve", "Daily generation"            |
+| Multiple loggers comparison            | line       | "Compare inverters 1 and 2"                       |
+| Daily/weekly energy totals             | bar        | "Show energy for last 7 days"                     |
+| Power vs Irradiance correlation        | scatter    | "Is my system clipping?", "Show efficiency"       |
+| Fleet status distribution              | pie        | "How many devices are online?"                    |
+| Mixed metrics (power + irradiance)     | composed   | "Show power with irradiance overlay"              |
+
+Series Styling:
+- Power: color='#FDB813' (solar yellow), yAxisId='left'
+- Irradiance: color='#3B82F6' (blue), yAxisId='right', type='line'
+- Energy: color='#22C55E' (green)
+- Errors/Offline: color='#EF4444' (red)
+
+DynamicChart Props Example:
+{
+  component: 'DynamicChart',
+  props: {
+    chartType: 'composed',
+    title: 'Power Production - Nov 25',
+    xAxisKey: 'timestamp',
+    series: [
+      { dataKey: 'power', name: 'Power (W)', color: '#FDB813', type: 'area' },
+      { dataKey: 'irradiance', name: 'Irradiance (W/m²)', color: '#3B82F6', type: 'line', yAxisId: 'right' }
+    ],
+    data: [...] // from get_power_curve
+  }
+}`;
 
 type AIProvider = 'gemini' | 'anthropic' | 'openai';
 
@@ -172,11 +207,16 @@ export class AiService {
             'KPIGrid',
             'AnomalyTable',
             'ComparisonChart',
+            'DynamicChart',
           ])
-          .describe('The component to render'),
+          .describe(
+            'The component to render. Use DynamicChart for flexible AI-generated visualizations.',
+          ),
         props: z
           .record(z.string(), z.unknown())
-          .describe('Props to pass to the component'),
+          .describe(
+            'Props to pass to the component. For DynamicChart: { chartType, title, xAxisKey, series, data }',
+          ),
       }),
       // No execute function - this is a pass-through tool
       // The tool invocation will be included in the response for the frontend to handle

@@ -73,18 +73,27 @@ describe('AiController', () => {
         messages: [{ role: 'user', content: 'Hello' }],
       };
 
-      // Mock streaming response
-      const mockStream = {
+      // Mock streaming response - mimics Web Streams API Response object
+      const mockReadableStream = {
         getReader: jest.fn().mockReturnValue({
           read: jest
             .fn()
-            .mockResolvedValueOnce({ done: false, value: 'chunk1' })
+            .mockResolvedValueOnce({
+              done: false,
+              value: new TextEncoder().encode('chunk1'),
+            })
             .mockResolvedValueOnce({ done: true }),
         }),
       };
 
+      const mockStreamResponse = {
+        body: mockReadableStream,
+      };
+
       const mockResult = {
-        toDataStream: jest.fn().mockReturnValue(mockStream),
+        toUIMessageStreamResponse: jest
+          .fn()
+          .mockReturnValue(mockStreamResponse),
       };
 
       mockAiService.chat = jest.fn().mockResolvedValue(mockResult);

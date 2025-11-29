@@ -45,7 +45,13 @@ interface LoggerConfig {
 }
 
 const LOGGERS: LoggerConfig[] = [
-  { id: 'GW-INV-001', type: 'goodwe', peakPower: 5000, anomalyDays: [], errors: [] },
+  {
+    id: 'GW-INV-001',
+    type: 'goodwe',
+    peakPower: 5000,
+    anomalyDays: [],
+    errors: [],
+  },
   {
     id: 'GW-INV-002',
     type: 'goodwe',
@@ -92,7 +98,9 @@ function getSolarFactor(hour: number): number {
   // Bell curve centered at 13:00 (solar noon)
   const peakHour = 13;
   const spread = 4; // Hours from peak to ~15% of max
-  const factor = Math.exp(-Math.pow(hour - peakHour, 2) / (2 * spread * spread));
+  const factor = Math.exp(
+    -Math.pow(hour - peakHour, 2) / (2 * spread * spread),
+  );
 
   return factor;
 }
@@ -149,7 +157,10 @@ function getErrorCode(
 /**
  * Generate measurements for a single logger.
  */
-function generateLoggerData(config: LoggerConfig, startDate: Date): Measurement[] {
+function generateLoggerData(
+  config: LoggerConfig,
+  startDate: Date,
+): Measurement[] {
   const measurements: Measurement[] = [];
 
   for (let day = 0; day < DAYS_OF_DATA; day++) {
@@ -177,8 +188,7 @@ function generateLoggerData(config: LoggerConfig, startDate: Date): Measurement[
           if (isAnomaly(timestamp, dayOfWeek, config.anomalyDays)) {
             power = 0; // Outage: power is 0 but irradiance is still present
           } else {
-            power =
-              config.peakPower * solarFactor * (0.85 + variation * 0.15);
+            power = config.peakPower * solarFactor * (0.85 + variation * 0.15);
             power = Math.round(power);
           }
 
@@ -193,7 +203,8 @@ function generateLoggerData(config: LoggerConfig, startDate: Date): Measurement[
 
         // Build metadata with optional error
         const metadata: Record<string, any> = {
-          temperature: solarFactor > 0 ? 25 + solarFactor * 20 + variation * 5 : null,
+          temperature:
+            solarFactor > 0 ? 25 + solarFactor * 20 + variation * 5 : null,
           voltage: solarFactor > 0 ? 350 + variation * 30 : null,
           current: power ? power / 350 : null,
         };
@@ -235,7 +246,9 @@ async function seedTestData(): Promise<void> {
   startDate.setUTCDate(startDate.getUTCDate() - DAYS_OF_DATA);
   startDate.setUTCHours(0, 0, 0, 0);
 
-  console.log(`Generating data from ${startDate.toISOString()} for ${DAYS_OF_DATA} days`);
+  console.log(
+    `Generating data from ${startDate.toISOString()} for ${DAYS_OF_DATA} days`,
+  );
 
   let totalInserted = 0;
 
@@ -256,7 +269,13 @@ async function seedTestData(): Promise<void> {
         .into(Measurement)
         .values(batch as any)
         .orUpdate(
-          ['activePowerWatts', 'energyDailyKwh', 'irradiance', 'metadata', 'loggerType'],
+          [
+            'activePowerWatts',
+            'energyDailyKwh',
+            'irradiance',
+            'metadata',
+            'loggerType',
+          ],
           ['loggerId', 'timestamp'],
         )
         .execute();
@@ -271,7 +290,9 @@ async function seedTestData(): Promise<void> {
       (m) => m.metadata && (m.metadata as Record<string, any>).errorCode,
     ).length;
 
-    console.log(`  Inserted ${measurements.length} records (${anomalyCount} anomalies, ${errorCount} errors)`);
+    console.log(
+      `  Inserted ${measurements.length} records (${anomalyCount} anomalies, ${errorCount} errors)`,
+    );
     totalInserted += measurements.length;
   }
 
