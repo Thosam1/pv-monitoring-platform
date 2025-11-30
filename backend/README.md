@@ -2,6 +2,10 @@
 
 NestJS 11 backend for data ingestion, measurements API, and AI integration.
 
+## Data Flow
+
+![Data Flow](../diagrams/svg/data-flow.svg)
+
 ## Modules
 
 ```
@@ -13,6 +17,8 @@ src/
 ```
 
 ## Parser Strategies
+
+![Parser Strategy Pattern](../diagrams/svg/parser-strategy.svg)
 
 8 parsers auto-detect file format via `canHandle()` method:
 
@@ -28,6 +34,8 @@ src/
 | GoodWe | Fallback | CSV (EAV) | Power, Energy |
 
 ## API Endpoints
+
+![Request Sequence](../diagrams/svg/request-sequence.svg)
 
 ### Ingestion
 ```
@@ -50,6 +58,8 @@ GET /ai/status                         # Service status
 ```
 
 ## Database Schema
+
+![Database Schema](../diagrams/svg/database-schema.svg)
 
 ```typescript
 @Entity('measurements')

@@ -13,6 +13,8 @@ React 19 + Vite 7 frontend with shadcn/ui components and AI chat interface.
 
 ## Component Structure
 
+![Frontend Components](../diagrams/svg/frontend-components.svg)
+
 ```
 src/
 ├── components/
@@ -36,6 +38,8 @@ src/
 | Reports | Data export and reporting |
 
 ## AI Chat Features
+
+![AI Chat Flow](../diagrams/svg/ai-chat-flow.svg)
 
 - **SSE Streaming**: Real-time response streaming
 - **Tool Rendering**: Visualizes MCP tool results

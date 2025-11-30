@@ -4,6 +4,8 @@ Python 3.12 FastMCP server providing 10 MCP tools for solar analytics.
 
 ## Architecture
 
+![AI Tools](../diagrams/svg/ai-tools.svg)
+
 ```
 ai/
 ├── server.py           # FastMCP server entry point
@@ -102,6 +104,8 @@ uv run pytest --cov           # Coverage report
 ```
 
 ## SSE Transport
+
+![AI Chat Flow](../diagrams/svg/ai-chat-flow.svg)
 
 The server uses SSE (Server-Sent Events) transport at `/sse` endpoint.
 

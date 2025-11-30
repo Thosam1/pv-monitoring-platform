@@ -4,35 +4,9 @@ High-throughput solar data ingestion and AI-powered analytics platform for photo
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    subgraph Frontend["Frontend (React 19 + Vite 7)"]
-        UI[Dashboard & Charts]
-        Chat[AI Chat Interface]
-    end
+![Architecture Overview](./diagrams/svg/architecture-overview.svg)
 
-    subgraph Backend["Backend (NestJS 11)"]
-        API[REST API]
-        Ingestion[Data Ingestion]
-        AI[AI Module]
-    end
-
-    subgraph AIService["AI Service (Python FastMCP)"]
-        MCP[MCP Tools]
-        Analytics[Solar Analytics]
-    end
-
-    subgraph Database["PostgreSQL 16"]
-        DB[(measurements)]
-    end
-
-    Frontend <-->|HTTP/SSE| Backend
-    Backend <-->|SSE| AIService
-    Backend <-->|TypeORM| Database
-    AIService <-->|SQLAlchemy| Database
-```
-
-See [diagrams/markdown/architecture-overview.md](./diagrams/markdown/architecture-overview.md) for details.
+See [diagrams/markdown/architecture-overview.md](./diagrams/markdown/architecture-overview.md) for the Mermaid source.
 
 ## Tech Stack
 
@@ -89,6 +63,8 @@ cd frontend && npm install && npm run dev
 
 ## Project Structure
 
+![Folder Structure](./diagrams/svg/folder-structure.svg)
+
 ```
 pv-monitoring-platform/
 ├── backend/          # NestJS API server
@@ -125,18 +101,20 @@ GET /ai/status             # Service health check
 
 ## Diagrams
 
-| Diagram | Description |
-|---------|-------------|
-| [architecture-overview](./diagrams/markdown/architecture-overview.md) | High-level system architecture |
-| [request-sequence](./diagrams/markdown/request-sequence.md) | Request flow through the system |
-| [data-flow](./diagrams/markdown/data-flow.md) | Data ingestion and AI query flows |
-| [docker-deployment](./diagrams/markdown/docker-deployment.md) | Docker Compose topology |
-| [folder-structure](./diagrams/markdown/folder-structure.md) | Project directory structure |
-| [parser-strategy](./diagrams/markdown/parser-strategy.md) | 8 parser strategy pattern |
-| [ai-tools](./diagrams/markdown/ai-tools.md) | MCP tools hierarchy |
-| [database-schema](./diagrams/markdown/database-schema.md) | Entity relationship diagram |
-| [frontend-components](./diagrams/markdown/frontend-components.md) | React component hierarchy |
-| [ai-chat-flow](./diagrams/markdown/ai-chat-flow.md) | SSE streaming flow |
+All diagrams are available as pre-rendered SVGs in [`diagrams/svg/`](./diagrams/svg/) and as Mermaid source in [`diagrams/markdown/`](./diagrams/markdown/).
+
+| Diagram | SVG | Mermaid Source |
+|---------|-----|----------------|
+| Architecture Overview | [SVG](./diagrams/svg/architecture-overview.svg) | [Mermaid](./diagrams/markdown/architecture-overview.md) |
+| Request Sequence | [SVG](./diagrams/svg/request-sequence.svg) | [Mermaid](./diagrams/markdown/request-sequence.md) |
+| Data Flow | [SVG](./diagrams/svg/data-flow.svg) | [Mermaid](./diagrams/markdown/data-flow.md) |
+| Docker Deployment | [SVG](./diagrams/svg/docker-deployment.svg) | [Mermaid](./diagrams/markdown/docker-deployment.md) |
+| Folder Structure | [SVG](./diagrams/svg/folder-structure.svg) | [Mermaid](./diagrams/markdown/folder-structure.md) |
+| Parser Strategy | [SVG](./diagrams/svg/parser-strategy.svg) | [Mermaid](./diagrams/markdown/parser-strategy.md) |
+| AI Tools | [SVG](./diagrams/svg/ai-tools.svg) | [Mermaid](./diagrams/markdown/ai-tools.md) |
+| Database Schema | [SVG](./diagrams/svg/database-schema.svg) | [Mermaid](./diagrams/markdown/database-schema.md) |
+| Frontend Components | [SVG](./diagrams/svg/frontend-components.svg) | [Mermaid](./diagrams/markdown/frontend-components.md) |
+| AI Chat Flow | [SVG](./diagrams/svg/ai-chat-flow.svg) | [Mermaid](./diagrams/markdown/ai-chat-flow.md) |
 
 ## Environment Variables
 
