@@ -10,9 +10,10 @@ PV Monitoring Platform - High-throughput solar data ingestion platform (MVP) for
 
 - **Backend**: NestJS 11 (port 3000) with TypeORM and PostgreSQL
 - **Frontend**: React 19 + Vite 7 (port 5173) with shadcn/ui, Tailwind CSS 4, and Recharts
+- **AI Service**: Python FastMCP (port 4000) with SQLAlchemy and 10 MCP tools for solar analytics
 - **Database**: PostgreSQL 16 (Docker, port 5432) with Adminer UI (port 8080)
 - **Pattern**: Hybrid schema (golden metrics as columns + JSONB metadata for flexibility)
-- **Runtime**: Node.js 20.x
+- **Runtime**: Node.js 20.x, Python 3.12
 
 ### UI Stack (Frontend)
 - **Component Library**: shadcn/ui (Radix UI primitives + Tailwind CSS)
@@ -73,7 +74,7 @@ PV Monitoring Platform - High-throughput solar data ingestion platform (MVP) for
 
 ### Initial Setup
 ```bash
-# Start database services (PostgreSQL + Adminer)
+# Start all services (PostgreSQL + Adminer + AI Service)
 docker-compose up -d
 
 # Install backend dependencies
@@ -81,6 +82,9 @@ cd backend && npm install
 
 # Install frontend dependencies
 cd frontend && npm install
+
+# (Optional) Local AI service development
+cd ai && uv sync
 ```
 
 ### Running the Application
@@ -94,7 +98,27 @@ cd frontend && npm run dev
 # Access points:
 # - Frontend: http://localhost:5173
 # - Backend API: http://localhost:3000
+# - AI Service: http://localhost:4000/sse
 # - Database UI: http://localhost:8080 (user: admin, pass: admin, server: postgres)
+```
+
+### Environment Variables
+
+#### Backend AI Configuration
+```env
+AI_PROVIDER=gemini              # Options: gemini | anthropic | openai
+MCP_SERVER_URL=http://localhost:4000/sse
+
+# Provider API keys (set one based on AI_PROVIDER)
+GOOGLE_GENERATIVE_AI_API_KEY=   # For Gemini
+ANTHROPIC_API_KEY=              # For Claude
+OPENAI_API_KEY=                 # For GPT-4
+```
+
+#### AI Service Configuration
+```env
+DATABASE_URL=postgresql://admin:admin@localhost:5432/pv_db
+# Docker: DATABASE_URL=postgresql://admin:admin@postgres:5432/pv_db
 ```
 
 ### Testing
@@ -229,6 +253,15 @@ GET /measurements/:loggerId               # Get data (optional: ?start=&end=)
 GET /measurements/:loggerId/date-range    # Get earliest/latest timestamps
 ```
 
+### AI Chat
+```
+POST /ai/chat                             # Chat with AI (SSE streaming response)
+  - Body: { messages: [{ role: "user"|"assistant", content: string }] }
+  - Response: Server-Sent Events stream
+GET /ai/status                            # Check AI service readiness
+  - Response: { provider: string, mcpConnected: boolean, ready: boolean }
+```
+
 ## Project Structure
 
 ```
@@ -236,41 +269,49 @@ backend/
 ├── src/
 │   ├── ingestion/              # Data ingestion module
 │   │   ├── strategies/         # 8 parser implementations
-│   │   │   ├── goodwe.strategy.ts
-│   │   │   ├── lti.strategy.ts
-│   │   │   ├── integra.strategy.ts
-│   │   │   ├── mbmet.strategy.ts
-│   │   │   ├── meier.strategy.ts
-│   │   │   ├── meteocontrol.strategy.ts
-│   │   │   ├── plexlog.strategy.ts
-│   │   │   └── smartdog.strategy.ts
 │   │   ├── dto/                # Data transfer objects
 │   │   └── interfaces/         # IParser interface
 │   ├── measurements/           # Data query module
+│   ├── ai/                     # AI integration module
+│   │   ├── ai.controller.ts    # /ai/chat endpoint (SSE)
+│   │   ├── ai.service.ts       # LLM orchestration (Gemini/Claude/GPT)
+│   │   ├── mcp.client.ts       # FastMCP SSE client
+│   │   └── dto/                # ChatRequest, ChatResponse
 │   └── database/entities/      # TypeORM entities
 └── test/                       # E2E tests and fixtures
 
 frontend/
 ├── src/
-│   ├── App.tsx                 # Main app with view modes and smart sync
+│   ├── App.tsx                 # Main app with view modes
 │   ├── components/
 │   │   ├── layout/             # Sidebar, header, navigation
-│   │   │   ├── app-sidebar.tsx
-│   │   │   ├── site-header.tsx
-│   │   │   ├── nav-main.tsx
-│   │   │   └── nav-loggers.tsx # Collapsible logger hierarchy
 │   │   ├── dashboard/          # Charts and KPI components
-│   │   │   ├── dashboard-content.tsx
-│   │   │   ├── KPIGrid.tsx     # Adaptive KPIs (meteo vs inverter)
-│   │   │   ├── DashboardControls.tsx
-│   │   │   ├── PerformanceChart.tsx
-│   │   │   ├── TechnicalChart.tsx
-│   │   │   └── GeneratorPowerChart.tsx
+│   │   ├── ai/                 # AI chat components
+│   │   │   ├── chat-interface.tsx
+│   │   │   ├── chat-message.tsx
+│   │   │   └── tool-renderer.tsx
 │   │   ├── ui/                 # shadcn/ui components
 │   │   └── BulkUploader.tsx    # Drag-n-drop with folder support
-│   ├── hooks/                  # Custom React hooks
+│   ├── views/                  # Page views (ai-chat-view.tsx)
+│   ├── hooks/                  # Custom React hooks (use-ai-chat.ts)
 │   ├── lib/                    # Utilities (date-utils, cn)
-│   └── types/                  # TypeScript types (logger.ts)
+│   └── types/                  # TypeScript types
+
+ai/                             # Python FastMCP Service
+├── server.py                   # FastMCP server entry point
+├── config.py                   # Pydantic settings
+├── database.py                 # SQLAlchemy connection
+├── tools/                      # 10 MCP tool implementations
+│   ├── discovery.py            # list_loggers
+│   ├── monitoring.py           # analyze_inverter_health, get_power_curve
+│   ├── comparison.py           # compare_loggers
+│   ├── financial.py            # calculate_financial_savings
+│   ├── performance.py          # calculate_performance_ratio
+│   ├── forecasting.py          # forecast_production
+│   ├── diagnostics.py          # diagnose_error_codes
+│   └── fleet.py                # get_fleet_overview
+├── models/                     # Pydantic request/response models
+└── Dockerfile                  # Python 3.12 container
 ```
 
 ## Logger Types & Categories

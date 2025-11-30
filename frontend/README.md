@@ -1,73 +1,80 @@
-# React + TypeScript + Vite
+# Frontend - React Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + Vite 7 frontend with shadcn/ui components and AI chat interface.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Framework**: React 19, TypeScript
+- **Build**: Vite 7
+- **Styling**: Tailwind CSS 4, shadcn/ui
+- **Charts**: Recharts 3.x
+- **Animation**: Framer Motion 12.x
+- **AI Chat**: @ai-sdk/react with SSE streaming
 
-## React Compiler
+## Component Structure
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+src/
+├── components/
+│   ├── layout/           # AppSidebar, SiteHeader, NavMain
+│   ├── dashboard/        # Charts, KPIGrid, DashboardControls
+│   ├── ai/               # ChatInterface, ChatMessage, ToolRenderer
+│   └── ui/               # shadcn/ui components
+├── views/                # Page views (ai-chat-view.tsx)
+├── hooks/                # Custom hooks (use-ai-chat.ts)
+├── lib/                  # Utilities (date-utils, cn)
+└── types/                # TypeScript types
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Views
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| View | Description |
+|------|-------------|
+| Dashboard | Logger data visualization with adaptive KPIs |
+| Upload | Bulk file uploader with drag-n-drop |
+| AI Chat | Chat interface with MCP tool results |
+| Reports | Data export and reporting |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## AI Chat Features
+
+- **SSE Streaming**: Real-time response streaming
+- **Tool Rendering**: Visualizes MCP tool results
+- **Chat History**: Persisted in localStorage
+- **Suggestions**: Pre-defined quick prompts
+
+## Charts
+
+- **PerformanceChart**: Power and irradiance over time
+- **TechnicalChart**: Secondary metrics (temperature, etc.)
+- **GeneratorPowerChart**: Power generation visualization
+- **DynamicChart**: AI-generated charts via MCP tools
+
+## Development
+
+```bash
+npm install
+npm run dev       # Development server (HMR)
+npm run build     # Production build
+npm run preview   # Preview production build
+npm run lint      # ESLint check
 ```
+
+## Key Dependencies
+
+- `react` 19.x - UI framework
+- `vite` 7.x - Build tool
+- `@ai-sdk/react` - Vercel AI SDK React hooks
+- `recharts` - Charting library
+- `framer-motion` - Animations
+- `date-fns` - Date utilities
+- `lucide-react` - Icons
+
+## Environment
+
+Frontend connects to:
+- Backend API: `http://localhost:3000`
+- Vite dev server: `http://localhost:5173`
+
+API proxy configured in `vite.config.ts` for `/api` routes.
+
+See [CLAUDE.md](../CLAUDE.md) for coding standards and architecture patterns.

@@ -1,176 +1,173 @@
 # PV Monitoring Platform
 
-High-Throughput Solar Data Ingestion Platform - MVP
+High-throughput solar data ingestion and AI-powered analytics platform for photovoltaic inverters and meteo stations.
 
-## Architecture Overview
+## Architecture
 
+```mermaid
+flowchart TB
+    subgraph Frontend["Frontend (React 19 + Vite 7)"]
+        UI[Dashboard & Charts]
+        Chat[AI Chat Interface]
+    end
+
+    subgraph Backend["Backend (NestJS 11)"]
+        API[REST API]
+        Ingestion[Data Ingestion]
+        AI[AI Module]
+    end
+
+    subgraph AIService["AI Service (Python FastMCP)"]
+        MCP[MCP Tools]
+        Analytics[Solar Analytics]
+    end
+
+    subgraph Database["PostgreSQL 16"]
+        DB[(measurements)]
+    end
+
+    Frontend <-->|HTTP/SSE| Backend
+    Backend <-->|SSE| AIService
+    Backend <-->|TypeORM| Database
+    AIService <-->|SQLAlchemy| Database
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     PV Monitoring Platform                      │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────┐        ┌──────────────┐        ┌──────────┐  │
-│  │   Frontend   │  HTTP  │   Backend    │  SQL   │ Postgres │  │
-│  │  (React +    │◄──────►│  (NestJS +   │◄──────►│  (Docker)│  │
-│  │  Tailwind)   │        │  TypeORM)    │        │          │  │
-│  │  Port: 5173  │        │  Port: 3000  │        │Port: 5432│  │
-│  └──────────────┘        └──────────────┘        └──────────┘  │
-│                                                                 │
-│                          ┌──────────────┐                       │
-│                          │   Adminer    │                       │
-│                          │  Port: 8080  │                       │
-│                          └──────────────┘                       │
-└─────────────────────────────────────────────────────────────────┘
-```
+
+See [diagrams/markdown/architecture-overview.md](./diagrams/markdown/architecture-overview.md) for details.
 
 ## Tech Stack
 
-| Layer      | Technology                          |
-|------------|-------------------------------------|
-| Frontend   | Vite + React + TypeScript           |
-| Styling    | Tailwind CSS                        |
-| Charts     | Recharts                            |
-| HTTP       | Axios                               |
-| Backend    | NestJS                              |
-| ORM        | TypeORM                             |
-| Database   | PostgreSQL 16                       |
-| Containers | Docker Compose                      |
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 19, Vite 7, TypeScript, shadcn/ui, Tailwind CSS 4, Recharts |
+| Backend | NestJS 11, TypeORM, PostgreSQL 16 |
+| AI Service | Python 3.12, FastMCP, SQLAlchemy, Vercel AI SDK |
+| LLM Providers | Gemini, Claude, GPT-4 (configurable) |
+| Containers | Docker Compose |
 
-## Project Structure
+## Features
 
-```
-pv-monitoring-platform/
-├── backend/                 # NestJS application
-│   ├── src/
-│   │   ├── app.module.ts    # Main module with TypeORM config
-│   │   ├── app.controller.ts
-│   │   ├── app.service.ts
-│   │   └── main.ts
-│   ├── .env                 # Environment variables (DB_HOST=localhost)
-│   └── package.json
-├── frontend/                # Vite + React application
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── main.tsx
-│   │   └── index.css        # Tailwind imports
-│   ├── vite.config.ts       # Vite + Tailwind config
-│   └── package.json
-├── docker-compose.yml       # PostgreSQL + Adminer services
-└── README.md
-```
+- **8 Logger Parsers**: GoodWe, LTI ReEnergy, Integra Sun, MBMET, Meier-NT, MeteoControl, Plexlog, SmartDog
+- **AI-Powered Analytics**: Chat interface with 10 specialized MCP tools
+- **Real-time Streaming**: SSE-based responses for AI chat
+- **Adaptive Dashboard**: Different KPIs for inverters vs. meteo stations
+- **Bulk Upload**: Drag-n-drop support for CSV, XML, and SQLite files
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20.x
 - Docker & Docker Compose
-- npm
+- (Optional) Python 3.12 + uv for local AI development
 
-### 1. Start Database Services
+### 1. Start Services
 
 ```bash
 docker-compose up -d
 ```
 
-This starts:
-- PostgreSQL on `localhost:5432`
-- Adminer (DB UI) on `localhost:8080`
+Services started:
+- PostgreSQL: `localhost:5432`
+- Adminer: `localhost:8080`
+- AI Service: `localhost:4000`
 
-### 2. Start Backend
-
-```bash
-cd backend
-npm run start:dev
-```
-
-Backend runs on `http://localhost:3000`
-
-### 3. Start Frontend
+### 2. Install & Run
 
 ```bash
-cd frontend
-npm run dev
+# Backend
+cd backend && npm install && npm run start:dev
+
+# Frontend (new terminal)
+cd frontend && npm install && npm run dev
 ```
 
-Frontend runs on `http://localhost:5173`
+### 3. Access
 
-## Database Access
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:3000
+- **Database UI**: http://localhost:8080 (admin/admin)
 
-### Via Adminer (Web UI)
+## Project Structure
 
-1. Open `http://localhost:8080`
-2. Connection details:
-   - System: `PostgreSQL`
-   - Server: `postgres` (use `postgres` as the server name in Adminer since it's in Docker network)
-   - Username: `admin`
-   - Password: `admin`
-   - Database: `pv_db`
-
-### Via psql (CLI)
-
-```bash
-docker exec -it pv_db psql -U admin -d pv_db
+```
+pv-monitoring-platform/
+├── backend/          # NestJS API server
+├── frontend/         # React dashboard
+├── ai/               # Python FastMCP service
+├── diagrams/         # Architecture diagrams
+└── docker-compose.yml
 ```
 
-## Environment Variables
-
-### Backend (.env)
-
-```env
-DB_HOST=localhost      # Use 'localhost' for local dev, 'postgres' for Docker network
-DB_PORT=5432
-DB_USERNAME=admin
-DB_PASSWORD=admin
-DB_DATABASE=pv_db
-PORT=3000
-```
-
-## Available Scripts
-
-### Backend
-
-```bash
-npm run start:dev     # Development with hot-reload
-npm run start:prod    # Production build
-npm run test          # Run tests
-```
-
-### Frontend
-
-```bash
-npm run dev           # Development server
-npm run build         # Production build
-npm run preview       # Preview production build
-```
+See component READMEs for details:
+- [Backend README](./backend/README.md)
+- [Frontend README](./frontend/README.md)
+- [AI Service README](./ai/README.md)
 
 ## API Endpoints
 
-| Method | Endpoint | Description         |
-|--------|----------|---------------------|
-| GET    | /        | Health check        |
-
-*More endpoints will be added as features are implemented.*
-
-## Development Workflow
-
-1. Make sure Docker services are running
-2. Start backend in one terminal
-3. Start frontend in another terminal
-4. Access the app at `http://localhost:5173`
-
-## Troubleshooting
-
-### Database Connection Failed
-
-1. Ensure Docker is running: `docker-compose ps`
-2. Check PostgreSQL logs: `docker-compose logs postgres`
-3. Verify `.env` has `DB_HOST=localhost`
-
-### Port Already in Use
-
-```bash
-# Find and kill process on port
-lsof -i :3000  # or :5173, :5432
-kill -9 <PID>
+### Data Ingestion
 ```
+POST /ingest/:loggerType    # Upload files (multipart/form-data)
+```
+
+### Data Retrieval
+```
+GET /measurements           # List all loggers
+GET /measurements/:id       # Get logger data
+GET /measurements/:id/date-range
+```
+
+### AI Chat
+```
+POST /ai/chat              # Chat with AI (SSE stream)
+GET /ai/status             # Service health check
+```
+
+## Diagrams
+
+| Diagram | Description |
+|---------|-------------|
+| [architecture-overview](./diagrams/markdown/architecture-overview.md) | High-level system architecture |
+| [request-sequence](./diagrams/markdown/request-sequence.md) | Request flow through the system |
+| [data-flow](./diagrams/markdown/data-flow.md) | Data ingestion and AI query flows |
+| [docker-deployment](./diagrams/markdown/docker-deployment.md) | Docker Compose topology |
+| [folder-structure](./diagrams/markdown/folder-structure.md) | Project directory structure |
+| [parser-strategy](./diagrams/markdown/parser-strategy.md) | 8 parser strategy pattern |
+| [ai-tools](./diagrams/markdown/ai-tools.md) | MCP tools hierarchy |
+| [database-schema](./diagrams/markdown/database-schema.md) | Entity relationship diagram |
+| [frontend-components](./diagrams/markdown/frontend-components.md) | React component hierarchy |
+| [ai-chat-flow](./diagrams/markdown/ai-chat-flow.md) | SSE streaming flow |
+
+## Environment Variables
+
+### Backend
+```env
+AI_PROVIDER=gemini                    # gemini | anthropic | openai
+MCP_SERVER_URL=http://localhost:4000/sse
+GOOGLE_GENERATIVE_AI_API_KEY=         # For Gemini
+ANTHROPIC_API_KEY=                    # For Claude
+OPENAI_API_KEY=                       # For GPT-4
+```
+
+### AI Service
+```env
+DATABASE_URL=postgresql://admin:admin@localhost:5432/pv_db
+```
+
+## Development
+
+See [CLAUDE.md](./CLAUDE.md) for detailed development guidelines, coding standards, and architecture patterns.
+
+### Testing
+```bash
+# Backend
+cd backend && npm test          # Unit tests
+cd backend && npm run test:e2e  # E2E tests
+
+# Frontend
+cd frontend && npm run build    # Type check + build
+```
+
+## License
+
+MIT
