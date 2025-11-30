@@ -29,6 +29,7 @@ export function NavMain({ items }: Readonly<NavMainProps>) {
               tooltip={item.title}
               isActive={item.isActive}
               onClick={item.onClick}
+              className="cursor-pointer"
             >
               <item.icon />
               <span>{item.title}</span>

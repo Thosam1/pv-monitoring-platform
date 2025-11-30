@@ -2,7 +2,7 @@ import { type ComponentProps } from 'react'
 import {
   LayoutDashboard,
   Upload,
-  BarChart3,
+  Sparkles,
   FileText,
   Settings,
   HelpCircle,
@@ -22,14 +22,13 @@ import {
 import { NavMain, type NavItem } from './nav-main'
 import { NavLoggers } from './nav-loggers'
 import { type LoggerType } from '@/types/logger'
+import { type ViewMode } from '@/types/view-mode'
 import { type BackendStatus, getBackendStatusConfig } from '@/lib/date-utils'
 
 interface LoggerInfo {
   id: string
   type: LoggerType
 }
-
-type ViewMode = 'dashboard' | 'upload' | 'analytics' | 'reports'
 
 interface AppSidebarProps extends ComponentProps<typeof Sidebar> {
   loggers: LoggerInfo[]
@@ -63,10 +62,10 @@ export function AppSidebar({
       onClick: () => onViewChange('upload'),
     },
     {
-      title: 'Analytics',
-      icon: BarChart3,
-      isActive: currentView === 'analytics',
-      onClick: () => onViewChange('analytics'),
+      title: 'AI Assistant',
+      icon: Sparkles,
+      isActive: currentView === 'ai-chat',
+      onClick: () => onViewChange('ai-chat'),
     },
     {
       title: 'Reports',
@@ -112,13 +111,13 @@ export function AppSidebar({
         <SidebarSeparator />
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Settings">
+            <SidebarMenuButton tooltip="Settings" className="cursor-pointer">
               <Settings />
               <span>Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Help">
+            <SidebarMenuButton tooltip="Help" className="cursor-pointer">
               <HelpCircle />
               <span>Help</span>
             </SidebarMenuButton>

@@ -8,8 +8,7 @@ import {
   BreadcrumbPage,
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
-
-type ViewMode = 'dashboard' | 'upload' | 'analytics' | 'reports'
+import { type ViewMode } from '@/types/view-mode'
 
 interface SiteHeaderProps {
   currentView: ViewMode
@@ -21,7 +20,7 @@ interface SiteHeaderProps {
 const VIEW_TITLES: Record<ViewMode, string> = {
   dashboard: 'Dashboard',
   upload: 'Upload Data',
-  analytics: 'Analytics',
+  'ai-chat': 'AI Assistant',
   reports: 'Reports',
 }
 

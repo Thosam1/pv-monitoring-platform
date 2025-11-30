@@ -132,8 +132,9 @@ export class McpClient implements OnModuleInit, OnModuleDestroy {
 
     try {
       const tools = await this.client.tools();
-      this.logger.debug(
-        `Retrieved ${Object.keys(tools).length} tools from MCP server`,
+      const toolNames = Object.keys(tools);
+      this.logger.log(
+        `Retrieved ${toolNames.length} tools from MCP server: ${toolNames.join(', ')}`,
       );
       return tools;
     } catch (error) {
