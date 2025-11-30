@@ -4,7 +4,7 @@ High-throughput solar data ingestion and AI-powered analytics platform for photo
 
 ## Architecture
 
-<img src="./diagrams/svg/architecture-overview.svg" alt="Architecture Overview" width="600">
+<img src="./diagrams/svg/architecture-overview.svg" alt="Architecture Overview" height="400">
 
 See [diagrams/markdown/architecture-overview.md](./diagrams/markdown/architecture-overview.md) for the Mermaid source.
 
