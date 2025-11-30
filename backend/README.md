@@ -59,7 +59,7 @@ GET /ai/status                         # Service status
 
 ## Database Schema
 
-![Database Schema](../diagrams/svg/database-schema.svg)
+<img src="../diagrams/svg/database-schema.svg" alt="Database Schema" width="500">
 
 ```typescript
 @Entity('measurements')
