@@ -30,6 +30,37 @@ class LoggerListResponse(BaseModel):
 
 
 # ============================================================
+# Shared: Available Data Range (for smart recovery)
+# ============================================================
+class AvailableRange(BaseModel):
+    """Available data range for smart recovery when no data in requested window.
+
+    For NO_DATA status, both start and end will be None.
+    For NO_DATA_IN_WINDOW status, both will contain valid dates.
+    """
+
+    start: Optional[str] = None
+    end: Optional[str] = None
+
+
+# ============================================================
+# Shared: Summary Statistics (for narrative insights)
+# ============================================================
+class SummaryStats(BaseModel):
+    """Lightweight stats for AI narrative generation.
+
+    Enables the LLM to provide consultant-quality insights
+    without computing statistics from raw timeseries data.
+    """
+
+    peakValue: Optional[float] = None  # Maximum value (W)
+    peakTime: Optional[str] = None  # HH:MM format
+    avgValue: Optional[float] = None  # Average over period
+    totalEnergy: Optional[float] = None  # kWh (for power curves)
+    trend: Optional[str] = None  # "rising" | "falling" | "stable"
+
+
+# ============================================================
 # TOOL 2: analyze_inverter_health - Anomaly Detection
 # ============================================================
 class AnomalyPoint(BaseModel):
@@ -46,6 +77,8 @@ class AnomalyReportResponse(BaseModel):
 
     type: str = "anomaly_report"
     loggerId: str
+    status: Optional[str] = None  # "ok", "no_data", "no_data_in_window"
+    availableRange: Optional[AvailableRange] = None  # For smart recovery
     daysAnalyzed: Optional[int] = None
     totalRecords: Optional[int] = None
     anomalyCount: Optional[int] = None
@@ -70,8 +103,11 @@ class PowerCurveResponse(BaseModel):
     type: str = "timeseries"
     loggerId: str
     date: str
+    status: Optional[str] = None  # "ok", "no_data", "no_data_in_window"
+    availableRange: Optional[AvailableRange] = None  # For smart recovery
     recordCount: Optional[int] = None
     data: list[PowerCurvePoint]
+    summaryStats: Optional[SummaryStats] = None  # For narrative insights
     message: Optional[str] = None
 
 
@@ -88,6 +124,8 @@ class ComparisonResponse(BaseModel):
     metric: str
     loggerIds: list[str]
     date: Optional[str] = None
+    status: Optional[str] = None  # "ok", "no_data", "no_data_in_window"
+    availableRange: Optional[AvailableRange] = None  # For smart recovery
     recordCount: Optional[int] = None
     data: list[dict]
     message: Optional[str] = None
@@ -140,6 +178,7 @@ class PerformanceReportResponse(BaseModel):
     inferredCapacityKw: Optional[float] = None
     performanceRatio: Optional[float] = None
     status: Optional[str] = None
+    availableRange: Optional[AvailableRange] = None  # For smart recovery
     metrics: Optional[PerformanceMetrics] = None
     interpretation: Optional[str] = None
     message: Optional[str] = None

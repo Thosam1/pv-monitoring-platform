@@ -11,7 +11,8 @@ from pydantic import Field
 
 from config import settings
 from database import engine
-from models.responses import PerformanceReportResponse, PerformanceMetrics
+from models.enums import DataStatus
+from models.responses import PerformanceReportResponse, PerformanceMetrics, AvailableRange
 from queries.builders import build_peak_power_query, build_performance_query
 
 
@@ -56,11 +57,35 @@ def calculate_performance_ratio(
     df = pd.read_sql(query, engine, params={"logger_id": logger_id, "date": date})
 
     if df.empty:
+        # Smart recovery: query for actual data range
+        range_query = """
+            SELECT MIN("timestamp")::date as min_date, MAX("timestamp")::date as max_date
+            FROM measurements
+            WHERE "loggerId" = :logger_id
+        """
+        range_df = pd.read_sql(range_query, engine, params={"logger_id": logger_id})
+
+        if range_df.empty or pd.isna(range_df.iloc[0]["min_date"]):
+            # Truly no data - still return availableRange for consistency
+            return PerformanceReportResponse(
+                loggerId=logger_id,
+                date=date,
+                inferredCapacityKw=capacity_kw,
+                status=DataStatus.NO_DATA,
+                availableRange=AvailableRange(start=None, end=None),
+                message="No data exists for this logger. Verify the logger ID is correct.",
+            ).model_dump()
+
+        min_date = str(range_df.iloc[0]["min_date"])
+        max_date = str(range_df.iloc[0]["max_date"])
+
         return PerformanceReportResponse(
             loggerId=logger_id,
             date=date,
             inferredCapacityKw=capacity_kw,
-            message="No data with both power and irradiance found for this date",
+            status=DataStatus.NO_DATA_IN_WINDOW,
+            availableRange=AvailableRange(start=min_date, end=max_date),
+            message=f"No data for {date}. Data exists from {min_date} to {max_date}.",
         ).model_dump()
 
     # Step 3: Calculate Performance Ratio

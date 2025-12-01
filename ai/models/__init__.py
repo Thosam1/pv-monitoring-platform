@@ -3,6 +3,7 @@
 Contains request validation and response envelope models.
 """
 
+from .enums import DataStatus
 from .requests import (
     DateParam,
     LoggerIdParam,
@@ -10,6 +11,9 @@ from .requests import (
     DateRangeParams,
 )
 from .responses import (
+    # Shared
+    AvailableRange,
+    SummaryStats,
     # Discovery
     LoggerInfo,
     LoggerListResponse,
@@ -40,11 +44,16 @@ from .responses import (
 )
 
 __all__ = [
+    # Enums
+    "DataStatus",
     # Requests
     "DateParam",
     "LoggerIdParam",
     "CompareLoggersParams",
     "DateRangeParams",
+    # Shared
+    "AvailableRange",
+    "SummaryStats",
     # Discovery
     "LoggerInfo",
     "LoggerListResponse",

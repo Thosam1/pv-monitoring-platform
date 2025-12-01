@@ -10,7 +10,8 @@ from pydantic import Field
 
 from config import settings
 from database import engine
-from models.responses import ComparisonResponse
+from models.enums import DataStatus
+from models.responses import ComparisonResponse, AvailableRange
 from queries.builders import build_comparison_query
 
 
@@ -44,12 +45,37 @@ def compare_loggers(
     df = pd.read_sql(query, engine, params=params)
 
     if df.empty:
+        # Smart recovery: query for actual data range across all requested loggers
+        range_query = """
+            SELECT MIN("timestamp")::date as min_date, MAX("timestamp")::date as max_date
+            FROM measurements
+            WHERE "loggerId" = ANY(:logger_ids)
+        """
+        range_df = pd.read_sql(range_query, engine, params={"logger_ids": logger_ids})
+
+        if range_df.empty or pd.isna(range_df.iloc[0]["min_date"]):
+            # Truly no data - still return availableRange for consistency
+            return ComparisonResponse(
+                metric=metric,
+                loggerIds=logger_ids,
+                date=date,
+                data=[],
+                status=DataStatus.NO_DATA,
+                availableRange=AvailableRange(start=None, end=None),
+                message="No data exists for these loggers. Verify the logger IDs are correct.",
+            ).model_dump()
+
+        min_date = str(range_df.iloc[0]["min_date"])
+        max_date = str(range_df.iloc[0]["max_date"])
+
         return ComparisonResponse(
             metric=metric,
             loggerIds=logger_ids,
             date=date,
             data=[],
-            message="No data found for the specified loggers",
+            status=DataStatus.NO_DATA_IN_WINDOW,
+            availableRange=AvailableRange(start=min_date, end=max_date),
+            message=f"No data for {date}. Data exists from {min_date} to {max_date}.",
         ).model_dump()
 
     # Pivot to get each logger as a column
