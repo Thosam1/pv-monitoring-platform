@@ -4,6 +4,7 @@ Uses SQLAlchemy to connect to PostgreSQL with READ-ONLY operations.
 CRITICAL: Column names must match TypeORM entity exactly (camelCase with quotes).
 """
 
+from datetime import datetime, timezone
 from typing import Any
 
 import pandas as pd
@@ -16,6 +17,9 @@ from config import settings
 from logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Cache for anchor date (refreshed periodically)
+_anchor_date_cache: datetime | None = None
 
 # Create engine with connection pooling using settings
 engine = create_engine(
@@ -96,3 +100,54 @@ def check_connection() -> dict[str, Any]:
             "status": "unhealthy",
             "error": str(e),
         }
+
+
+def get_anchor_date() -> datetime:
+    """Get the latest timestamp in the database as the 'anchor date'.
+
+    This is used instead of NOW() to make the system time-agnostic.
+    All relative date calculations (e.g., 'last 7 days') are computed
+    from this anchor date, not the current wall-clock time.
+
+    This allows demo data from any time period to work correctly.
+
+    Returns:
+        The latest timestamp in the measurements table, or current time if no data
+    """
+    global _anchor_date_cache
+
+    # Return cached value if available (cache is reset on module reload)
+    if _anchor_date_cache is not None:
+        return _anchor_date_cache
+
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text('SELECT MAX("timestamp") as anchor FROM measurements')
+            )
+            row = result.fetchone()
+            if row and row[0]:
+                _anchor_date_cache = row[0]
+                logger.info("database.anchor_date.set", anchor=_anchor_date_cache.isoformat())
+                return _anchor_date_cache
+    except Exception as e:
+        logger.warning("database.anchor_date.failed", error=str(e))
+
+    # Fallback to current time if no data
+    return datetime.now(timezone.utc)
+
+
+def get_anchor_date_str() -> str:
+    """Get the anchor date as a YYYY-MM-DD string.
+
+    Returns:
+        Date string suitable for SQL queries
+    """
+    return get_anchor_date().strftime("%Y-%m-%d")
+
+
+def clear_anchor_cache() -> None:
+    """Clear the anchor date cache (useful after seeding new data)."""
+    global _anchor_date_cache
+    _anchor_date_cache = None
+    logger.info("database.anchor_date.cache_cleared")

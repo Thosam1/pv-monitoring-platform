@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # MCP Server
     mcp_host: str = "0.0.0.0"
     mcp_port: int = 4000
-    mcp_transport: str = "sse"
+    mcp_transport: str = "http"  # Changed from "sse" to "http" for stateless API
 
     model_config = {"env_prefix": "SOLAR_"}
 

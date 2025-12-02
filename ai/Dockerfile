@@ -22,12 +22,12 @@ RUN uv sync --frozen --no-dev
 # Copy application code
 COPY . .
 
-# Expose the SSE port
+# Expose the HTTP API port
 EXPOSE 4000
 
-# Health check
+# Health check - use HTTP API endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/sse')" || exit 1
+    CMD curl -f http://localhost:4000/api/health || exit 1
 
-# Run the FastMCP server with SSE transport
+# Run the HTTP API server
 CMD ["uv", "run", "python", "server.py"]

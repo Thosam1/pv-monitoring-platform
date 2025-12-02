@@ -2,9 +2,13 @@
 
 All column names use double quotes and camelCase to match TypeORM entity definitions.
 Queries use parameterized values (%(name)s) to prevent SQL injection.
+
+TIME-AGNOSTIC: Uses anchor date (MAX timestamp in DB) instead of NOW() for demo compatibility.
 """
 
 from typing import Any
+
+from database import get_anchor_date_str
 
 # Column name mapping (camelCase for TypeORM compatibility)
 COLUMNS = {
@@ -54,10 +58,13 @@ def build_logger_list_query() -> str:
 def build_health_analysis_query() -> tuple[str, dict[str, Any]]:
     """Query for health analysis with anomaly detection.
 
+    Uses anchor date (latest data) instead of NOW() for time-agnostic operation.
+
     Returns:
         Tuple of (query_string, params_dict)
         Note: Caller must add 'logger_id' and 'days' to params
     """
+    anchor_date = get_anchor_date_str()
     query = f"""
         SELECT
             {col("timestamp")},
@@ -66,7 +73,8 @@ def build_health_analysis_query() -> tuple[str, dict[str, Any]]:
             {col("irradiance")}
         FROM measurements
         WHERE {col("logger_id")} = %(logger_id)s
-          AND {col("timestamp")} >= NOW() - make_interval(days => %(days)s)
+          AND {col("timestamp")} >= ('{anchor_date}'::timestamp - make_interval(days => %(days)s))
+          AND {col("timestamp")} <= '{anchor_date}'::timestamp
         ORDER BY {col("timestamp")} ASC
     """
     return query, {}
@@ -176,14 +184,19 @@ def build_performance_query() -> str:
 # TOOL 7: forecast_production
 # ============================================================
 def build_forecast_query() -> str:
-    """Query for forecast historical data."""
+    """Query for forecast historical data.
+
+    Uses anchor date (latest data) instead of NOW() for time-agnostic operation.
+    """
+    anchor_date = get_anchor_date_str()
     return f"""
         SELECT
             DATE({col("timestamp")}) as "date",
             MAX({col("energy")}) as "dailyKwh"
         FROM measurements
         WHERE {col("logger_id")} = %(logger_id)s
-          AND {col("timestamp")} >= NOW() - INTERVAL '14 days'
+          AND {col("timestamp")} >= ('{anchor_date}'::timestamp - INTERVAL '14 days')
+          AND {col("timestamp")} <= '{anchor_date}'::timestamp
           AND {col("energy")} IS NOT NULL
         GROUP BY DATE({col("timestamp")})
         ORDER BY "date" DESC
@@ -206,17 +219,21 @@ def build_logger_type_query() -> str:
 def build_error_scan_query() -> tuple[str, dict[str, Any]]:
     """Query for scanning error codes in metadata.
 
+    Uses anchor date (latest data) instead of NOW() for time-agnostic operation.
+
     Returns:
         Tuple of (query_string, params_dict)
         Note: Caller must add 'logger_id' and 'days' to params
     """
+    anchor_date = get_anchor_date_str()
     query = f"""
         SELECT
             {col("timestamp")},
             {col("metadata")}
         FROM measurements
         WHERE {col("logger_id")} = %(logger_id)s
-          AND {col("timestamp")} >= NOW() - make_interval(days => %(days)s)
+          AND {col("timestamp")} >= ('{anchor_date}'::timestamp - make_interval(days => %(days)s))
+          AND {col("timestamp")} <= '{anchor_date}'::timestamp
           AND {col("metadata")} IS NOT NULL
           AND {col("metadata")}::text LIKE '%%error%%'
         ORDER BY {col("timestamp")} DESC
@@ -228,26 +245,35 @@ def build_error_scan_query() -> tuple[str, dict[str, Any]]:
 # TOOL 9: get_fleet_overview
 # ============================================================
 def build_fleet_power_query() -> str:
-    """Query for fleet real-time power status."""
+    """Query for fleet real-time power status.
+
+    Uses anchor date (latest data) instead of NOW() for time-agnostic operation.
+    """
+    anchor_date = get_anchor_date_str()
     return f"""
         SELECT
             COUNT(DISTINCT {col("logger_id")}) as "activeLoggers",
             SUM({col("power")}) as "totalPowerWatts",
             AVG({col("irradiance")}) as "avgIrradiance"
         FROM measurements
-        WHERE {col("timestamp")} >= NOW() - INTERVAL '15 minutes'
+        WHERE {col("timestamp")} >= ('{anchor_date}'::timestamp - INTERVAL '15 minutes')
+          AND {col("timestamp")} <= '{anchor_date}'::timestamp
     """
 
 
 def build_fleet_energy_query() -> str:
-    """Query for fleet daily energy total."""
+    """Query for fleet daily energy total.
+
+    Uses anchor date (latest data) instead of CURRENT_DATE for time-agnostic operation.
+    """
+    anchor_date = get_anchor_date_str()
     return f"""
         SELECT
             SUM("dailyKwh") as "totalDailyKwh"
         FROM (
             SELECT MAX({col("energy")}) as "dailyKwh"
             FROM measurements
-            WHERE DATE({col("timestamp")}) = CURRENT_DATE
+            WHERE DATE({col("timestamp")}) = '{anchor_date}'::date
             GROUP BY {col("logger_id")}
         ) as daily_maxes
     """

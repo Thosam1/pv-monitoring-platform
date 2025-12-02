@@ -4,13 +4,12 @@ Provides tools for calculating money saved and CO2 offset from solar generation.
 """
 
 from typing import Annotated
-from datetime import datetime
 
 import pandas as pd
 from pydantic import Field
 
 from config import settings
-from database import engine
+from database import engine, get_anchor_date_str
 from models.responses import FinancialReportResponse, FinancialPeriod
 from queries.builders import build_financial_query
 
@@ -32,15 +31,15 @@ def calculate_financial_savings(
     Args:
         logger_id: Logger/inverter serial number
         start_date: Start date in YYYY-MM-DD format
-        end_date: Optional end date (defaults to today)
+        end_date: Optional end date (defaults to anchor date for time-agnostic operation)
         electricity_rate: Electricity rate in $/kWh
 
     Returns:
         FinancialReportResponse with savings calculations
     """
-    # Default end_date to today
+    # Default end_date to anchor date (latest data) instead of today
     if end_date is None:
-        end_date = datetime.now().strftime("%Y-%m-%d")
+        end_date = get_anchor_date_str()
 
     query = build_financial_query()
     df = pd.read_sql(

@@ -4,13 +4,13 @@ Provides tools for forecasting future energy production.
 """
 
 from typing import Annotated
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pandas as pd
 from pydantic import Field
 
 from config import settings
-from database import engine
+from database import engine, get_anchor_date
 from models.responses import (
     ProductionForecastResponse,
     ForecastHistoricalStats,
@@ -58,9 +58,9 @@ def forecast_production(
     else:
         confidence = "low"
 
-    # Generate forecasts
+    # Generate forecasts using anchor date (latest data) as base
     forecasts = []
-    base_date = datetime.now()
+    base_date = get_anchor_date()
     for i in range(1, days_ahead + 1):
         forecast_date = (base_date + timedelta(days=i)).strftime("%Y-%m-%d")
         forecasts.append(

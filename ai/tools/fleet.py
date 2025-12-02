@@ -3,11 +3,9 @@
 Provides tools for site-wide aggregation and fleet status.
 """
 
-from datetime import datetime
-
 import pandas as pd
 
-from database import engine
+from database import engine, get_anchor_date
 from models.responses import FleetOverviewResponse, FleetStatus, FleetProduction
 from queries.builders import (
     build_fleet_power_query,
@@ -84,8 +82,11 @@ def get_fleet_overview() -> dict:
 
     summary = f"Site generating {total_power / 1000:.1f} kW total. {active_loggers}/{total_loggers} devices active."
 
+    # Use anchor date (latest data timestamp) instead of current time
+    anchor = get_anchor_date()
+
     return FleetOverviewResponse(
-        timestamp=datetime.now().isoformat(),
+        timestamp=anchor.isoformat(),
         status=status,
         production=production,
         summary=summary,
