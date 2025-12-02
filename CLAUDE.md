@@ -106,13 +106,17 @@ cd frontend && npm run dev
 
 #### Backend AI Configuration
 ```env
-AI_PROVIDER=gemini              # Options: gemini | anthropic | openai
+AI_PROVIDER=gemini              # Options: gemini | anthropic | openai | ollama
 MCP_SERVER_URL=http://localhost:4000/sse
 
 # Provider API keys (set one based on AI_PROVIDER)
 GOOGLE_GENERATIVE_AI_API_KEY=   # For Gemini
 ANTHROPIC_API_KEY=              # For Claude
 OPENAI_API_KEY=                 # For GPT-4
+
+# Ollama (local LLM - no API key required)
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=llama3.1:8b-instruct-q8_0
 ```
 
 #### AI Service Configuration

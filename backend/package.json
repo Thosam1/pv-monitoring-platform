@@ -17,13 +17,21 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:ai": "jest --testPathPatterns='src/ai/.*\\.spec\\.ts'",
+    "test:ai:unit": "jest --testPathPatterns='src/ai/.*\\.spec\\.ts' --testPathIgnorePatterns='integration'",
+    "test:ai:integration": "TEST_AI_PROVIDER=ollama jest --testPathPatterns='integration\\.spec\\.ts'"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.50",
     "@ai-sdk/google": "^2.0.44",
-    "@ai-sdk/mcp": "^0.0.11",
     "@ai-sdk/openai": "^2.0.74",
+    "@langchain/anthropic": "^1.1.3",
+    "@langchain/core": "^1.1.0",
+    "@langchain/google-genai": "^2.0.0",
+    "@langchain/langgraph": "^1.0.2",
+    "@langchain/ollama": "^1.0.3",
+    "@langchain/openai": "^1.1.3",
     "@modelcontextprotocol/sdk": "^1.23.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
@@ -44,6 +52,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
+    "@langchain/community": "^1.0.6",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
@@ -78,6 +87,9 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "transformIgnorePatterns": [
+      "node_modules/(?!(@langchain|langchain|p-retry|is-network-error)/)"
+    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
