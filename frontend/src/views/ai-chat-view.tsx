@@ -16,15 +16,16 @@ export interface AIChatViewProps {
  * Uses assistant-ui primitives for the chat interface.
  */
 export function AIChatView({ className }: AIChatViewProps) {
+  // Default to closed on mobile, open on desktop
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
     <MyRuntimeProvider>
       <div className={cn('flex h-full', className)}>
-        {/* Thread List Sidebar */}
+        {/* Thread List Sidebar - Hidden on mobile and tablet */}
         <div
           className={cn(
-            'transition-all duration-300 ease-in-out',
+            'hidden lg:block transition-all duration-300 ease-in-out',
             sidebarOpen ? 'w-64' : 'w-0 overflow-hidden'
           )}
         >
@@ -33,12 +34,12 @@ export function AIChatView({ className }: AIChatViewProps) {
 
         {/* Main Chat Area */}
         <div className="flex flex-1 flex-col">
-          {/* Sidebar Toggle */}
+          {/* Sidebar Toggle - Hidden on mobile and tablet since sidebar is not shown */}
           <div className="flex items-center border-b border-border p-2">
             <Button
               variant="ghost"
               size="icon"
-              className="cursor-pointer"
+              className="hidden lg:block cursor-pointer"
               onClick={() => setSidebarOpen(!sidebarOpen)}
               title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
             >

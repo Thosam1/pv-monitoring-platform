@@ -722,6 +722,13 @@ export class LanggraphService {
             yield { type: 'text-delta', delta: chunk.content };
           }
         } else if (event.event === 'on_chat_model_end') {
+          // Filter out internal node output (e.g., router classification JSON)
+          const nodeName = (event.metadata as { langgraph_node?: string })
+            ?.langgraph_node;
+          if (nodeName && INTERNAL_NODES.has(nodeName)) {
+            continue; // Skip internal node output
+          }
+
           // Model finished - check for tool calls
           const output = event.data?.output as
             | {

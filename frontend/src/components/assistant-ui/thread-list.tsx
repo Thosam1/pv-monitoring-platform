@@ -6,11 +6,16 @@ import {
 } from '@assistant-ui/react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, MessageSquare, Trash2 } from 'lucide-react';
+import { Plus, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
  * Individual thread list item component.
+ *
+ * NOTE: Thread deletion is temporarily disabled due to a known issue with
+ * assistant-ui's unstable_useRemoteThreadListRuntime API causing app crashes.
+ * This will be re-enabled once the library stabilizes or a workaround is found.
+ * Users can clear localStorage to reset conversations if needed.
  */
 function ThreadListItem() {
   return (
@@ -21,16 +26,11 @@ function ThreadListItem() {
           <ThreadListItemPrimitive.Title />
         </span>
       </ThreadListItemPrimitive.Trigger>
-      <ThreadListItemPrimitive.Delete asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute right-1 h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
-        >
-          <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-          <span className="sr-only">Delete thread</span>
-        </Button>
-      </ThreadListItemPrimitive.Delete>
+      {/*
+        Thread deletion temporarily disabled - causes app crash due to
+        assistant-ui library state management issue with useRemoteThreadListRuntime.
+        TODO: Re-enable when library API stabilizes.
+      */}
     </ThreadListItemPrimitive.Root>
   );
 }

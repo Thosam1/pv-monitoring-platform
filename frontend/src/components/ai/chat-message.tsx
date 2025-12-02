@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/ai';
 import { ToolRenderer } from './tool-renderer';
 import { TypingIndicator } from './typing-indicator';
+import { sanitizeLLMOutput } from '@/lib/text-sanitizer';
 import type { UIMessage } from 'ai';
 
 export interface ChatMessageProps {
@@ -165,7 +166,15 @@ export function ChatMessage({ message, isLoading, isLastMessage, onUserSelection
       <MessageContent className={isUser ? '' : 'max-w-none w-full'}>
         {/* Text content - filtered to exclude empty text */}
         {textParts.map((part, index) => {
-          const textContent = (part as { text?: string }).text || '';
+          const rawText = (part as { text?: string }).text || '';
+          // Sanitize assistant messages to remove LLM tokens
+          const textContent = isUser ? rawText : sanitizeLLMOutput(rawText);
+
+          // Skip rendering if sanitization removed all content
+          if (!textContent.trim()) {
+            return null;
+          }
+
           return (
             <Response key={`text-${index}`}>
               {textContent}

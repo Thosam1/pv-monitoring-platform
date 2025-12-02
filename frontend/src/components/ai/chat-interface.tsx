@@ -14,6 +14,7 @@ import { ChatMessage } from './chat-message';
 import { InlineError, type ErrorType } from './chat-error';
 import { WorkflowCard } from './workflow-card';
 import { cn } from '@/lib/utils';
+import { sanitizeLLMOutput } from '@/lib/text-sanitizer';
 import { Sun, DollarSign, TrendingDown, Activity, type LucideIcon } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -126,6 +127,7 @@ export function ChatInterface({
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [lastUserMessage, setLastUserMessage] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevChatIdRef = useRef<string | null>(null);
 
   // Notify parent when messages change
@@ -143,26 +145,14 @@ export function ChatInterface({
     }
   }, [chatId, initialMessages]);
 
-  // Timeout handling for stalled streams
+  // Cleanup timeout on unmount
   useEffect(() => {
-    if (status === 'submitted' || status === 'streaming') {
-      const timeout = setTimeout(() => {
-        setStatus('error');
-        setErrorType('timeout');
-        setErrorMessage('The request took too long. Please try again.');
-        // Remove the empty assistant message on timeout
-        setMessages((prev) => {
-          const updated = [...prev];
-          const lastIdx = updated.length - 1;
-          if (lastIdx >= 0 && updated[lastIdx].role === 'assistant' && updated[lastIdx].parts.length === 0) {
-            return updated.slice(0, -1);
-          }
-          return updated;
-        });
-      }, 60000); // 60 second timeout
-      return () => clearTimeout(timeout);
-    }
-  }, [status]);
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   // Send message to backend
   const sendMessage = useCallback(async (userMessage: string) => {
@@ -195,11 +185,37 @@ export function ChatInterface({
     setInput('');
     setStatus('submitted');
 
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
     // Abort any existing request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     abortControllerRef.current = new AbortController();
+
+    // Set up 30-second timeout that aborts the request
+    timeoutRef.current = setTimeout(() => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      setStatus('error');
+      setErrorType('timeout');
+      setErrorMessage('The request took too long. Please try again.');
+      // Remove the empty assistant message on timeout
+      setMessages((prev) => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].role === 'assistant' && updated[lastIdx].parts.length === 0) {
+          return updated.slice(0, -1);
+        }
+        return updated;
+      });
+      timeoutRef.current = null;
+    }, 30000); // 30 second timeout
 
     try {
       // Build messages array for the API
@@ -218,7 +234,26 @@ export function ChatInterface({
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // Try to parse error message from response
+        let errorMsg = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.message) {
+            errorMsg = errorData.message;
+          }
+        } catch {
+          // If parsing fails, use status code message
+          if (response.status === 503) {
+            errorMsg = 'AI service is unavailable. Please try again later.';
+          } else if (response.status === 500) {
+            errorMsg = 'Server error. Please try again.';
+          } else if (response.status === 400) {
+            errorMsg = 'Invalid request. Please try rephrasing your question.';
+          }
+        }
+        const error = new Error(errorMsg) as Error & { status: number };
+        error.status = response.status;
+        throw error;
       }
 
       setStatus('streaming');
@@ -251,15 +286,20 @@ export function ChatInterface({
 
             // Handle text chunk (Vercel AI SDK v5 uses 'delta' not 'textDelta')
             if (parsed.type === 'text-delta') {
+              // Append raw delta to accumulate full text
               fullText += parsed.delta || '';
+
+              // Sanitize the accumulated text before displaying
+              const sanitizedText = sanitizeLLMOutput(fullText);
+
               setMessages((prev) => {
                 const updated = [...prev];
                 const lastIdx = updated.length - 1;
                 if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
                   updated[lastIdx] = {
                     ...updated[lastIdx],
-                    content: fullText,
-                    parts: assembleMessageParts(fullText, toolCalls),
+                    content: sanitizedText,
+                    parts: assembleMessageParts(sanitizedText, toolCalls),
                   };
                 }
                 return updated;
@@ -315,10 +355,26 @@ export function ChatInterface({
         }
       }
 
+      // Clear timeout on successful completion
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
       setStatus('idle');
     } catch (error) {
+      // Clear timeout on error
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
       if ((error as Error).name === 'AbortError') {
-        setStatus('idle');
+        // Don't show error if it was a user-initiated stop or timeout
+        // (timeout already set error state)
+        if (status !== 'error') {
+          setStatus('idle');
+        }
         return;
       }
       console.error('Chat error:', error);
@@ -326,17 +382,26 @@ export function ChatInterface({
       // Determine error type
       const err = error as Error & { status?: number };
       let type: ErrorType = 'unknown';
-      let msg: string | undefined;
+      let msg: string;
 
-      if (!navigator.onLine || err.message?.includes('fetch')) {
+      if (!navigator.onLine) {
         type = 'network';
         msg = 'Unable to connect. Please check your internet connection.';
+      } else if (err.message?.includes('fetch') || err.message?.includes('NetworkError')) {
+        type = 'network';
+        msg = 'Network error. Please check your connection and try again.';
       } else if (err.status === 400) {
         type = 'api';
-        msg = 'Invalid request. Please try rephrasing your question.';
-      } else if (err.status === 500 || err.status === 503) {
+        msg = err.message || 'Invalid request. Please try rephrasing your question.';
+      } else if (err.status === 503) {
         type = 'api';
-        msg = 'The AI service is temporarily unavailable.';
+        msg = err.message || 'The AI service is temporarily unavailable.';
+      } else if (err.status === 500) {
+        type = 'api';
+        msg = err.message || 'Server error. Please try again.';
+      } else {
+        type = 'unknown';
+        msg = err.message || 'An unexpected error occurred. Please try again.';
       }
 
       setStatus('error');
@@ -353,7 +418,7 @@ export function ChatInterface({
         return updated;
       });
     }
-  }, [messages]);
+  }, [messages, status]);
 
   // Handle suggestion click with debouncing
   const handleSuggestionClick = useCallback(
@@ -453,17 +518,17 @@ export function ChatInterface({
       <Conversation className="flex-1">
         <ConversationContent className="mx-auto max-w-4xl">
           {isEmpty ? (
-            <div className="flex h-full flex-col items-center justify-center py-12">
+            <div className="flex h-full flex-col items-center justify-center px-4 py-12">
               <div className="mb-6 flex size-16 items-center justify-center rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 shadow-lg">
                 <Sun className="size-8 text-white" />
               </div>
-              <h1 className="mb-2 text-2xl font-semibold text-foreground">
+              <h1 className="mb-2 text-xl md:text-2xl font-semibold text-foreground text-center">
                 Solar Analyst
               </h1>
-              <p className="mb-8 max-w-md text-center text-muted-foreground">
+              <p className="mb-8 max-w-md text-center text-sm md:text-base text-muted-foreground">
                 Choose a workflow to get started, or ask me anything.
               </p>
-              <div className="grid grid-cols-2 gap-4 max-w-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg px-2">
                 {WORKFLOW_CHIPS.map((workflow) => (
                   <WorkflowCard
                     key={workflow.id}

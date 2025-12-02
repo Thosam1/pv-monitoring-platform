@@ -1,11 +1,27 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { ChevronDown, Check, Loader2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Check, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { LOGGER_CONFIG, type LoggerType } from '@/types/logger';
 import { DateRangePicker } from './date-range-picker';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export interface SelectionOption {
   value: string;
@@ -26,15 +42,145 @@ export interface SelectionPromptProps {
 }
 
 /**
- * Dropdown selection component for standard options.
+ * Single-select dropdown using Radix Select with Portal.
  */
-function DropdownSelection({
+function SingleSelectDropdown({
   prompt,
   options,
-  selectionType,
   onSelect,
   disabled = false,
-}: Omit<SelectionPromptProps, 'inputType' | 'minDate' | 'maxDate'>) {
+}: Omit<SelectionPromptProps, 'inputType' | 'minDate' | 'maxDate' | 'selectionType'>) {
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [selectedValue, setSelectedValue] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Group options by their group property
+  const groupedOptions = useMemo(() => {
+    const groups = new Map<string, SelectionOption[]>();
+
+    for (const option of options) {
+      const groupName = option.group || 'Options';
+      if (!groups.has(groupName)) {
+        groups.set(groupName, []);
+      }
+      groups.get(groupName)!.push(option);
+    }
+
+    return groups;
+  }, [options]);
+
+  // Get color for a logger type (if applicable)
+  const getLoggerColor = useCallback((group?: string): string | null => {
+    const loggerType = group?.toLowerCase().replace(/\s+/g, '') as LoggerType;
+    if (loggerType && LOGGER_CONFIG[loggerType]) {
+      return LOGGER_CONFIG[loggerType].color;
+    }
+    return null;
+  }, []);
+
+  const handleValueChange = useCallback((value: string) => {
+    if (hasSubmitted || disabled || isSubmitting) return;
+
+    setSelectedValue(value);
+    setIsSubmitting(true);
+
+    // Small delay for visual feedback
+    setTimeout(() => {
+      setHasSubmitted(true);
+      setIsSubmitting(false);
+      onSelect([value]);
+    }, 300);
+  }, [hasSubmitted, disabled, isSubmitting, onSelect]);
+
+  const getDisplayValue = useCallback(() => {
+    if (!selectedValue) return null;
+    const option = options.find((o) => o.value === selectedValue);
+    return option?.label || selectedValue;
+  }, [selectedValue, options]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className="my-3 rounded-lg border border-border bg-card p-4 shadow-sm"
+    >
+      <p className="mb-3 text-sm font-medium text-foreground">{prompt}</p>
+
+      {hasSubmitted ? (
+        <div
+          className={cn(
+            'flex w-full items-center rounded-md border px-3 py-2.5 text-sm',
+            'border-green-500 bg-green-50 dark:bg-green-900/20'
+          )}
+        >
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+            className="mr-2"
+          >
+            <Check className="h-4 w-4 text-green-700 dark:text-green-300" />
+          </motion.span>
+          <span className="text-green-700 dark:text-green-300">{getDisplayValue()}</span>
+        </div>
+      ) : isSubmitting ? (
+        <div
+          className={cn(
+            'flex w-full items-center rounded-md border px-3 py-2.5 text-sm',
+            'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+          )}
+        >
+          <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-700 dark:text-blue-300" />
+          <span className="text-blue-700 dark:text-blue-300">{getDisplayValue()}</span>
+        </div>
+      ) : (
+        <Select onValueChange={handleValueChange} disabled={disabled}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select an option..." />
+          </SelectTrigger>
+          <SelectContent>
+            {Array.from(groupedOptions.entries()).map(([groupName, groupOptions]) => (
+              <SelectGroup key={groupName}>
+                <SelectLabel>{groupName}</SelectLabel>
+                {groupOptions.map((option) => {
+                  const colorClass = getLoggerColor(option.group);
+                  return (
+                    <SelectItem key={option.value} value={option.value}>
+                      <div className="flex items-center gap-2">
+                        {colorClass && (
+                          <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', colorClass)} />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium">{option.label}</span>
+                          {option.subtitle && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {option.subtitle}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectGroup>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+    </motion.div>
+  );
+}
+
+/**
+ * Multi-select dropdown using Radix Popover with Portal.
+ */
+function MultiSelectDropdown({
+  prompt,
+  options,
+  onSelect,
+  disabled = false,
+}: Omit<SelectionPromptProps, 'inputType' | 'minDate' | 'maxDate' | 'selectionType'>) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedValues, setSelectedValues] = useState<string[]>([]);
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -56,8 +202,7 @@ function DropdownSelection({
   }, [options]);
 
   // Get color for a logger type (if applicable)
-  const getLoggerColor = useCallback((_value: string, group?: string): string | null => {
-    // Check if the group matches a logger type
+  const getLoggerColor = useCallback((group?: string): string | null => {
     const loggerType = group?.toLowerCase().replace(/\s+/g, '') as LoggerType;
     if (loggerType && LOGGER_CONFIG[loggerType]) {
       return LOGGER_CONFIG[loggerType].color;
@@ -65,34 +210,22 @@ function DropdownSelection({
     return null;
   }, []);
 
-  const handleOptionClick = useCallback((value: string) => {
+  const handleOptionToggle = useCallback((value: string) => {
     if (hasSubmitted || disabled || isSubmitting) return;
 
-    if (selectionType === 'single') {
-      setSelectedValues([value]);
-      setIsSubmitting(true);
-      setIsOpen(false);
-      // Small delay for visual feedback
-      setTimeout(() => {
-        setHasSubmitted(true);
-        setIsSubmitting(false);
-        onSelect([value]);
-      }, 300);
-    } else {
-      setSelectedValues((prev) => {
-        if (prev.includes(value)) {
-          return prev.filter((v) => v !== value);
-        }
-        return [...prev, value];
-      });
-    }
-  }, [hasSubmitted, disabled, isSubmitting, selectionType, onSelect]);
+    setSelectedValues((prev) => {
+      if (prev.includes(value)) {
+        return prev.filter((v) => v !== value);
+      }
+      return [...prev, value];
+    });
+  }, [hasSubmitted, disabled, isSubmitting]);
 
-  const handleSubmitMultiple = useCallback(() => {
+  const handleSubmit = useCallback(() => {
     if (selectedValues.length > 0 && !hasSubmitted && !isSubmitting) {
       setIsSubmitting(true);
       setIsOpen(false);
-      // Small delay for visual feedback
+
       setTimeout(() => {
         setHasSubmitted(true);
         setIsSubmitting(false);
@@ -109,13 +242,10 @@ function DropdownSelection({
       return selectedLabels.join(', ');
     }
     if (selectedValues.length === 0) {
-      return 'Select an option...';
-    }
-    if (selectionType === 'single') {
-      return options.find((o) => o.value === selectedValues[0])?.label || 'Select...';
+      return 'Select options...';
     }
     return `${selectedValues.length} selected`;
-  }, [hasSubmitted, options, selectedValues, selectionType]);
+  }, [hasSubmitted, options, selectedValues]);
 
   return (
     <motion.div
@@ -126,59 +256,49 @@ function DropdownSelection({
     >
       <p className="mb-3 text-sm font-medium text-foreground">{prompt}</p>
 
-      <div className="relative">
-        <motion.button
-          type="button"
-          onClick={() => !hasSubmitted && !disabled && !isSubmitting && setIsOpen(!isOpen)}
-          disabled={hasSubmitted || disabled || isSubmitting}
-          whileHover={!hasSubmitted && !isSubmitting ? { scale: 1.01 } : {}}
-          whileTap={!hasSubmitted && !isSubmitting ? { scale: 0.99 } : {}}
+      {hasSubmitted ? (
+        <div
           className={cn(
-            'flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-sm transition-all duration-200',
-            hasSubmitted
-              ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-              : isSubmitting
-              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-              : 'border-input bg-background hover:border-primary/50 hover:bg-accent',
-            (hasSubmitted || disabled || isSubmitting) && 'cursor-not-allowed'
+            'flex w-full items-center rounded-md border px-3 py-2.5 text-sm',
+            'border-green-500 bg-green-50 dark:bg-green-900/20'
           )}
         >
-          <span className={cn(
-            'flex items-center',
-            hasSubmitted ? 'text-green-700 dark:text-green-300' :
-            isSubmitting ? 'text-blue-700 dark:text-blue-300' : 'text-foreground'
-          )}>
-            {hasSubmitted && (
-              <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 25 }}
-              >
-                <Check className="mr-2 h-4 w-4" />
-              </motion.span>
-            )}
-            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {getDisplayText()}
-          </span>
-          {!hasSubmitted && !isSubmitting && (
-            <ChevronDown
-              className={cn(
-                'h-4 w-4 text-muted-foreground transition-transform duration-200',
-                isOpen && 'rotate-180'
-              )}
-            />
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+            className="mr-2"
+          >
+            <Check className="h-4 w-4 text-green-700 dark:text-green-300" />
+          </motion.span>
+          <span className="text-green-700 dark:text-green-300">{getDisplayText()}</span>
+        </div>
+      ) : isSubmitting ? (
+        <div
+          className={cn(
+            'flex w-full items-center rounded-md border px-3 py-2.5 text-sm',
+            'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
           )}
-        </motion.button>
-
-        <AnimatePresence>
-          {isOpen && !hasSubmitted && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.15 }}
-              className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-border bg-popover shadow-lg"
+        >
+          <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-700 dark:text-blue-300" />
+          <span className="text-blue-700 dark:text-blue-300">{getDisplayText()}</span>
+        </div>
+      ) : (
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-full justify-between"
+              disabled={disabled}
             >
+              <span>{getDisplayText()}</span>
+              <span className="ml-2 text-xs text-muted-foreground">
+                {selectedValues.length > 0 && `(${selectedValues.length})`}
+              </span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-80 p-0" align="start">
+            <div className="max-h-60 overflow-auto">
               {Array.from(groupedOptions.entries()).map(([groupName, groupOptions], groupIndex) => (
                 <div key={groupName}>
                   {groupIndex > 0 && <div className="border-t border-border" />}
@@ -187,13 +307,13 @@ function DropdownSelection({
                   </div>
                   {groupOptions.map((option) => {
                     const isSelected = selectedValues.includes(option.value);
-                    const colorClass = getLoggerColor(option.value, option.group);
+                    const colorClass = getLoggerColor(option.group);
 
                     return (
                       <button
                         key={option.value}
                         type="button"
-                        onClick={() => handleOptionClick(option.value)}
+                        onClick={() => handleOptionToggle(option.value)}
                         className={cn(
                           'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
                           isSelected
@@ -201,6 +321,10 @@ function DropdownSelection({
                             : 'text-foreground hover:bg-accent/50'
                         )}
                       >
+                        <Checkbox
+                          checked={isSelected}
+                          className="pointer-events-none"
+                        />
                         {colorClass && (
                           <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', colorClass)} />
                         )}
@@ -212,30 +336,27 @@ function DropdownSelection({
                             </div>
                           )}
                         </div>
-                        {selectionType === 'multiple' && isSelected && (
-                          <Check className="h-4 w-4 flex-shrink-0 text-primary" />
-                        )}
                       </button>
                     );
                   })}
                 </div>
               ))}
+            </div>
 
-              {selectionType === 'multiple' && selectedValues.length > 0 && (
-                <div className="sticky bottom-0 border-t border-border bg-popover p-2">
-                  <button
-                    type="button"
-                    onClick={handleSubmitMultiple}
-                    className="w-full rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                  >
-                    Confirm Selection ({selectedValues.length})
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+            {selectedValues.length > 0 && (
+              <div className="border-t border-border p-2">
+                <Button
+                  onClick={handleSubmit}
+                  className="w-full"
+                  size="sm"
+                >
+                  Confirm Selection ({selectedValues.length})
+                </Button>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
+      )}
     </motion.div>
   );
 }
@@ -243,6 +364,7 @@ function DropdownSelection({
 /**
  * Interactive selection prompt component.
  * Renders a dropdown for standard selection, or a date picker for date inputs.
+ * Uses Radix UI Portal to avoid clipping issues with parent overflow containers.
  */
 export function SelectionPrompt({
   prompt,
@@ -280,12 +402,22 @@ export function SelectionPrompt({
     );
   }
 
-  // Standard dropdown rendering
+  // Use the appropriate dropdown component based on selection type
+  if (selectionType === 'multiple') {
+    return (
+      <MultiSelectDropdown
+        prompt={prompt}
+        options={options}
+        onSelect={onSelect}
+        disabled={disabled}
+      />
+    );
+  }
+
   return (
-    <DropdownSelection
+    <SingleSelectDropdown
       prompt={prompt}
       options={options}
-      selectionType={selectionType}
       onSelect={onSelect}
       disabled={disabled}
     />
