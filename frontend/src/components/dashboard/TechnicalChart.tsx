@@ -227,7 +227,7 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
         {chartTitle}
       </h3>
       <div className="h-[calc(100%-2rem)]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
             <XAxis

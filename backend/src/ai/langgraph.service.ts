@@ -791,12 +791,29 @@ export class LanggraphService {
                 this.logger.debug(
                   `Emitting pendingUiAction from subgraph: ${action.toolName}`,
                 );
+                // Emit tool-input-available for the tool call
                 yield {
                   type: 'tool-input-available',
                   toolCallId: action.toolCallId,
                   toolName: action.toolName,
                   input: action.args,
                 };
+
+                // For UI pass-through tools (render_ui_component, request_user_selection),
+                // also emit tool-output-available with the args as result so frontend can render
+                if (
+                  action.toolName === 'render_ui_component' ||
+                  action.toolName === 'request_user_selection'
+                ) {
+                  this.logger.debug(
+                    `Emitting tool-output-available for UI pass-through: ${action.toolName}`,
+                  );
+                  yield {
+                    type: 'tool-output-available',
+                    toolCallId: action.toolCallId,
+                    output: action.args,
+                  };
+                }
               }
             }
           }

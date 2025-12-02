@@ -240,7 +240,7 @@ export function DynamicChart({
       <div className="h-[350px] w-full rounded-lg border bg-card p-4">
         <h3 className="mb-2 font-semibold text-foreground">{title}</h3>
         <div className="h-[calc(100%-2rem)]">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
             <PieChart>
               <Pie
                 data={data}
@@ -284,7 +284,7 @@ export function DynamicChart({
     <div className="h-[350px] w-full rounded-lg border bg-card p-4">
       <h3 className="mb-2 font-semibold text-foreground">{title}</h3>
       <div className="h-[calc(100%-2rem)]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
           <ChartComponent data={data}>{chartChildren}</ChartComponent>
         </ResponsiveContainer>
       </div>

@@ -178,7 +178,7 @@ export function PerformanceChart({
         )}
       </div>
       <div className="h-[calc(100%-3rem)]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
           <ComposedChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
             <XAxis

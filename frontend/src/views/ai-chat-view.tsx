@@ -35,7 +35,7 @@ export function AIChatView({ className }: AIChatViewProps) {
         {/* Main Chat Area */}
         <div className="flex flex-1 flex-col">
           {/* Sidebar Toggle - Hidden on mobile and tablet since sidebar is not shown */}
-          <div className="flex items-center border-b border-border p-2">
+          <div className="flex items-center p-2">
             <Button
               variant="ghost"
               size="icon"

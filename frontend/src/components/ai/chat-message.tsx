@@ -189,9 +189,15 @@ export function ChatMessage({ message, isLoading, isLastMessage, onUserSelection
             toolCallId: string;
             toolName: string;
             args: Record<string, unknown>;
-            state: 'partial-call' | 'call' | 'result';
+            state?: 'partial-call' | 'call' | 'result';
             result?: unknown;
           };
+
+          // Determine state based on whether result exists (for assistant-ui compatibility)
+          // assistant-ui uses 'result' field presence, not 'state' field
+          const effectiveState: 'partial-call' | 'call' | 'result' =
+            toolPart.state || (toolPart.result !== undefined ? 'result' : 'call');
+
           return (
             <ToolRenderer
               key={`tool-${toolPart.toolCallId}`}
@@ -199,7 +205,7 @@ export function ChatMessage({ message, isLoading, isLastMessage, onUserSelection
                 toolCallId: toolPart.toolCallId,
                 toolName: toolPart.toolName,
                 args: toolPart.args,
-                state: toolPart.state,
+                state: effectiveState,
                 result: toolPart.result,
               }}
               onUserSelection={onUserSelection}

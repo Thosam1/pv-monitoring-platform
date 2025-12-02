@@ -326,7 +326,8 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
 
         async append(item) {
           if (!remoteId || typeof window === 'undefined') {
-            console.warn('Cannot save message - thread not initialized');
+            // Silently skip saving if thread not initialized yet (race condition on first render)
+            // Message will be re-added once thread ID is available
             return;
           }
 

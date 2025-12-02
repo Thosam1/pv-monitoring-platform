@@ -181,7 +181,7 @@ export function Thread({ className }: ThreadProps) {
         <ScrollToBottomButton />
       </ThreadPrimitive.Viewport>
 
-      <div className="border-t border-border bg-background p-4">
+      <div className="bg-background p-4">
         <div className="mx-auto w-full max-w-3xl">
           <Composer />
         </div>
