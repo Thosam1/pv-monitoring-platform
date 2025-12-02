@@ -43,6 +43,7 @@ export interface PendingUiAction {
 
 /**
  * Suggestion item for contextual follow-up actions.
+ * Legacy interface for backward compatibility.
  */
 export interface SuggestionItem {
   /** Display label for the suggestion chip */
@@ -51,6 +52,96 @@ export interface SuggestionItem {
   action: string;
   /** Visual prominence */
   priority: 'primary' | 'secondary';
+}
+
+/**
+ * Priority levels for enhanced suggestions with visual badges.
+ */
+export type EnhancedPriority =
+  | 'urgent' // Red badge [!] - requires immediate attention
+  | 'recommended' // Amber badge [*] - should do soon
+  | 'suggested' // Blue badge [>] - nice to have
+  | 'optional'; // No badge - for exploration
+
+/**
+ * Icon types for enhanced suggestions.
+ */
+export type SuggestionIcon =
+  | 'alert' // Warning/error related
+  | 'lightbulb' // Insights/forecasting
+  | 'chart' // Visualization/analysis
+  | 'settings' // Configuration/diagnostics
+  | 'dollar'; // Financial
+
+/**
+ * Badge characters for visual priority indicators.
+ */
+export type PriorityBadge = '!' | '*' | '>' | null;
+
+/**
+ * Enhanced suggestion with priority badges and contextual reasons.
+ * Extends the basic SuggestionItem with richer UX features.
+ */
+export interface EnhancedSuggestion {
+  /** Display label for the suggestion chip */
+  label: string;
+  /** Natural language action to execute when clicked */
+  action: string;
+  /** Priority level determining visual style and sort order */
+  priority: EnhancedPriority;
+  /** Contextual explanation for why this is suggested */
+  reason?: string;
+  /** Visual badge character for the priority */
+  badge?: PriorityBadge;
+  /** Icon hint for frontend rendering */
+  icon?: SuggestionIcon;
+  /** Tool hint for programmatic use */
+  toolHint?: string;
+  /** Pre-filled parameters if the suggestion triggers a specific tool */
+  params?: Record<string, unknown>;
+}
+
+/**
+ * Union type for flexibility - supports both legacy and enhanced suggestions.
+ */
+export type AnySuggestion = SuggestionItem | EnhancedSuggestion;
+
+/**
+ * Type guard to check if a suggestion is enhanced.
+ */
+export function isEnhancedSuggestion(
+  suggestion: AnySuggestion,
+): suggestion is EnhancedSuggestion {
+  return (
+    'priority' in suggestion &&
+    ['urgent', 'recommended', 'suggested', 'optional'].includes(
+      suggestion.priority,
+    )
+  );
+}
+
+/**
+ * Convert legacy priority to enhanced priority.
+ */
+export function normalizeToEnhancedPriority(
+  priority: SuggestionItem['priority'] | EnhancedPriority,
+): EnhancedPriority {
+  if (priority === 'primary') return 'recommended';
+  if (priority === 'secondary') return 'suggested';
+  return priority;
+}
+
+/**
+ * Map priority to badge character.
+ */
+export function priorityToBadge(priority: EnhancedPriority): PriorityBadge {
+  const badgeMap: Record<EnhancedPriority, PriorityBadge> = {
+    urgent: '!',
+    recommended: '*',
+    suggested: '>',
+    optional: null,
+  };
+  return badgeMap[priority];
 }
 
 /**

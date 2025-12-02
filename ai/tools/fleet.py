@@ -6,6 +6,18 @@ Provides tools for site-wide aggregation and fleet status.
 import pandas as pd
 
 from database import engine, get_anchor_date
+from models.context import (
+    build_next_step,
+    build_operational_insight,
+    build_performance_insight,
+    ColorScheme,
+    ContextEnvelope,
+    DisplayMode,
+    InsightSeverity,
+    NextStepPriority,
+    UIComponentHint,
+    UISuggestion,
+)
 from models.responses import FleetOverviewResponse, FleetStatus, FleetProduction
 from queries.builders import (
     build_fleet_power_query,
@@ -85,9 +97,164 @@ def get_fleet_overview() -> dict:
     # Use anchor date (latest data timestamp) instead of current time
     anchor = get_anchor_date()
 
+    # Build user-friendly context
+    context = _build_fleet_context(
+        total_loggers=total_loggers,
+        active_loggers=active_loggers,
+        percent_online=percent_online,
+        fleet_health=fleet_health,
+        total_power=total_power,
+        total_energy=total_energy,
+        avg_irradiance=avg_irradiance,
+    )
+
     return FleetOverviewResponse(
         timestamp=anchor.isoformat(),
         status=status,
         production=production,
         summary=summary,
+        context=context,
     ).model_dump()
+
+
+def _build_fleet_context(
+    total_loggers: int,
+    active_loggers: int,
+    percent_online: float,
+    fleet_health: str,
+    total_power: float,
+    total_energy: float,
+    avg_irradiance: float,
+) -> ContextEnvelope:
+    """Build user-friendly context for fleet overview response."""
+    # Build summary
+    power_kw = total_power / 1000
+    offline_count = total_loggers - active_loggers
+
+    if fleet_health == "Healthy":
+        summary = (
+            f"Your solar site is running smoothly! All {active_loggers} inverters are online "
+            f"and generating {power_kw:.1f} kW of clean power. "
+            f"You've already produced {total_energy:.1f} kWh today."
+        )
+    elif fleet_health == "Degraded":
+        summary = (
+            f"Your site is generating {power_kw:.1f} kW, but {offline_count} of your {total_loggers} "
+            f"inverters appear to be offline. Today's production is {total_energy:.1f} kWh so far."
+        )
+    else:  # Critical
+        summary = (
+            f"Attention needed: Only {active_loggers} of {total_loggers} inverters are online. "
+            f"Your site is generating just {power_kw:.1f} kW. Check your system status."
+        )
+
+    # Build insights
+    insights = []
+
+    # Fleet health insight
+    if fleet_health == "Healthy":
+        insights.append(
+            build_operational_insight(
+                title="All systems operational",
+                description=f"All {active_loggers} inverters are communicating and producing power.",
+                metric=f"{percent_online:.0f}%",
+                severity=InsightSeverity.INFO,
+            )
+        )
+    elif fleet_health == "Degraded":
+        insights.append(
+            build_operational_insight(
+                title=f"{offline_count} device(s) offline",
+                description=f"Some inverters aren't reporting data. This could affect your production.",
+                metric=f"{percent_online:.0f}%",
+                severity=InsightSeverity.WARNING,
+            )
+        )
+    else:
+        insights.append(
+            build_operational_insight(
+                title="Many devices offline",
+                description=f"Only {active_loggers} of {total_loggers} devices are responding.",
+                metric=f"{percent_online:.0f}%",
+                severity=InsightSeverity.CRITICAL,
+            )
+        )
+
+    # Power output insight
+    if total_power > 0:
+        insights.append(
+            build_performance_insight(
+                title="Current generation",
+                description=f"Your site is currently producing {power_kw:.1f} kW of power.",
+                metric=f"{power_kw:.1f} kW",
+            )
+        )
+
+    # Irradiance insight
+    if avg_irradiance > 0:
+        irr_quality = (
+            "excellent" if avg_irradiance > 800
+            else "good" if avg_irradiance > 500
+            else "moderate" if avg_irradiance > 200
+            else "low"
+        )
+        insights.append(
+            build_performance_insight(
+                title=f"{irr_quality.capitalize()} sunlight",
+                description=f"Current irradiance is {avg_irradiance:.0f} W/m².",
+                metric=f"{avg_irradiance:.0f} W/m²",
+            )
+        )
+
+    # Build next steps
+    next_steps = []
+
+    if fleet_health != "Healthy":
+        next_steps.append(
+            build_next_step(
+                action="Check which devices are offline",
+                reason=f"{offline_count} device(s) not reporting",
+                priority=NextStepPriority.URGENT if fleet_health == "Critical" else NextStepPriority.RECOMMENDED,
+                tool_hint="list_loggers",
+            )
+        )
+
+    next_steps.append(
+        build_next_step(
+            action="View detailed performance for your best inverter",
+            reason="See production curves and efficiency",
+            priority=NextStepPriority.SUGGESTED,
+            tool_hint="get_power_curve",
+        )
+    )
+
+    next_steps.append(
+        build_next_step(
+            action="Calculate your energy savings",
+            reason=f"See how much {total_energy:.1f} kWh saves you",
+            priority=NextStepPriority.SUGGESTED,
+            tool_hint="calculate_financial_savings",
+        )
+    )
+
+    # Build UI suggestion
+    color_scheme = (
+        ColorScheme.SUCCESS if fleet_health == "Healthy"
+        else ColorScheme.DANGER if fleet_health == "Critical"
+        else ColorScheme.WARNING
+    )
+
+    ui_suggestion = UISuggestion(
+        preferred_component=UIComponentHint.METRIC_GRID,
+        display_mode=DisplayMode.STANDARD,
+        highlight_metric="totalPowerWatts",
+        color_scheme=color_scheme,
+    )
+
+    return ContextEnvelope(
+        summary=summary,
+        insights=insights[:3],
+        next_steps=next_steps[:3],
+        ui_suggestion=ui_suggestion,
+        alert=f"Only {percent_online:.0f}% of devices online" if fleet_health == "Critical" else None,
+    )

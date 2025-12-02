@@ -20,6 +20,10 @@ import {
   getLastUserMessage,
   ALL_DEVICES_PATTERN,
   COMMON_SUGGESTIONS,
+  contextToSuggestions,
+  extractContextFromResult,
+  generateDynamicSuggestions,
+  ContextEnvelope,
 } from './flow-utils';
 import { createMockToolsClient } from '../test-utils';
 
@@ -576,6 +580,417 @@ describe('FlowUtils', () => {
           suggestions.some((s) => s.label.toLowerCase().includes('efficiency')),
         ).toBe(true);
       });
+    });
+  });
+
+  // ============================================================
+  // Context Envelope Tests
+  // ============================================================
+
+  describe('contextToSuggestions', () => {
+    it('should convert next_steps to EnhancedSuggestion array', () => {
+      const context: ContextEnvelope = {
+        summary: 'Test summary',
+        insights: [],
+        next_steps: [
+          {
+            priority: 'urgent',
+            action: 'Check system health immediately',
+            reason: 'Critical errors detected',
+            tool_hint: 'analyze_inverter_health',
+          },
+          {
+            priority: 'suggested',
+            action: 'View power curve',
+            reason: 'See production patterns',
+            tool_hint: 'get_power_curve',
+          },
+        ],
+      };
+
+      const suggestions = contextToSuggestions(context);
+
+      expect(suggestions).toHaveLength(2);
+      expect(suggestions[0].priority).toBe('urgent');
+      expect(suggestions[0].action).toBe('Check system health immediately');
+      expect(suggestions[0].reason).toBe('Critical errors detected');
+      expect(suggestions[0].badge).toBe('!');
+      expect(suggestions[0].icon).toBe('alert');
+    });
+
+    it('should truncate long action labels', () => {
+      const context: ContextEnvelope = {
+        summary: 'Test',
+        insights: [],
+        next_steps: [
+          {
+            priority: 'suggested',
+            action: 'This is a very long action that should be truncated',
+            reason: 'Test reason',
+          },
+        ],
+      };
+
+      const suggestions = contextToSuggestions(context);
+
+      expect(suggestions[0].label).toBe('This is a very...');
+      expect(suggestions[0].action).toBe(
+        'This is a very long action that should be truncated',
+      );
+    });
+
+    it('should return empty array for undefined context', () => {
+      const suggestions = contextToSuggestions(undefined);
+
+      expect(suggestions).toEqual([]);
+    });
+
+    it('should return empty array for context without next_steps', () => {
+      const context: ContextEnvelope = {
+        summary: 'Test',
+        insights: [],
+        next_steps: [],
+      };
+
+      const suggestions = contextToSuggestions(context);
+
+      expect(suggestions).toEqual([]);
+    });
+
+    it('should map priority to correct badge', () => {
+      const context: ContextEnvelope = {
+        summary: 'Test',
+        insights: [],
+        next_steps: [
+          { priority: 'urgent', action: 'Urgent action', reason: 'Urgent' },
+          {
+            priority: 'recommended',
+            action: 'Recommended action',
+            reason: 'Recommended',
+          },
+          {
+            priority: 'suggested',
+            action: 'Suggested action',
+            reason: 'Suggested',
+          },
+          {
+            priority: 'optional',
+            action: 'Optional action',
+            reason: 'Optional',
+          },
+        ],
+      };
+
+      const suggestions = contextToSuggestions(context);
+
+      expect(suggestions[0].badge).toBe('!');
+      expect(suggestions[1].badge).toBe('*');
+      expect(suggestions[2].badge).toBe('>');
+      expect(suggestions[3].badge).toBeNull();
+    });
+
+    it('should map tool hints to correct icons', () => {
+      const context: ContextEnvelope = {
+        summary: 'Test',
+        insights: [],
+        next_steps: [
+          {
+            priority: 'suggested',
+            action: 'Check errors',
+            reason: 'Test',
+            tool_hint: 'diagnose_error_codes',
+          },
+          {
+            priority: 'suggested',
+            action: 'Calculate savings',
+            reason: 'Test',
+            tool_hint: 'calculate_financial_savings',
+          },
+          {
+            priority: 'suggested',
+            action: 'Forecast production',
+            reason: 'Test',
+            tool_hint: 'forecast_production',
+          },
+          {
+            priority: 'suggested',
+            action: 'Compare loggers',
+            reason: 'Test',
+            tool_hint: 'compare_loggers',
+          },
+        ],
+      };
+
+      const suggestions = contextToSuggestions(context);
+
+      expect(suggestions[0].icon).toBe('alert');
+      expect(suggestions[1].icon).toBe('dollar');
+      expect(suggestions[2].icon).toBe('lightbulb');
+      expect(suggestions[3].icon).toBe('chart');
+    });
+
+    it('should include params from next_steps', () => {
+      const context: ContextEnvelope = {
+        summary: 'Test',
+        insights: [],
+        next_steps: [
+          {
+            priority: 'suggested',
+            action: 'View power curve',
+            reason: 'Test',
+            tool_hint: 'get_power_curve',
+            params: { logger_id: '925', date: '2025-01-15' },
+          },
+        ],
+      };
+
+      const suggestions = contextToSuggestions(context);
+
+      expect(suggestions[0].params).toEqual({
+        logger_id: '925',
+        date: '2025-01-15',
+      });
+    });
+  });
+
+  describe('extractContextFromResult', () => {
+    it('should extract context from nested result', () => {
+      const toolResponse = {
+        status: 'ok' as const,
+        result: {
+          loggerId: '925',
+          data: [],
+          context: {
+            summary: 'Test summary',
+            insights: [],
+            next_steps: [],
+          },
+        },
+      };
+
+      const context = extractContextFromResult(toolResponse);
+
+      expect(context).toBeDefined();
+      expect(context?.summary).toBe('Test summary');
+    });
+
+    it('should return undefined when no context in result', () => {
+      const toolResponse = {
+        status: 'ok' as const,
+        result: {
+          loggerId: '925',
+          data: [],
+        },
+      };
+
+      const context = extractContextFromResult(toolResponse);
+
+      expect(context).toBeUndefined();
+    });
+
+    it('should return undefined when result is undefined', () => {
+      const toolResponse = {
+        status: 'ok' as const,
+      };
+
+      const context = extractContextFromResult(toolResponse);
+
+      expect(context).toBeUndefined();
+    });
+
+    it('should handle complex context with all fields', () => {
+      const toolResponse = {
+        status: 'ok' as const,
+        result: {
+          context: {
+            summary: 'Full context test',
+            insights: [
+              {
+                type: 'performance',
+                severity: 'warning',
+                title: 'Low efficiency',
+                description: 'System operating below capacity',
+                metric: '72%',
+                benchmark: 'vs 85% typical',
+              },
+            ],
+            next_steps: [
+              {
+                priority: 'recommended',
+                action: 'Investigate',
+                reason: 'Performance issue detected',
+              },
+            ],
+            ui_suggestion: {
+              preferred_component: 'chart_composed',
+              display_mode: 'detailed',
+              color_scheme: 'warning',
+            },
+            alert: 'Attention required',
+          },
+        },
+      };
+
+      const context = extractContextFromResult(toolResponse);
+
+      expect(context?.summary).toBe('Full context test');
+      expect(context?.insights).toHaveLength(1);
+      expect(context?.insights[0].severity).toBe('warning');
+      expect(context?.next_steps).toHaveLength(1);
+      expect(context?.ui_suggestion?.color_scheme).toBe('warning');
+      expect(context?.alert).toBe('Attention required');
+    });
+  });
+
+  describe('generateDynamicSuggestions', () => {
+    it('should use context from tool response when available', () => {
+      const result = {
+        status: 'ok' as const,
+        result: {
+          context: {
+            summary: 'Test',
+            insights: [],
+            next_steps: [
+              {
+                priority: 'urgent',
+                action: 'From context',
+                reason: 'Context-based',
+                tool_hint: 'analyze_inverter_health',
+              },
+            ],
+          },
+        },
+      };
+
+      const suggestions = generateDynamicSuggestions('get_power_curve', result);
+
+      expect(suggestions).toHaveLength(1);
+      expect(suggestions[0].action).toBe('From context');
+      expect(suggestions[0].priority).toBe('urgent');
+    });
+
+    it('should generate fleet overview suggestions when no context', () => {
+      const result = {
+        status: 'ok' as const,
+        result: {
+          status: { percentOnline: 80 },
+          devices: { offline: 2 },
+        },
+      };
+
+      const suggestions = generateDynamicSuggestions(
+        'get_fleet_overview',
+        result,
+      );
+
+      expect(suggestions.length).toBeGreaterThan(0);
+      expect(
+        suggestions.some(
+          (s) =>
+            s.priority === 'urgent' || s.action.toLowerCase().includes('issue'),
+        ),
+      ).toBe(true);
+    });
+
+    it('should generate financial suggestions when no context', () => {
+      const result = {
+        status: 'ok' as const,
+        result: {
+          savingsUsd: 150.5,
+          period: { start: '2025-01-01', end: '2025-01-15' },
+        },
+      };
+
+      const suggestions = generateDynamicSuggestions(
+        'calculate_financial_savings',
+        result,
+      );
+
+      expect(suggestions.length).toBeGreaterThan(0);
+    });
+
+    it('should generate health check suggestions based on anomalies', () => {
+      const resultWithAnomalies = {
+        status: 'ok' as const,
+        result: {
+          anomalyCount: 5,
+          loggerId: '925',
+        },
+      };
+
+      const suggestions = generateDynamicSuggestions(
+        'analyze_inverter_health',
+        resultWithAnomalies,
+      );
+
+      expect(suggestions.length).toBeGreaterThan(0);
+      expect(
+        suggestions.some(
+          (s) =>
+            s.priority === 'urgent' ||
+            s.action.toLowerCase().includes('diagnose'),
+        ),
+      ).toBe(true);
+    });
+
+    it('should generate performance suggestions based on status', () => {
+      const resultCritical = {
+        status: 'ok' as const,
+        result: {
+          status: 'critical',
+          performanceRatio: 45,
+          loggerId: '925',
+        },
+      };
+
+      const suggestions = generateDynamicSuggestions(
+        'calculate_performance_ratio',
+        resultCritical,
+      );
+
+      expect(suggestions.length).toBeGreaterThan(0);
+      expect(suggestions.some((s) => s.priority === 'urgent')).toBe(true);
+    });
+
+    it('should return empty array for unknown tool without context', () => {
+      const result = {
+        status: 'ok' as const,
+        result: { someData: 'value' },
+      };
+
+      const suggestions = generateDynamicSuggestions('unknown_tool', result);
+
+      expect(suggestions).toEqual([]);
+    });
+
+    it('should prioritize context-based suggestions over fallback', () => {
+      const result = {
+        status: 'ok' as const,
+        result: {
+          // Has both anomaly data AND context
+          anomalyCount: 10,
+          context: {
+            summary: 'Test',
+            insights: [],
+            next_steps: [
+              {
+                priority: 'suggested',
+                action: 'Context suggestion wins',
+                reason: 'From context',
+              },
+            ],
+          },
+        },
+      };
+
+      const suggestions = generateDynamicSuggestions(
+        'analyze_inverter_health',
+        result,
+      );
+
+      // Should use context, not fallback logic
+      expect(suggestions).toHaveLength(1);
+      expect(suggestions[0].action).toBe('Context suggestion wins');
     });
   });
 });

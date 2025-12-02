@@ -4,8 +4,18 @@ import { DynamicChart, type DynamicChartProps } from '@/components/dashboard/dyn
 import { SelectionPrompt, type SelectionOption } from './selection-prompt';
 import { MetricCard, MetricCardGrid } from './metric-card';
 import { StatusBadge, type StatusType } from './status-badge';
+import {
+  EnhancedSuggestion,
+  type EnhancedPriority,
+  type SuggestionIcon,
+  type PriorityBadge,
+} from './enhanced-suggestion';
+import {
+  sortSuggestionsByPriority,
+  normalizeToEnhancedPriority,
+  priorityToBadge,
+} from './suggestion-utils';
 import { motion } from 'framer-motion';
-import { Button } from '@/components/ui/button';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 import {
   Zap,
@@ -20,6 +30,7 @@ import {
   Gauge,
   Sparkles,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 /**
  * Error fallback component for tool rendering failures.
@@ -64,11 +75,44 @@ interface ToolInvocationState {
   result?: unknown;
 }
 
-// Suggestion item from backend
-export interface SuggestionItem {
+/**
+ * Legacy suggestion item for backward compatibility.
+ */
+export interface LegacySuggestionItem {
   label: string;
   action: string;
   priority: 'primary' | 'secondary';
+}
+
+/**
+ * Enhanced suggestion item with priority badges and reasons.
+ */
+export interface EnhancedSuggestionItem {
+  label: string;
+  action: string;
+  priority: EnhancedPriority;
+  reason?: string;
+  badge?: PriorityBadge;
+  icon?: SuggestionIcon;
+  toolHint?: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * Union type for suggestions - supports both legacy and enhanced.
+ */
+export type SuggestionItem = LegacySuggestionItem | EnhancedSuggestionItem;
+
+/**
+ * Type guard to check if suggestion is enhanced.
+ */
+function isEnhancedSuggestion(
+  suggestion: SuggestionItem
+): suggestion is EnhancedSuggestionItem {
+  return (
+    'priority' in suggestion &&
+    ['urgent', 'recommended', 'suggested', 'optional'].includes(suggestion.priority)
+  );
 }
 
 export interface ToolRendererProps {
@@ -78,7 +122,31 @@ export interface ToolRendererProps {
 }
 
 /**
+ * Normalize a suggestion to enhanced format.
+ */
+function normalizeToEnhancedSuggestionItem(
+  suggestion: SuggestionItem
+): EnhancedSuggestionItem {
+  if (isEnhancedSuggestion(suggestion)) {
+    return {
+      ...suggestion,
+      badge: suggestion.badge ?? priorityToBadge(suggestion.priority),
+    };
+  }
+
+  // Convert legacy suggestion
+  const enhancedPriority = normalizeToEnhancedPriority(suggestion.priority);
+  return {
+    label: suggestion.label,
+    action: suggestion.action,
+    priority: enhancedPriority,
+    badge: priorityToBadge(enhancedPriority),
+  };
+}
+
+/**
  * Renders suggestions from explicit flows as action chips.
+ * Supports both legacy and enhanced suggestion formats.
  */
 function FlowSuggestions({
   suggestions,
@@ -89,28 +157,37 @@ function FlowSuggestions({
 }) {
   if (!suggestions || suggestions.length === 0) return null;
 
+  // Normalize all suggestions to enhanced format
+  const enhancedSuggestions = suggestions.map(normalizeToEnhancedSuggestionItem);
+
+  // Sort by priority (urgent first)
+  const sortedSuggestions = sortSuggestionsByPriority(enhancedSuggestions);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 }}
-      className="mt-3 flex flex-wrap gap-2"
+      className="mt-4 space-y-2"
     >
-      <span className="mr-1 flex items-center gap-1 text-xs text-muted-foreground">
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
         <Sparkles className="h-3 w-3" />
-        Suggestions:
+        What would you like to do next?
       </span>
-      {suggestions.map((suggestion, index) => (
-        <Button
-          key={index}
-          variant={suggestion.priority === 'primary' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => onSuggestionClick?.(suggestion.action)}
-          className="h-7 text-xs"
-        >
-          {suggestion.label}
-        </Button>
-      ))}
+      <div className="flex flex-wrap gap-2">
+        {sortedSuggestions.map((suggestion, index) => (
+          <EnhancedSuggestion
+            key={index}
+            label={suggestion.label}
+            action={suggestion.action}
+            priority={suggestion.priority}
+            reason={suggestion.reason}
+            badge={suggestion.badge}
+            icon={suggestion.icon}
+            onClick={onSuggestionClick || (() => {})}
+          />
+        ))}
+      </div>
     </motion.div>
   );
 }

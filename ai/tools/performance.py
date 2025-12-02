@@ -11,6 +11,17 @@ from pydantic import Field
 
 from config import settings
 from database import engine
+from models.context import (
+    build_next_step,
+    build_performance_insight,
+    ColorScheme,
+    ContextEnvelope,
+    DisplayMode,
+    InsightSeverity,
+    NextStepPriority,
+    UIComponentHint,
+    UISuggestion,
+)
 from models.enums import DataStatus
 from models.responses import PerformanceReportResponse, PerformanceMetrics, AvailableRange
 from queries.builders import build_peak_power_query, build_performance_query
@@ -126,6 +137,18 @@ def calculate_performance_ratio(
         dataPoints=len(df),
     )
 
+    # Build user-friendly context
+    context = _build_performance_context(
+        logger_id=logger_id,
+        date=date,
+        pr_percent=pr_percent,
+        status=status,
+        avg_power=avg_power,
+        peak_power=peak_power,
+        avg_irradiance=avg_irradiance,
+        capacity_kw=capacity_kw,
+    )
+
     return PerformanceReportResponse(
         loggerId=logger_id,
         date=date,
@@ -134,4 +157,158 @@ def calculate_performance_ratio(
         status=status,
         metrics=metrics,
         interpretation=interpretation,
+        context=context,
     ).model_dump()
+
+
+def _build_performance_context(
+    logger_id: str,
+    date: str,
+    pr_percent: float,
+    status: str,
+    avg_power: float,
+    peak_power: float,
+    avg_irradiance: float,
+    capacity_kw: float,
+) -> ContextEnvelope:
+    """Build user-friendly context for performance report response."""
+    # Build summary based on performance status
+    if status == "normal":
+        summary = (
+            f"Great news! Your system is running at {pr_percent:.0f}% efficiency on {date}. "
+            f"This is within the healthy range (80-100%), meaning your panels are converting "
+            f"sunlight into electricity effectively."
+        )
+    elif status == "low":
+        summary = (
+            f"Your system operated at {pr_percent:.0f}% efficiency on {date}, which is below optimal. "
+            f"This could be due to shading, dirty panels, or equipment issues. "
+            f"A professional inspection might help identify the cause."
+        )
+    else:  # critical
+        summary = (
+            f"Attention needed: Your system only achieved {pr_percent:.0f}% efficiency on {date}. "
+            f"This is significantly below normal and suggests a problem that should be investigated."
+        )
+
+    # Build insights
+    insights = []
+
+    # Efficiency insight
+    severity = (
+        InsightSeverity.INFO if status == "normal"
+        else InsightSeverity.WARNING if status == "low"
+        else InsightSeverity.CRITICAL
+    )
+    benchmark = "80-100% typical" if status == "normal" else "80% is healthy"
+    insights.append(
+        build_performance_insight(
+            title=f"{'Good' if status == 'normal' else 'Low' if status == 'low' else 'Critical'} efficiency",
+            description=f"Performance ratio of {pr_percent:.0f}% measures how well your system converts available sunlight.",
+            metric=f"{pr_percent:.0f}%",
+            benchmark=benchmark,
+            severity=severity,
+        )
+    )
+
+    # Power output insight
+    if peak_power > 0:
+        capacity_utilization = (peak_power / (capacity_kw * 1000)) * 100 if capacity_kw else 0
+        insights.append(
+            build_performance_insight(
+                title="Peak output",
+                description=f"Your system reached {peak_power:.0f}W peak, using {capacity_utilization:.0f}% of its {capacity_kw:.1f}kW capacity.",
+                metric=f"{peak_power:.0f} W",
+                benchmark=f"{capacity_kw:.1f} kW capacity",
+            )
+        )
+
+    # Irradiance insight
+    if avg_irradiance > 0:
+        irr_quality = (
+            "excellent" if avg_irradiance > 700
+            else "good" if avg_irradiance > 400
+            else "moderate" if avg_irradiance > 200
+            else "limited"
+        )
+        insights.append(
+            build_performance_insight(
+                title=f"{irr_quality.capitalize()} sunlight conditions",
+                description=f"Average irradiance of {avg_irradiance:.0f} W/m² throughout the day.",
+                metric=f"{avg_irradiance:.0f} W/m²",
+            )
+        )
+
+    # Build next steps
+    next_steps = []
+
+    if status != "normal":
+        next_steps.append(
+            build_next_step(
+                action="Check for system issues",
+                reason=f"Efficiency is {'below optimal' if status == 'low' else 'critically low'}",
+                priority=NextStepPriority.URGENT if status == "critical" else NextStepPriority.RECOMMENDED,
+                tool_hint="analyze_inverter_health",
+                params={"logger_id": logger_id, "days": 7},
+            )
+        )
+        next_steps.append(
+            build_next_step(
+                action="Look for error codes",
+                reason="May explain the efficiency drop",
+                priority=NextStepPriority.RECOMMENDED,
+                tool_hint="diagnose_error_codes",
+                params={"logger_id": logger_id, "days": 7},
+            )
+        )
+    else:
+        next_steps.append(
+            build_next_step(
+                action="View production patterns",
+                reason="See your power curve for this day",
+                priority=NextStepPriority.SUGGESTED,
+                tool_hint="get_power_curve",
+                params={"logger_id": logger_id, "date": date},
+            )
+        )
+        next_steps.append(
+            build_next_step(
+                action="Calculate your savings",
+                reason="See the financial benefit of this production",
+                priority=NextStepPriority.SUGGESTED,
+                tool_hint="calculate_financial_savings",
+                params={"logger_id": logger_id},
+            )
+        )
+
+    next_steps.append(
+        build_next_step(
+            action="Compare with other inverters",
+            reason="See if others perform similarly",
+            priority=NextStepPriority.OPTIONAL,
+            tool_hint="compare_loggers",
+            params={"date": date},
+        )
+    )
+
+    # Build UI suggestion
+    color_scheme = (
+        ColorScheme.SUCCESS if status == "normal"
+        else ColorScheme.DANGER if status == "critical"
+        else ColorScheme.WARNING
+    )
+
+    ui_suggestion = UISuggestion(
+        preferred_component=UIComponentHint.METRIC_CARD,
+        display_mode=DisplayMode.DETAILED,
+        highlight_metric="performanceRatio",
+        color_scheme=color_scheme,
+    )
+
+    return ContextEnvelope(
+        summary=summary,
+        insights=insights[:3],
+        next_steps=next_steps[:3],
+        ui_suggestion=ui_suggestion,
+        alert=f"System efficiency at {pr_percent:.0f}% - investigation needed" if status == "critical" else None,
+    )

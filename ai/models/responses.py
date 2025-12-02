@@ -2,10 +2,16 @@
 
 Type-safe response envelopes for all 9 solar-analyst tools.
 Each tool returns a specific response model that can be serialized with .model_dump().
+
+All response models include an optional `context` field for user-friendly
+summaries, insights, and next-step recommendations.
 """
 
-from pydantic import BaseModel
 from typing import Optional
+
+from pydantic import BaseModel
+
+from models.context import ContextEnvelope
 
 
 # ============================================================
@@ -27,6 +33,7 @@ class LoggerListResponse(BaseModel):
     type: str = "logger_list"
     count: int
     loggers: list[LoggerInfo]
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -84,6 +91,7 @@ class AnomalyReportResponse(BaseModel):
     anomalyCount: Optional[int] = None
     points: list[AnomalyPoint]
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -109,6 +117,7 @@ class PowerCurveResponse(BaseModel):
     data: list[PowerCurvePoint]
     summaryStats: Optional[SummaryStats] = None  # For narrative insights
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -129,6 +138,7 @@ class ComparisonResponse(BaseModel):
     recordCount: Optional[int] = None
     data: list[dict]
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -155,6 +165,7 @@ class FinancialReportResponse(BaseModel):
     treesEquivalent: Optional[float] = None
     summary: Optional[str] = None
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -182,6 +193,7 @@ class PerformanceReportResponse(BaseModel):
     metrics: Optional[PerformanceMetrics] = None
     interpretation: Optional[str] = None
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -217,6 +229,7 @@ class ProductionForecastResponse(BaseModel):
     forecasts: Optional[list[ForecastDay]] = None
     summary: Optional[str] = None
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -246,6 +259,7 @@ class DiagnosticsReportResponse(BaseModel):
     issues: Optional[list[DiagnosticIssue]] = None
     summary: Optional[str] = None
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -276,6 +290,7 @@ class FleetOverviewResponse(BaseModel):
     status: FleetStatus
     production: FleetProduction
     summary: str
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
