@@ -12,10 +12,10 @@ See [diagrams/markdown/architecture-overview.md](./diagrams/markdown/architectur
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | React 19, Vite 7, TypeScript, shadcn/ui, Tailwind CSS 4, Recharts |
-| Backend | NestJS 11, TypeORM, PostgreSQL 16 |
-| AI Service | Python 3.12, FastMCP, SQLAlchemy, Vercel AI SDK |
-| LLM Providers | Gemini, Claude, GPT-4 (configurable) |
+| Frontend | React 19, Vite 7, TypeScript, shadcn/ui, Tailwind CSS 4, Recharts, @assistant-ui/react |
+| Backend | NestJS 11, TypeORM, PostgreSQL 16, LangGraph |
+| AI Tools | Python 3.12, FastMCP, SQLAlchemy |
+| LLM Providers | Gemini, Claude, GPT-4, Ollama (configurable) |
 | Containers | Docker Compose |
 
 ## Features
@@ -120,11 +120,17 @@ All diagrams are available as pre-rendered SVGs in [`diagrams/svg/`](./diagrams/
 
 ### Backend
 ```env
-AI_PROVIDER=gemini                    # gemini | anthropic | openai
-MCP_SERVER_URL=http://localhost:4000/sse
+AI_PROVIDER=gemini                    # gemini | anthropic | openai | ollama
+MCP_SERVER_URL=http://localhost:4000  # Python tools API
+
+# Provider API Keys (set one based on AI_PROVIDER)
 GOOGLE_GENERATIVE_AI_API_KEY=         # For Gemini
 ANTHROPIC_API_KEY=                    # For Claude
 OPENAI_API_KEY=                       # For GPT-4
+
+# Ollama (local LLM - no API key required)
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=gpt-oss:20b
 ```
 
 ### AI Service

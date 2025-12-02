@@ -7,6 +7,7 @@ React 19 + Vite 7 frontend with shadcn/ui components and AI chat interface.
 - **Framework**: React 19, TypeScript
 - **Build**: Vite 7
 - **Styling**: Tailwind CSS 4, shadcn/ui
+- **Chat Primitives**: @assistant-ui/react
 - **Charts**: Recharts 3.x
 - **Animation**: Framer Motion 12.x
 - **Icons**: Lucide React
@@ -31,6 +32,10 @@ src/
 │   │   ├── typing-indicator.tsx  # Loading states
 │   │   ├── chat-error.tsx        # Error display and retry
 │   │   └── workflow-card.tsx     # Quick-start workflow buttons
+│   ├── assistant-ui/     # @assistant-ui/react primitives
+│   │   ├── thread.tsx            # Chat thread with auto-scroll
+│   │   ├── thread-list.tsx       # Conversation sidebar
+│   │   └── markdown.tsx          # Markdown rendering
 │   └── ui/               # shadcn/ui components
 ├── views/                # Page views (ai-chat-view.tsx)
 ├── hooks/                # Custom hooks (use-ai-chat.ts)
@@ -50,6 +55,17 @@ src/
 ## AI Chat Features
 
 ![AI Chat Flow](../diagrams/svg/ai-chat-flow.svg)
+
+### Assistant-UI Integration
+
+The chat interface uses `@assistant-ui/react` for robust chat primitives:
+
+- **ThreadList**: Conversation history sidebar with rename/delete
+- **Thread**: Main chat viewport with auto-scroll
+- **Composer**: Message input with submit handling
+- **Runtime Provider**: Connects to backend SSE streaming via custom adapter
+
+Components in `src/components/assistant-ui/` wrap the library primitives with custom styling and integrate with the backend's LangGraph-powered responses.
 
 ### SSE Streaming Protocol
 
@@ -145,12 +161,12 @@ npm run lint      # ESLint check
 
 - `react` 19.x - UI framework
 - `vite` 7.x - Build tool
+- `@assistant-ui/react` - Chat primitives and thread management
 - `recharts` - Charting library
 - `framer-motion` - Animations
 - `date-fns` - Date utilities
 - `react-day-picker` - Calendar component
 - `lucide-react` - Icons
-- `use-stick-to-bottom` - Auto-scroll for chat
 
 ## Environment
 

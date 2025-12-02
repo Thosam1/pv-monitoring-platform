@@ -102,7 +102,7 @@ The AI module uses LangGraph for deterministic workflow management with LLM-powe
 | **Gemini** (default) | gemini-2.0-flash | `GOOGLE_GENERATIVE_AI_API_KEY` |
 | **Anthropic** | claude-3-5-sonnet | `ANTHROPIC_API_KEY` |
 | **OpenAI** | gpt-4o | `OPENAI_API_KEY` |
-| **Ollama** (local) | llama3.1:8b-instruct | `OLLAMA_BASE_URL` (no API key) |
+| **Ollama** (local) | gpt-oss:20b | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` |
 
 ## Database Schema
 

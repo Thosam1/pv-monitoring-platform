@@ -129,14 +129,16 @@ POST /api/tools/{name}    # Execute a specific tool
 
 ### 2.3 Frontend: Chat Interface
 
-The frontend renders the chat UI with streaming support and intelligent tool visualization.
+The frontend uses `@assistant-ui/react` for chat primitives (ThreadList, Thread, Composer) with custom tool rendering and SSE streaming integration.
 
 **Key Files:**
+- `frontend/src/components/assistant-ui/thread.tsx` - Chat thread with auto-scroll
+- `frontend/src/components/assistant-ui/thread-list.tsx` - Conversation sidebar
 - `frontend/src/components/ai/chat-interface.tsx` - Main chat UI
 - `frontend/src/components/ai/tool-renderer.tsx` - Tool visualization
 - `frontend/src/components/ai/chat-message.tsx` - Message rendering
 - `frontend/src/components/ai/selection-prompt.tsx` - User input components
-- `frontend/src/hooks/use-ai-chat.ts` - State management
+- `frontend/src/providers/assistant-runtime-provider.tsx` - SSE stream adapter
 
 ---
 
@@ -230,18 +232,23 @@ SSE Events → Frontend
 
 ### 4.1 Multi-Provider Support
 
-The backend supports three LLM providers, configurable via environment variables:
+The backend supports four LLM providers, configurable via environment variables:
 
 | Provider | Model | Environment Variable |
 |----------|-------|---------------------|
 | **Gemini** (default) | gemini-2.0-flash | `GOOGLE_GENERATIVE_AI_API_KEY` |
 | **Anthropic** | claude-3-5-sonnet | `ANTHROPIC_API_KEY` |
 | **OpenAI** | gpt-4o | `OPENAI_API_KEY` |
+| **Ollama** (local) | gpt-oss:20b | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` |
 
 **Configuration:**
 ```env
-AI_PROVIDER=gemini              # Options: gemini | anthropic | openai
+AI_PROVIDER=gemini              # Options: gemini | anthropic | openai | ollama
 MCP_SERVER_URL=http://localhost:4000  # Python tools API base URL
+
+# Ollama-specific (when AI_PROVIDER=ollama)
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=gpt-oss:20b
 ```
 
 ### 4.2 System Prompt Structure
