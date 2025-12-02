@@ -75,9 +75,9 @@ pv-monitoring-platform/
 ```
 
 See component READMEs for details:
-- [Backend README](./backend/README.md)
-- [Frontend README](./frontend/README.md)
-- [AI Service README](./ai/README.md)
+- [Backend README](backend/README.md)
+- [Frontend README](frontend/README.md)
+- [AI Service README](ai/README.md)
 
 ## API Endpoints
 
