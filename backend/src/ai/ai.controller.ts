@@ -9,18 +9,11 @@ import {
   HttpException,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { AiService } from './ai.service';
+import { LanggraphService } from './langgraph.service';
 import { ChatRequestDto } from './dto/chat-request.dto';
-/**
- * Message type for AI chat (replaces deprecated CoreMessage).
- */
-interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-}
 
 /**
- * AI Controller for handling chat interactions.
+ * AI Controller for handling chat interactions via LangGraph.
  *
  * Endpoints:
  * - POST /ai/chat: Stream a chat response
@@ -30,7 +23,7 @@ interface ChatMessage {
 export class AiController {
   private readonly logger = new Logger(AiController.name);
 
-  constructor(private readonly aiService: AiService) {}
+  constructor(private readonly langgraphService: LanggraphService) {}
 
   /**
    * Stream a chat response.
@@ -48,7 +41,7 @@ export class AiController {
     );
 
     // Validate that AI service is ready
-    if (!this.aiService.isReady()) {
+    if (!this.langgraphService.isReady()) {
       throw new HttpException(
         'AI service is not properly configured. Check API keys.',
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -56,15 +49,11 @@ export class AiController {
     }
 
     try {
-      // Convert DTO messages to ChatMessage format
-      const messages: ChatMessage[] = body.messages.map((msg) => ({
+      // Convert DTO messages to simple format
+      const messages = body.messages.map((msg) => ({
         role: msg.role,
         content: msg.content,
       }));
-
-      // Get the streaming response
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const result = await this.aiService.chat(messages);
 
       // Set up SSE headers
       res.setHeader('Content-Type', 'text/event-stream');
@@ -72,39 +61,17 @@ export class AiController {
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
-      // Stream the response using Vercel AI SDK v5's toUIMessageStreamResponse
-      // This includes tool calls and results, not just text
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-      const streamResponse = result.toUIMessageStreamResponse();
+      // Stream the response using LangGraph's async generator
+      const stream = this.langgraphService.chat(messages);
 
-      // Get the readable stream from the Response object
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-      const stream = streamResponse.body;
-      if (!stream) {
-        throw new Error('No stream body in response');
+      for await (const event of stream) {
+        // Format events to match the frontend's expected SSE format
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-      const reader = stream.getReader();
-
-      const pump = async (): Promise<void> => {
-        try {
-          while (true) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-            const { done, value } = await reader.read();
-            if (done) {
-              res.end();
-              break;
-            }
-            res.write(value);
-          }
-        } catch (error) {
-          this.logger.error(`Stream error: ${error}`);
-          res.end();
-        }
-      };
-
-      await pump();
+      // Send the done signal
+      res.write('data: [DONE]\n\n');
+      res.end();
     } catch (error) {
       this.logger.error(`Chat error: ${error}`);
 
@@ -113,6 +80,12 @@ export class AiController {
           error instanceof Error ? error.message : 'Chat processing failed',
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
+      } else {
+        // If headers already sent, send error as SSE event
+        res.write(
+          `data: ${JSON.stringify({ type: 'error', message: error instanceof Error ? error.message : 'Unknown error' })}\n\n`,
+        );
+        res.end();
       }
     }
   }
@@ -129,6 +102,6 @@ export class AiController {
     mcpConnected: boolean;
     ready: boolean;
   } {
-    return this.aiService.getStatus();
+    return this.langgraphService.getStatus();
   }
 }

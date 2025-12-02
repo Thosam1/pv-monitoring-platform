@@ -1,0 +1,184 @@
+import { Annotation, MessagesAnnotation } from '@langchain/langgraph';
+import { z } from 'zod';
+
+/**
+ * Flow type enumeration for explicit workflow routing.
+ */
+export type FlowType =
+  | 'morning_briefing'
+  | 'financial_report'
+  | 'performance_audit'
+  | 'health_check'
+  | 'free_chat';
+
+/**
+ * Context accumulated during flow execution.
+ * This carries user selections and intermediate results between flow steps.
+ */
+export interface FlowContext {
+  /** Single selected logger ID */
+  selectedLoggerId?: string;
+  /** Multiple selected logger IDs (for comparison flows) */
+  selectedLoggerIds?: string[];
+  /** Selected single date */
+  selectedDate?: string;
+  /** Selected date range */
+  dateRange?: { start: string; end: string };
+  /** Tool results from previous steps, keyed by tool name */
+  toolResults?: Record<string, unknown>;
+  /** Logger name if extracted from user message */
+  extractedLoggerName?: string;
+  /** Flag to analyze all loggers (for "all devices" intent) */
+  analyzeAllLoggers?: boolean;
+}
+
+/**
+ * Pending UI action for pass-through tools.
+ */
+export interface PendingUiAction {
+  toolCallId: string;
+  toolName: string;
+  args: unknown;
+}
+
+/**
+ * Suggestion item for contextual follow-up actions.
+ */
+export interface SuggestionItem {
+  /** Display label for the suggestion chip */
+  label: string;
+  /** Natural language action to execute when clicked */
+  action: string;
+  /** Visual prominence */
+  priority: 'primary' | 'secondary';
+}
+
+/**
+ * Flow hint for request_user_selection tool.
+ */
+export interface FlowHint {
+  /** Description of what will happen after selection */
+  expectedNext: string;
+  /** Optional skip option for users who want to use defaults */
+  skipOption?: {
+    label: string;
+    action: string;
+  };
+}
+
+/**
+ * Extended state annotation for explicit flow-based chat processing.
+ *
+ * This extends the base MessagesAnnotation with:
+ * - Recovery tracking (prevents infinite tool retry loops)
+ * - Pending UI actions (pass-through tools for frontend)
+ * - Active flow tracking (which workflow is executing)
+ * - Flow step tracking (current position in workflow)
+ * - Flow context (accumulated selections and results)
+ */
+export const ExplicitFlowStateAnnotation = Annotation.Root({
+  // Inherit message history from LangGraph
+  ...MessagesAnnotation.spec,
+
+  // Track recovery attempts to prevent infinite loops
+  recoveryAttempts: Annotation<number>({
+    reducer: (_, next) => next,
+    default: () => 0,
+  }),
+
+  // Track pending UI actions for pass-through tools
+  pendingUiActions: Annotation<PendingUiAction[]>({
+    reducer: (_, next) => next,
+    default: () => [],
+  }),
+
+  // NEW: Active workflow identifier (null for free chat)
+  activeFlow: Annotation<FlowType | null>({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+
+  // NEW: Current step within the active flow
+  flowStep: Annotation<number>({
+    reducer: (_, next) => next,
+    default: () => 0,
+  }),
+
+  // NEW: Accumulated context (selections, dates, intermediate results)
+  flowContext: Annotation<FlowContext>({
+    reducer: (curr, next) => ({ ...curr, ...next }),
+    default: () => ({}),
+  }),
+});
+
+/**
+ * Type alias for the explicit flow state.
+ */
+export type ExplicitFlowState = typeof ExplicitFlowStateAnnotation.State;
+
+/**
+ * Zod schema for LLM-based flow classification.
+ */
+export const FlowClassificationSchema = z.object({
+  flow: z.enum([
+    'morning_briefing',
+    'financial_report',
+    'performance_audit',
+    'health_check',
+    'free_chat',
+  ]),
+  confidence: z.number().min(0).max(1),
+  /** If true, the user is responding to a selection prompt (not a new question) */
+  isContinuation: z.boolean().optional(),
+  extractedParams: z
+    .object({
+      loggerId: z.string().optional(),
+      loggerName: z.string().optional(),
+      date: z.string().optional(),
+    })
+    .optional(),
+});
+
+/**
+ * Type for the classification result.
+ */
+export type FlowClassification = z.infer<typeof FlowClassificationSchema>;
+
+/**
+ * Tool response status codes for recovery handling.
+ */
+export type ToolStatus =
+  | 'ok'
+  | 'success'
+  | 'no_data'
+  | 'no_data_in_window'
+  | 'error';
+
+/**
+ * Standard tool response shape with status.
+ */
+export interface ToolResponse<T = unknown> {
+  status: ToolStatus;
+  result?: T;
+  message?: string;
+  availableRange?: {
+    start: string;
+    end: string;
+  };
+}
+
+/**
+ * Check if a tool response indicates a recoverable error.
+ */
+export function isRecoverableError(response: ToolResponse): boolean {
+  return (
+    response.status === 'no_data_in_window' || response.status === 'no_data'
+  );
+}
+
+/**
+ * Check if a tool response indicates success.
+ */
+export function isSuccessResponse(response: ToolResponse): boolean {
+  return response.status === 'ok' || response.status === 'success';
+}
