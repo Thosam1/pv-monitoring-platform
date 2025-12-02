@@ -45,3 +45,9 @@ __pycache__/
 # Test coverage
 coverage/
 .mcp.json
+
+# Playwright MCP
+.playwright-mcp/
+
+# Local context/notes
+context/
