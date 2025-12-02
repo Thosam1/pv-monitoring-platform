@@ -9,13 +9,14 @@ import {
   PromptInputToolbar,
   PromptInputTools,
   PromptInputSubmit,
-  Suggestions,
-  Suggestion,
 } from '@/components/ui/ai';
 import { ChatMessage } from './chat-message';
+import { InlineError, type ErrorType } from './chat-error';
+import { WorkflowCard } from './workflow-card';
 import { cn } from '@/lib/utils';
-import { Sun } from 'lucide-react';
+import { Sun, DollarSign, TrendingDown, Activity, type LucideIcon } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // Message types for the chat
 export interface ChatPart {
@@ -44,11 +45,44 @@ export interface ChatInterfaceProps {
 
 type ChatStatus = 'idle' | 'submitted' | 'streaming' | 'error';
 
-const SUGGESTIONS = [
-  "Show me today's power production",
-  'Compare all loggers performance',
-  "What's the fleet overview?",
-  'Analyze inverter health',
+// Workflow chip configuration for the empty state
+interface WorkflowChip {
+  id: string;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  prompt: string;
+}
+
+const WORKFLOW_CHIPS: WorkflowChip[] = [
+  {
+    id: 'morning-briefing',
+    icon: Sun,
+    title: 'Morning Briefing',
+    description: 'Fleet status & critical alerts',
+    prompt: 'Give me a fleet overview. If anything is critical, diagnose the errors immediately.',
+  },
+  {
+    id: 'financial-report',
+    icon: DollarSign,
+    title: 'Financial Report',
+    description: 'Savings analysis & forecast',
+    prompt: 'Calculate financial savings for the last 30 days and forecast production for next week.',
+  },
+  {
+    id: 'performance-audit',
+    icon: TrendingDown,
+    title: 'Performance Audit',
+    description: 'Efficiency check & comparison',
+    prompt: 'Check the performance ratio of my inverters for yesterday and show me a comparison chart of the best vs. worst.',
+  },
+  {
+    id: 'health-check',
+    icon: Activity,
+    title: 'Deep Health Check',
+    description: '7-day anomaly analysis',
+    prompt: 'Analyze inverter health for all devices over the last 7 days and list any anomalies.',
+  },
 ];
 
 /**
@@ -56,6 +90,23 @@ const SUGGESTIONS = [
  */
 function generateId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Assemble message parts, filtering out empty text parts.
+ */
+function assembleMessageParts(fullText: string, toolCalls: Map<string, ChatPart>): ChatPart[] {
+  const parts: ChatPart[] = [];
+
+  // Only add text part if there's actual content
+  if (fullText.trim()) {
+    parts.push({ type: 'text', text: fullText });
+  }
+
+  // Add all tool calls
+  parts.push(...Array.from(toolCalls.values()));
+
+  return parts;
 }
 
 /**
@@ -71,7 +122,11 @@ export function ChatInterface({
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<ChatStatus>('idle');
+  const [, setErrorType] = useState<ErrorType>('unknown');
+  const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const [lastUserMessage, setLastUserMessage] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const prevChatIdRef = useRef<string | null>(null);
 
   // Notify parent when messages change
   useEffect(() => {
@@ -80,12 +135,11 @@ export function ChatInterface({
     }
   }, [messages, onMessagesChange]);
 
-  // Reset messages when chatId changes
+  // Reset messages only when switching to a different chat (not during streaming)
   useEffect(() => {
-    if (chatId) {
-      setMessages(initialMessages);
-    } else {
-      setMessages([]);
+    if (chatId !== prevChatIdRef.current) {
+      setMessages(chatId ? initialMessages : []);
+      prevChatIdRef.current = chatId;
     }
   }, [chatId, initialMessages]);
 
@@ -94,15 +148,14 @@ export function ChatInterface({
     if (status === 'submitted' || status === 'streaming') {
       const timeout = setTimeout(() => {
         setStatus('error');
+        setErrorType('timeout');
+        setErrorMessage('The request took too long. Please try again.');
+        // Remove the empty assistant message on timeout
         setMessages((prev) => {
           const updated = [...prev];
           const lastIdx = updated.length - 1;
-          if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-            updated[lastIdx] = {
-              ...updated[lastIdx],
-              content: 'Request timed out. Please try again.',
-              parts: [{ type: 'text', text: 'Request timed out. Please try again.' }],
-            };
+          if (lastIdx >= 0 && updated[lastIdx].role === 'assistant' && updated[lastIdx].parts.length === 0) {
+            return updated.slice(0, -1);
           }
           return updated;
         });
@@ -114,6 +167,13 @@ export function ChatInterface({
   // Send message to backend
   const sendMessage = useCallback(async (userMessage: string) => {
     if (!userMessage.trim()) return;
+
+    // Store for retry
+    setLastUserMessage(userMessage);
+
+    // Clear any previous error
+    setStatus('idle');
+    setErrorMessage(undefined);
 
     // Create user message
     const userMsg: Message = {
@@ -199,10 +259,7 @@ export function ChatInterface({
                   updated[lastIdx] = {
                     ...updated[lastIdx],
                     content: fullText,
-                    parts: [
-                      { type: 'text', text: fullText },
-                      ...Array.from(toolCalls.values()),
-                    ],
+                    parts: assembleMessageParts(fullText, toolCalls),
                   };
                 }
                 return updated;
@@ -225,10 +282,7 @@ export function ChatInterface({
                 if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
                   updated[lastIdx] = {
                     ...updated[lastIdx],
-                    parts: [
-                      ...(fullText ? [{ type: 'text' as const, text: fullText }] : []),
-                      ...Array.from(toolCalls.values()),
-                    ],
+                    parts: assembleMessageParts(fullText, toolCalls),
                   };
                 }
                 return updated;
@@ -248,10 +302,7 @@ export function ChatInterface({
                   if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
                     updated[lastIdx] = {
                       ...updated[lastIdx],
-                      parts: [
-                        ...(fullText ? [{ type: 'text' as const, text: fullText }] : []),
-                        ...Array.from(toolCalls.values()),
-                      ],
+                      parts: assembleMessageParts(fullText, toolCalls),
                     };
                   }
                   return updated;
@@ -271,17 +322,33 @@ export function ChatInterface({
         return;
       }
       console.error('Chat error:', error);
+
+      // Determine error type
+      const err = error as Error & { status?: number };
+      let type: ErrorType = 'unknown';
+      let msg: string | undefined;
+
+      if (!navigator.onLine || err.message?.includes('fetch')) {
+        type = 'network';
+        msg = 'Unable to connect. Please check your internet connection.';
+      } else if (err.status === 400) {
+        type = 'api';
+        msg = 'Invalid request. Please try rephrasing your question.';
+      } else if (err.status === 500 || err.status === 503) {
+        type = 'api';
+        msg = 'The AI service is temporarily unavailable.';
+      }
+
       setStatus('error');
-      // Update assistant message with error
+      setErrorType(type);
+      setErrorMessage(msg);
+
+      // Remove the empty assistant message on error
       setMessages((prev) => {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
-        if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-          updated[lastIdx] = {
-            ...updated[lastIdx],
-            content: 'Sorry, an error occurred. Please try again.',
-            parts: [{ type: 'text', text: 'Sorry, an error occurred. Please try again.' }],
-          };
+        if (lastIdx >= 0 && updated[lastIdx].role === 'assistant' && updated[lastIdx].parts.length === 0) {
+          return updated.slice(0, -1);
         }
         return updated;
       });
@@ -317,6 +384,44 @@ export function ChatInterface({
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
   };
+
+  // Handle user selection from interactive dropdowns
+  const handleUserSelection = useCallback(
+    (_toolCallId: string, values: string[]) => {
+      const selectionText =
+        values.length === 1
+          ? `I selected: ${values[0]}`
+          : `I selected: ${values.join(', ')}`;
+      sendMessage(selectionText);
+    },
+    [sendMessage]
+  );
+
+  // Handle retry after error
+  const handleRetry = useCallback(() => {
+    if (lastUserMessage) {
+      // Remove the last user message since we're about to resend it
+      setMessages((prev) => {
+        // Find last user message index (reverse search)
+        let lastUserIdx = -1;
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].role === 'user') {
+            lastUserIdx = i;
+            break;
+          }
+        }
+        if (lastUserIdx >= 0) {
+          return prev.slice(0, lastUserIdx);
+        }
+        return prev;
+      });
+      setStatus('idle');
+      setErrorMessage(undefined);
+      // Small delay to allow state to settle
+      setTimeout(() => sendMessage(lastUserMessage), 100);
+    }
+  }, [lastUserMessage, sendMessage]
+  );
 
   const isLoading = status === 'submitted' || status === 'streaming';
   const isEmpty = messages.length === 0;
@@ -356,32 +461,61 @@ export function ChatInterface({
                 Solar Analyst
               </h1>
               <p className="mb-8 max-w-md text-center text-muted-foreground">
-                Ask me anything about your solar data. I can analyze inverter
-                performance, compare loggers, and generate charts.
+                Choose a workflow to get started, or ask me anything.
               </p>
-              <Suggestions className="justify-center">
-                {SUGGESTIONS.map((suggestion) => (
-                  <Suggestion
-                    key={suggestion}
-                    suggestion={suggestion}
-                    onClick={handleSuggestionClick}
+              <div className="grid grid-cols-2 gap-4 max-w-lg">
+                {WORKFLOW_CHIPS.map((workflow) => (
+                  <WorkflowCard
+                    key={workflow.id}
+                    icon={workflow.icon}
+                    title={workflow.title}
+                    description={workflow.description}
+                    onClick={() => handleSuggestionClick(workflow.prompt)}
                   />
                 ))}
-              </Suggestions>
+              </div>
             </div>
           ) : (
             <div className="space-y-2">
-              {uiMessages.map((message, index) => (
-                <ChatMessage
-                  key={message.id}
-                  message={message as Parameters<typeof ChatMessage>[0]['message']}
-                  isLoading={
-                    isLoading &&
-                    index === uiMessages.length - 1 &&
-                    message.role === 'assistant'
-                  }
-                />
-              ))}
+              <AnimatePresence mode="popLayout">
+                {uiMessages.map((message, index) => (
+                  <motion.div
+                    key={message.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <ChatMessage
+                      message={message as Parameters<typeof ChatMessage>[0]['message']}
+                      isLoading={
+                        isLoading &&
+                        index === uiMessages.length - 1 &&
+                        message.role === 'assistant'
+                      }
+                      isLastMessage={index === uiMessages.length - 1}
+                      onUserSelection={handleUserSelection}
+                      onFollowUpClick={handleSuggestionClick}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
+              {/* Error display with retry */}
+              <AnimatePresence>
+                {status === 'error' && errorMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                  >
+                    <InlineError
+                      message={errorMessage}
+                      onRetry={handleRetry}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
         </ConversationContent>
