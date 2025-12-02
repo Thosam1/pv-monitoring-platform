@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -99,6 +100,17 @@ export function DynamicChart({
   showGrid = true,
   showTooltip = true,
 }: Readonly<DynamicChartProps>) {
+  // Delay chart rendering to avoid dimension warnings
+  // This ensures the container is properly sized before Recharts measures it
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    // Small delay to let the container render and get proper dimensions
+    const timer = requestAnimationFrame(() => {
+      setIsReady(true);
+    });
+    return () => cancelAnimationFrame(timer);
+  }, []);
   // Render series elements based on type
   const renderSeries = (s: ChartSeries, index: number) => {
     const color = s.color || CHART_COLORS[index % CHART_COLORS.length]
@@ -165,6 +177,18 @@ export function DynamicChart({
     return (
       <div className="h-[350px] w-full rounded-lg border bg-card p-4 flex items-center justify-center">
         <p className="text-muted-foreground">No data available for chart</p>
+      </div>
+    )
+  }
+
+  // Loading state while container sizes are being calculated
+  if (!isReady) {
+    return (
+      <div className="h-[350px] w-full rounded-lg border bg-card p-4">
+        <h3 className="mb-2 font-semibold text-foreground">{title}</h3>
+        <div className="h-[calc(100%-2rem)] flex items-center justify-center">
+          <div className="animate-pulse text-muted-foreground">Loading chart...</div>
+        </div>
       </div>
     )
   }

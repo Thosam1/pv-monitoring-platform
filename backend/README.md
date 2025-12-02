@@ -158,7 +158,7 @@ OPENAI_API_KEY=                             # For GPT-4
 
 # Ollama (local LLM - no API key required)
 OLLAMA_BASE_URL=http://127.0.0.1:11434      # Local Ollama server
-OLLAMA_MODEL=llama3.1:8b-instruct-q8_0      # Any Ollama model
+OLLAMA_MODEL=gpt-oss:20b      # Any Ollama model
 ```
 
 ## Key Dependencies

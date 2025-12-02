@@ -7,7 +7,7 @@
  * Environment variables:
  * - TEST_AI_PROVIDER: 'ollama' | 'gemini' | 'skip' (default: skip)
  * - OLLAMA_BASE_URL: Ollama server URL (default: http://127.0.0.1:11434)
- * - OLLAMA_MODEL: Ollama model name (default: llama3.1:8b-instruct-q8_0)
+ * - OLLAMA_MODEL: Ollama model name (default: gpt-oss:20b)
  * - TEST_USE_REAL_TOOLS: 'true' to hit real Python API (default: false)
  *
  * Run with:
@@ -45,7 +45,7 @@ describeOrSkip('LanggraphService Integration Tests', () => {
       config.OLLAMA_BASE_URL =
         process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
       config.OLLAMA_MODEL =
-        process.env.OLLAMA_MODEL || 'llama3.1:8b-instruct-q8_0';
+        process.env.OLLAMA_MODEL || 'gpt-oss:20b';
     } else if (TEST_AI_PROVIDER === 'gemini') {
       const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
       if (!apiKey) {
@@ -295,7 +295,7 @@ describeOllama('Ollama-specific Integration Tests', () => {
           AI_PROVIDER: 'ollama',
           OLLAMA_BASE_URL:
             process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
-          OLLAMA_MODEL: process.env.OLLAMA_MODEL || 'llama3.1:8b-instruct-q8_0',
+          OLLAMA_MODEL: process.env.OLLAMA_MODEL || 'gpt-oss:20b',
           EXPLICIT_FLOWS_ENABLED: 'true',
         };
         return config[key] ?? defaultValue;

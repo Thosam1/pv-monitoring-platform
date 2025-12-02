@@ -248,16 +248,27 @@ def build_fleet_power_query() -> str:
     """Query for fleet real-time power status.
 
     Uses anchor date (latest data) instead of NOW() for time-agnostic operation.
+    Changed from 15 minutes to 2 hours window to handle sparse data sampling.
+    Also uses subquery to get the latest reading per logger for accurate power sum.
     """
     anchor_date = get_anchor_date_str()
     return f"""
+        WITH latest_readings AS (
+            SELECT DISTINCT ON ({col("logger_id")})
+                {col("logger_id")},
+                {col("power")},
+                {col("irradiance")},
+                {col("timestamp")}
+            FROM measurements
+            WHERE {col("timestamp")} >= ('{anchor_date}'::timestamp - INTERVAL '2 hours')
+              AND {col("timestamp")} <= '{anchor_date}'::timestamp
+            ORDER BY {col("logger_id")}, {col("timestamp")} DESC
+        )
         SELECT
-            COUNT(DISTINCT {col("logger_id")}) as "activeLoggers",
-            SUM({col("power")}) as "totalPowerWatts",
-            AVG({col("irradiance")}) as "avgIrradiance"
-        FROM measurements
-        WHERE {col("timestamp")} >= ('{anchor_date}'::timestamp - INTERVAL '15 minutes')
-          AND {col("timestamp")} <= '{anchor_date}'::timestamp
+            COUNT(*) as "activeLoggers",
+            COALESCE(SUM({col("power")}), 0) as "totalPowerWatts",
+            COALESCE(AVG({col("irradiance")}), 0) as "avgIrradiance"
+        FROM latest_readings
     """
 
 

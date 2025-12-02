@@ -87,16 +87,62 @@ export function processSSEEvent(state: StreamState, event: SSEEvent): StreamStat
 }
 
 /**
+ * Sanitize text content to remove any JSON objects or structured data
+ * that the LLM might have accidentally included in text output.
+ */
+function sanitizeTextContent(text: string): string {
+  // Remove patterns like {prompt: "...", options: [...]} that shouldn't be in text
+  // These are tool call arguments that the LLM sometimes outputs as text
+  let sanitized = text;
+
+  // Remove Ollama-specific tool call markers (Ollama doesn't properly call tools)
+  // It outputs raw text like <|python_tag|>render_ui_component(component="FleetOverview", ...)
+  sanitized = sanitized.replace(/<\|python_tag\|>[^<]*(?:<\|eom_id\|>)?/g, '');
+  sanitized = sanitized.replace(/<\|eom_id\|>/g, '');
+
+  // Remove tool invocation patterns that Ollama outputs as text
+  // e.g., render_ui_component(component="...", props={...})
+  sanitized = sanitized.replace(/render_ui_component\s*\([^)]*\)/g, '');
+  sanitized = sanitized.replace(/request_user_selection\s*\([^)]*\)/g, '');
+  sanitized = sanitized.replace(/list_loggers\s*\([^)]*\)/g, '');
+  sanitized = sanitized.replace(/get_fleet_overview\s*\([^)]*\)/g, '');
+  sanitized = sanitized.replace(/analyze_inverter_health\s*\([^)]*\)/g, '');
+
+  // Remove JSON-like objects with tool-specific keys
+  sanitized = sanitized.replace(
+    /\{[\s\S]*?"prompt"[\s\S]*?"options"[\s\S]*?"selectionType"[\s\S]*?\}/g,
+    ''
+  );
+
+  // Remove JSON-like objects with component keys
+  sanitized = sanitized.replace(
+    /\{[\s\S]*?"component"[\s\S]*?"props"[\s\S]*?\}/g,
+    ''
+  );
+
+  // Remove placeholder text patterns
+  sanitized = sanitized.replace(/\[Chart:.*?\]/g, '');
+  sanitized = sanitized.replace(/\[Chart is rendered here.*?\]/g, '');
+  sanitized = sanitized.replace(/\[Visualize.*?\]/g, '');
+
+  // Clean up excessive whitespace from removed content
+  sanitized = sanitized.replace(/\n{3,}/g, '\n\n');
+
+  return sanitized.trim();
+}
+
+/**
  * Convert stream state to assistant-ui content parts
  */
 export function stateToContentParts(state: StreamState): ThreadAssistantMessagePart[] {
   const parts: ThreadAssistantMessagePart[] = [];
 
-  // Add text part if there's content
-  if (state.textContent.trim()) {
+  // Add text part if there's content (sanitized to remove accidental JSON)
+  const sanitizedText = sanitizeTextContent(state.textContent);
+  if (sanitizedText.trim()) {
     const textPart: TextMessagePart = {
       type: 'text',
-      text: state.textContent,
+      text: sanitizedText,
     };
     parts.push(textPart);
   }

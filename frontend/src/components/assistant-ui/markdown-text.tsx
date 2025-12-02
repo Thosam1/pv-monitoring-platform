@@ -1,6 +1,6 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, Component, type ReactNode } from 'react';
 import {
   MarkdownTextPrimitive,
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
@@ -8,18 +8,63 @@ import {
 } from '@assistant-ui/react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
+import { AlertTriangle } from 'lucide-react';
+
+/**
+ * Error boundary to catch React rendering errors in markdown content.
+ * Prevents crashes when the LLM outputs structured data that can't be rendered.
+ */
+class MarkdownErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; errorMessage: string }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, errorMessage: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorMessage: error.message };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      // Render a fallback UI instead of crashing
+      return (
+        <div className="my-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                Unable to display this content properly.
+              </p>
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                The response may contain structured data that couldn't be rendered as text.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 /**
  * Markdown text component for rendering assistant messages.
  * Uses GFM (GitHub Flavored Markdown) for tables, strikethrough, etc.
+ * Wrapped in error boundary to prevent crashes from malformed content.
  */
 const MarkdownTextImpl = () => {
   return (
-    <MarkdownTextPrimitive
-      remarkPlugins={[remarkGfm]}
-      className="aui-md prose prose-sm dark:prose-invert max-w-none"
-      components={defaultComponents}
-    />
+    <MarkdownErrorBoundary>
+      <MarkdownTextPrimitive
+        remarkPlugins={[remarkGfm]}
+        className="aui-md prose prose-sm dark:prose-invert max-w-none"
+        components={defaultComponents}
+      />
+    </MarkdownErrorBoundary>
   );
 };
 

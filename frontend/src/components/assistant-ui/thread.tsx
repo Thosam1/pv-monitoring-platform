@@ -117,7 +117,10 @@ function Composer() {
       </ThreadPrimitive.If>
       <ThreadPrimitive.If running={false}>
         <ComposerPrimitive.Send asChild>
-          <Button size="icon" className="h-9 w-9 shrink-0">
+          <Button
+            size="icon"
+            className="h-9 w-9 shrink-0 transition-opacity disabled:opacity-30"
+          >
             <Send className="h-4 w-4" />
             <span className="sr-only">Send</span>
           </Button>

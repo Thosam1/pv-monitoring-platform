@@ -146,7 +146,7 @@ export class LanggraphService {
         );
         const modelName = this.configService.get<string>(
           'OLLAMA_MODEL',
-          'llama3.1:8b-instruct-q8_0',
+          'gpt-oss:20b',
         );
         this.logger.debug(`Using Ollama model: ${modelName} at ${baseUrl}`);
         this.model = new ChatOllama({
@@ -681,6 +681,22 @@ export class LanggraphService {
                   toolName: toolCall.name,
                   input: toolCall.args,
                 };
+
+                // For UI pass-through tools, also emit tool-output-available immediately
+                // since these don't go through tool execution - the args ARE the result
+                if (
+                  toolCall.name === 'render_ui_component' ||
+                  toolCall.name === 'request_user_selection'
+                ) {
+                  this.logger.debug(
+                    `Emitting immediate tool-output-available for UI pass-through: ${toolCall.name}`,
+                  );
+                  yield {
+                    type: 'tool-output-available',
+                    toolCallId,
+                    output: toolCall.args,
+                  };
+                }
               }
             }
           }
