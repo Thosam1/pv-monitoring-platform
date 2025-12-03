@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { ErrorBoundary } from 'react-error-boundary';
 import {
   Message,
   MessageContent,
@@ -20,22 +21,22 @@ export interface ChatMessageProps {
   onFollowUpClick?: (suggestion: string) => void;
 }
 
-// Tools that should be rendered inline (UI components, selections)
+// Tools that should be rendered inline (UI components, selections, auto-visualized charts)
 const VISIBLE_TOOLS = new Set([
   'render_ui_component',
   'request_user_selection',
+  'get_power_curve',        // Auto-visualized as chart
+  'compare_loggers',        // Auto-visualized as comparison chart
+  'forecast_production',    // Auto-visualized as forecast chart
 ]);
 
 // Tools that should be completely hidden (data fetching, internal operations)
 // These are "plumbing" - users don't need to see them
 const HIDDEN_TOOLS = new Set([
   'list_loggers',
-  'get_power_curve',
   'analyze_inverter_health',
-  'compare_loggers',
   'calculate_financial_savings',
   'calculate_performance_ratio',
-  'forecast_production',
   'diagnose_error_codes',
   'get_fleet_overview',
 ]);
@@ -164,9 +165,25 @@ export function ChatMessage({ message, isLoading, isLastMessage, onUserSelection
     <Message from={role}>
       {/* Message Content */}
       <MessageContent className={isUser ? '' : 'max-w-none w-full'}>
-        {/* Text content - filtered to exclude empty text */}
+        {/* Text content - filtered to exclude empty text and non-string values */}
         {textParts.map((part, index) => {
-          const rawText = (part as { text?: string }).text || '';
+          const rawText = (part as { text?: unknown }).text;
+
+          // Type guard: Skip non-string text parts (prevents React child errors)
+          // This can happen when tool call args leak into text parts
+          if (typeof rawText !== 'string') {
+            console.warn('[ChatMessage] Skipping non-string text part:',
+              typeof rawText === 'object' ? JSON.stringify(rawText).slice(0, 100) : rawText);
+            return null;
+          }
+
+          // Skip if the text looks like tool call args that leaked through
+          // This catches cases where LLM outputs raw JSON instead of proper tool calls
+          if (rawText.includes('"prompt":') && rawText.includes('"options":')) {
+            console.warn('[ChatMessage] Skipping tool-args-like text');
+            return null;
+          }
+
           // Sanitize assistant messages to remove LLM tokens
           const textContent = isUser ? rawText : sanitizeLLMOutput(rawText);
 
@@ -176,9 +193,15 @@ export function ChatMessage({ message, isLoading, isLastMessage, onUserSelection
           }
 
           return (
-            <Response key={`text-${index}`}>
-              {textContent}
-            </Response>
+            <ErrorBoundary
+              key={`text-${index}`}
+              fallback={<span className="text-muted-foreground italic text-sm">Content could not be displayed</span>}
+              onError={(error) => console.error('[ChatMessage] Response render error:', error)}
+            >
+              <Response>
+                {textContent}
+              </Response>
+            </ErrorBoundary>
           );
         })}
 

@@ -29,6 +29,7 @@ import {
   TrendingUp,
   Gauge,
   Sparkles,
+  Clock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -271,6 +272,13 @@ export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClic
         deviceCount?: number;
         onlineCount?: number;
         percentOnline?: number;
+        dataTimestamp?: string | null;
+        dateMismatch?: {
+          requestedDate: string;
+          actualDataDate: string;
+          daysDifference: number;
+          isHistorical: boolean;
+        } | null;
         alerts?: Array<{ type: string; message: string }>;
       };
 
@@ -288,6 +296,23 @@ export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClic
           className="my-4"
         >
           <div className="rounded-lg border border-border bg-card p-4">
+            {/* Date Mismatch Alert Banner */}
+            {props.dateMismatch?.isHistorical && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
+              >
+                <Calendar className="h-4 w-4 shrink-0" />
+                <div>
+                  <span className="font-medium">Historical Data:</span>{' '}
+                  Showing data from{' '}
+                  <span className="font-semibold">{props.dateMismatch.actualDataDate}</span>
+                  {' '}({props.dateMismatch.daysDifference} day{props.dateMismatch.daysDifference !== 1 ? 's' : ''} ago)
+                </div>
+              </motion.div>
+            )}
+
             <div className="mb-3 flex items-center justify-between">
               <h3 className="flex items-center gap-2 text-sm font-semibold">
                 <Activity className="h-4 w-4" />
@@ -325,6 +350,14 @@ export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClic
                 color={health === 'healthy' ? 'green' : health === 'warning' ? 'yellow' : 'red'}
               />
             </MetricCardGrid>
+
+            {/* Data Timestamp Footer */}
+            {props.dataTimestamp && (
+              <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span>Data as of: {new Date(props.dataTimestamp).toLocaleString()}</span>
+              </div>
+            )}
 
             {props.alerts && props.alerts.length > 0 && (
               <div className="mt-3 space-y-1">
@@ -675,6 +708,7 @@ export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClic
     const fleetResult = result as {
       success?: boolean;
       result?: {
+        timestamp?: string;
         status?: {
           totalLoggers?: number;
           activeLoggers?: number;
@@ -685,6 +719,12 @@ export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClic
           currentTotalPowerWatts?: number;
           todayTotalEnergyKwh?: number;
           siteAvgIrradiance?: number;
+        };
+        dateMismatch?: {
+          requestedDate: string;
+          actualDataDate: string;
+          daysDifference: number;
+          isHistorical: boolean;
         };
         summary?: string;
       };
@@ -706,6 +746,23 @@ export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClic
           className="my-4"
         >
           <div className="rounded-lg border border-border bg-card p-4">
+            {/* Date Mismatch Alert Banner */}
+            {data.dateMismatch?.isHistorical && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
+              >
+                <Calendar className="h-4 w-4 shrink-0" />
+                <div>
+                  <span className="font-medium">Historical Data:</span>{' '}
+                  Showing data from{' '}
+                  <span className="font-semibold">{data.dateMismatch.actualDataDate}</span>
+                  {' '}({data.dateMismatch.daysDifference} day{data.dateMismatch.daysDifference !== 1 ? 's' : ''} ago)
+                </div>
+              </motion.div>
+            )}
+
             <div className="mb-3 flex items-center justify-between">
               <h3 className="flex items-center gap-2 text-sm font-semibold">
                 <Activity className="h-4 w-4" />
@@ -743,6 +800,14 @@ export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClic
                 color="default"
               />
             </MetricCardGrid>
+
+            {/* Data Timestamp Footer */}
+            {data.timestamp && (
+              <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span>Data as of: {new Date(data.timestamp).toLocaleString()}</span>
+              </div>
+            )}
 
             {data.summary && (
               <p className="mt-3 text-sm text-muted-foreground">{data.summary}</p>
@@ -837,6 +902,260 @@ export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClic
             )}
           </div>
         </motion.div>
+      );
+    }
+  }
+
+  // Custom renderer for get_power_curve - Auto-visualization as chart
+  if (toolName === 'get_power_curve' && state === 'result') {
+    const powerCurveResult = result as {
+      success?: boolean;
+      result?: {
+        loggerId?: string;
+        date?: string;
+        status?: string;
+        recordCount?: number;
+        data?: Array<{
+          timestamp: string;
+          power?: number | null;
+          irradiance?: number | null;
+        }>;
+        summaryStats?: {
+          peakValue?: number;
+          peakTime?: string;
+          avgValue?: number;
+          totalEnergy?: number;
+        };
+        message?: string;
+      };
+    } | undefined;
+
+    if (powerCurveResult?.success && powerCurveResult.result) {
+      const data = powerCurveResult.result;
+
+      // Handle no data case
+      if (!data.data || data.data.length === 0) {
+        return (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="my-4"
+          >
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-amber-600" />
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  {data.message || `No power curve data available for ${data.loggerId} on ${data.date}`}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        );
+      }
+
+      // Transform data for DynamicChart
+      const chartData = data.data.map(d => ({
+        timestamp: d.timestamp,
+        power: d.power ?? 0,
+        irradiance: d.irradiance ?? 0,
+      }));
+
+      return (
+        <ErrorBoundary FallbackComponent={ToolErrorFallback}>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="my-4 w-full"
+          >
+            <DynamicChart
+              chartType="composed"
+              title={`Power Curve - ${data.loggerId} (${data.date})`}
+              xAxisKey="timestamp"
+              yAxisLabel="Power (W)"
+              series={[
+                { dataKey: 'power', name: 'Power (W)', color: '#FDB813', type: 'area', fillOpacity: 0.3 },
+                { dataKey: 'irradiance', name: 'Irradiance (W/m²)', color: '#3B82F6', type: 'line', yAxisId: 'right' },
+              ]}
+              data={chartData}
+            />
+            {/* Summary stats */}
+            {data.summaryStats && (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                {data.summaryStats.peakValue !== undefined && (
+                  <span>Peak: <strong>{data.summaryStats.peakValue.toFixed(0)}W</strong> at {data.summaryStats.peakTime}</span>
+                )}
+                {data.summaryStats.avgValue !== undefined && (
+                  <span>Avg: <strong>{data.summaryStats.avgValue.toFixed(0)}W</strong></span>
+                )}
+                {data.summaryStats.totalEnergy !== undefined && (
+                  <span>Total: <strong>{data.summaryStats.totalEnergy.toFixed(1)} kWh</strong></span>
+                )}
+              </div>
+            )}
+          </motion.div>
+        </ErrorBoundary>
+      );
+    }
+  }
+
+  // Custom renderer for compare_loggers - Auto-visualization as multi-line chart
+  if (toolName === 'compare_loggers' && state === 'result') {
+    const comparisonResult = result as {
+      success?: boolean;
+      result?: {
+        metric?: string;
+        loggerIds?: string[];
+        date?: string;
+        status?: string;
+        recordCount?: number;
+        data?: Array<Record<string, unknown>>;
+        message?: string;
+      };
+    } | undefined;
+
+    if (comparisonResult?.success && comparisonResult.result) {
+      const data = comparisonResult.result;
+
+      // Handle no data case
+      if (!data.data || data.data.length === 0) {
+        return (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="my-4"
+          >
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-amber-600" />
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  {data.message || `No comparison data available for ${data.date}`}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        );
+      }
+
+      // Build series from logger IDs
+      const colors = ['#FDB813', '#3B82F6', '#22C55E', '#EF4444', '#A855F7', '#EC4899'];
+      const series = (data.loggerIds || []).map((loggerId, index) => ({
+        dataKey: loggerId,
+        name: loggerId,
+        color: colors[index % colors.length],
+        type: 'line' as const,
+      }));
+
+      return (
+        <ErrorBoundary FallbackComponent={ToolErrorFallback}>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="my-4 w-full"
+          >
+            <DynamicChart
+              chartType="line"
+              title={`${data.metric || 'Power'} Comparison - ${data.date || 'Latest'}`}
+              xAxisKey="timestamp"
+              yAxisLabel={data.metric === 'power' ? 'Power (W)' : data.metric || ''}
+              series={series}
+              data={data.data as Record<string, unknown>[]}
+            />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Comparing {data.loggerIds?.length || 0} loggers • {data.recordCount || 0} data points
+            </p>
+          </motion.div>
+        </ErrorBoundary>
+      );
+    }
+  }
+
+  // Custom renderer for forecast_production - Auto-visualization as bar chart
+  if (toolName === 'forecast_production' && state === 'result') {
+    const forecastResult = result as {
+      success?: boolean;
+      result?: {
+        loggerId?: string;
+        method?: string;
+        basedOnDays?: number;
+        historicalStats?: {
+          averageKwh?: number;
+          stdDevKwh?: number;
+          minKwh?: number;
+          maxKwh?: number;
+        };
+        forecasts?: Array<{
+          date: string;
+          expectedKwh: number;
+          rangeMin: number;
+          rangeMax: number;
+          confidence: string;
+        }>;
+        summary?: string;
+        message?: string;
+      };
+    } | undefined;
+
+    if (forecastResult?.success && forecastResult.result) {
+      const data = forecastResult.result;
+
+      // Handle no data case
+      if (!data.forecasts || data.forecasts.length === 0) {
+        return (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="my-4"
+          >
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-amber-600" />
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  {data.message || `Unable to generate forecast for ${data.loggerId}`}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        );
+      }
+
+      // Transform forecast data for chart
+      const chartData = data.forecasts.map(f => ({
+        date: f.date,
+        expected: f.expectedKwh,
+        rangeMin: f.rangeMin,
+        rangeMax: f.rangeMax,
+      }));
+
+      return (
+        <ErrorBoundary FallbackComponent={ToolErrorFallback}>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="my-4 w-full"
+          >
+            <DynamicChart
+              chartType="bar"
+              title={`Production Forecast - ${data.loggerId}`}
+              xAxisKey="date"
+              yAxisLabel="Energy (kWh)"
+              series={[
+                { dataKey: 'expected', name: 'Expected (kWh)', color: '#22C55E', type: 'bar' },
+              ]}
+              data={chartData}
+            />
+            {/* Forecast summary */}
+            <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+              <span>Method: <strong>{data.method || 'Statistical'}</strong></span>
+              <span>Based on: <strong>{data.basedOnDays || 0} days</strong> of history</span>
+              {data.historicalStats && (
+                <span>Avg: <strong>{data.historicalStats.averageKwh?.toFixed(1)} kWh/day</strong></span>
+              )}
+            </div>
+            {data.summary && (
+              <p className="mt-2 text-sm text-muted-foreground">{data.summary}</p>
+            )}
+          </motion.div>
+        </ErrorBoundary>
       );
     }
   }
