@@ -15,9 +15,42 @@ import { InlineError, type ErrorType } from './chat-error';
 import { WorkflowCard } from './workflow-card';
 import { cn } from '@/lib/utils';
 import { sanitizeLLMOutput } from '@/lib/text-sanitizer';
-import { Sun, DollarSign, TrendingDown, Activity, type LucideIcon } from 'lucide-react';
+import { Sun, DollarSign, TrendingDown, Activity, AlertCircle, RefreshCw, type LucideIcon } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
+import { Button } from '@/components/ui/button';
+
+/**
+ * Error fallback component for chat message rendering failures.
+ * Prevents a single broken message from crashing the entire chat.
+ */
+function MessageErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
+  return (
+    <div className="my-2 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+      <div className="flex items-start gap-2">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-red-800 dark:text-red-200">
+            Failed to render message
+          </p>
+          <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+            {error.message || 'An unexpected error occurred'}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={resetErrorBoundary}
+            className="mt-2 h-7 text-xs"
+          >
+            <RefreshCw className="mr-1 h-3 w-3" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Message types for the chat
 export interface ChatPart {
@@ -551,17 +584,19 @@ export function ChatInterface({
                     exit={{ opacity: 0, y: -20 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <ChatMessage
-                      message={message as Parameters<typeof ChatMessage>[0]['message']}
-                      isLoading={
-                        isLoading &&
-                        index === uiMessages.length - 1 &&
-                        message.role === 'assistant'
-                      }
-                      isLastMessage={index === uiMessages.length - 1}
-                      onUserSelection={handleUserSelection}
-                      onFollowUpClick={handleSuggestionClick}
-                    />
+                    <ErrorBoundary FallbackComponent={MessageErrorFallback}>
+                      <ChatMessage
+                        message={message as Parameters<typeof ChatMessage>[0]['message']}
+                        isLoading={
+                          isLoading &&
+                          index === uiMessages.length - 1 &&
+                          message.role === 'assistant'
+                        }
+                        isLastMessage={index === uiMessages.length - 1}
+                        onUserSelection={handleUserSelection}
+                        onFollowUpClick={handleSuggestionClick}
+                      />
+                    </ErrorBoundary>
                   </motion.div>
                 ))}
               </AnimatePresence>

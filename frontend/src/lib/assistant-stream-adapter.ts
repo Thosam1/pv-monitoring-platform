@@ -48,9 +48,18 @@ export function processSSEEvent(state: StreamState, event: SSEEvent): StreamStat
   const newState = { ...state };
 
   switch (event.type) {
-    case 'text-delta':
-      newState.textContent = state.textContent + (event.delta || '');
+    case 'text-delta': {
+      // Type guard: event.delta should be a string, but sometimes LLM outputs tool args as text
+      // When this happens, delta might be an object - we need to skip it
+      const delta = event.delta;
+      if (typeof delta === 'string') {
+        newState.textContent = state.textContent + delta;
+      } else if (delta !== null && delta !== undefined) {
+        // Log warning for debugging - delta is not a string
+        console.warn('[SSE] Skipping non-string text-delta:', typeof delta);
+      }
       break;
+    }
 
     case 'tool-input-available':
       if (event.toolCallId && event.toolName) {
@@ -125,10 +134,21 @@ function sanitizeTextContent(text: string): string {
     ''
   );
 
-  // Remove placeholder text patterns
-  sanitized = sanitized.replace(/\[Chart:.*?\]/g, '');
-  sanitized = sanitized.replace(/\[Chart is rendered here.*?\]/g, '');
-  sanitized = sanitized.replace(/\[Visualize.*?\]/g, '');
+  // Remove placeholder text patterns (bracket-style)
+  sanitized = sanitized.replace(/\[Chart:.*?\]/gi, '');
+  sanitized = sanitized.replace(/\[Chart is rendered here.*?\]/gi, '');
+  sanitized = sanitized.replace(/\[Visualize.*?\]/gi, '');
+  sanitized = sanitized.replace(/\[Visualization.*?\]/gi, '');
+
+  // Remove visualization placeholder text patterns (natural language)
+  // These occur when the LLM describes rendering instead of actually rendering
+  sanitized = sanitized.replace(/Visualizing (?:the )?data\.{0,3}/gi, '');
+  sanitized = sanitized.replace(/\(?I(?:'m| am) rendering[^.]*\.?\)?/gi, '');
+  sanitized = sanitized.replace(/(?:The )?chart (?:will be|is being|is) (?:rendered|displayed|shown)[^.]*\.?/gi, '');
+  sanitized = sanitized.replace(/\(?(?:I'm |I am )?showing (?:you )?(?:a |the )?(?:chart|visualization|graph)[^.]*\.?\)?/gi, '');
+  sanitized = sanitized.replace(/Let me (?:show|visualize|render|display)[^.]*\.?/gi, '');
+  sanitized = sanitized.replace(/(?:Here(?:'s| is) |Below is )(?:a |the )?(?:chart|visualization|graph)[^.]*\.?/gi, '');
+  sanitized = sanitized.replace(/\((?:Chart|Visualization|Graph)[^)]*\)/gi, '');
 
   // Clean up excessive whitespace from removed content
   sanitized = sanitized.replace(/\n{3,}/g, '\n\n');

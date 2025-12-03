@@ -376,8 +376,23 @@ export const RenderUITool = makeAssistantToolUI<RenderUIToolArgs, RenderUIToolRe
       return <RenderUILoading />;
     }
 
+    // Type guard: Validate args/result structure to prevent React child errors
+    // This can happen when tool args are malformed or when the LLM outputs
+    // the args object as text instead of proper tool call structure
+    if (!args || typeof args !== 'object') {
+      console.warn('[RenderUITool] Invalid args:', args);
+      return <RenderUILoading />;
+    }
+
     // Use result if available, otherwise use args (pass-through pattern)
     const data = result || args;
+
+    // Validate data structure
+    if (!data || typeof data !== 'object' || typeof data.component !== 'string') {
+      console.warn('[RenderUITool] Invalid data structure:', data);
+      return <RenderUILoading />;
+    }
+
     const suggestions = data.suggestions || args.suggestions;
 
     // Render based on component type

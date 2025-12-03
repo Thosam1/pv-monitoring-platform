@@ -174,23 +174,39 @@ export const Response = memo(
     options,
     children,
     ...props
-  }: ResponseProps) => (
-    <div
-      className={cn(
-        'size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
-        className
-      )}
-      {...props}
-    >
-      <ReactMarkdown
-        components={components}
-        remarkPlugins={[remarkGfm]}
-        {...options}
+  }: ResponseProps) => {
+    // Guard against non-string children (prevents React child errors)
+    // This can happen when LLM outputs tool call args as text
+    const safeChildren = typeof children === 'string'
+      ? children
+      : typeof children === 'object' && children !== null
+        ? JSON.stringify(children)
+        : String(children ?? '');
+
+    // Skip rendering if content looks like tool call args that leaked through
+    if (safeChildren.includes('"prompt"') && safeChildren.includes('"options"')) {
+      console.warn('[Response] Skipping object-like content:', safeChildren.slice(0, 100));
+      return null;
+    }
+
+    return (
+      <div
+        className={cn(
+          'size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+          className
+        )}
+        {...props}
       >
-        {children}
-      </ReactMarkdown>
-    </div>
-  ),
+        <ReactMarkdown
+          components={components}
+          remarkPlugins={[remarkGfm]}
+          {...options}
+        >
+          {safeChildren}
+        </ReactMarkdown>
+      </div>
+    );
+  },
   (prevProps, nextProps) => prevProps.children === nextProps.children
 );
 

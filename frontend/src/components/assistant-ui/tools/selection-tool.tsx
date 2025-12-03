@@ -75,6 +75,27 @@ export const SelectionTool = makeAssistantToolUI<SelectionToolArgs, string>({
       return <SelectionLoading />;
     }
 
+    // Type guard: Validate args structure to prevent React child errors
+    // This can happen when tool args are malformed or when the LLM outputs
+    // the args object as text instead of proper tool call structure
+    if (!args || typeof args !== 'object') {
+      console.warn('[SelectionTool] Invalid args:', args);
+      return <SelectionLoading />;
+    }
+
+    // Validate required fields
+    const { prompt, options, selectionType, inputType, minDate, maxDate } = args;
+
+    if (typeof prompt !== 'string' || !prompt.trim()) {
+      console.warn('[SelectionTool] Invalid prompt:', prompt);
+      return <SelectionLoading />;
+    }
+
+    if (!Array.isArray(options) || options.length === 0) {
+      console.warn('[SelectionTool] Invalid options:', options);
+      return <SelectionLoading />;
+    }
+
     // Handle user selection
     const handleSelect = (values: string[]) => {
       const selectionText =
@@ -87,12 +108,12 @@ export const SelectionTool = makeAssistantToolUI<SelectionToolArgs, string>({
     // Render the selection prompt
     return (
       <SelectionPrompt
-        prompt={args.prompt}
-        options={args.options}
-        selectionType={args.selectionType || 'single'}
-        inputType={args.inputType || 'dropdown'}
-        minDate={args.minDate}
-        maxDate={args.maxDate}
+        prompt={prompt}
+        options={options}
+        selectionType={selectionType || 'single'}
+        inputType={inputType || 'dropdown'}
+        minDate={minDate}
+        maxDate={maxDate}
         onSelect={handleSelect}
         disabled={false}
       />

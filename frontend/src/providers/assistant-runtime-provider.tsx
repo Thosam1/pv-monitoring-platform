@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useMemo, useRef, useEffect } from 'react';
 import {
   AssistantRuntimeProvider,
   useLocalRuntime,
@@ -303,6 +303,46 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
     const threadListItem = useThreadListItem();
     const remoteId = threadListItem.remoteId;
 
+    // Queue for messages that arrive before remoteId is available
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const pendingMessagesRef = useRef<ExportedMessageRepository['messages']>([]);
+
+    // Flush pending messages when remoteId becomes available
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useEffect(() => {
+      if (!remoteId || typeof window === 'undefined' || pendingMessagesRef.current.length === 0) {
+        return;
+      }
+
+      const pendingMessages = [...pendingMessagesRef.current];
+      pendingMessagesRef.current = [];
+
+      try {
+        const stored = localStorage.getItem(`${STORAGE_KEY}-${remoteId}`);
+        const repository: ExportedMessageRepository = stored
+          ? JSON.parse(stored)
+          : { messages: [] };
+
+        for (const item of pendingMessages) {
+          repository.messages.push(item);
+          repository.headId = item.message.id;
+        }
+
+        localStorage.setItem(`${STORAGE_KEY}-${remoteId}`, JSON.stringify(repository));
+
+        // Update metadata timestamp
+        const metaStored = localStorage.getItem(`${STORAGE_KEY}-metadata`);
+        const threads: StoredThread[] = metaStored ? JSON.parse(metaStored) : [];
+        const thread = threads.find((t) => t.id === remoteId);
+        if (thread) {
+          thread.updatedAt = new Date().toISOString();
+          localStorage.setItem(`${STORAGE_KEY}-metadata`, JSON.stringify(threads));
+        }
+      } catch (error) {
+        console.error('Failed to flush pending messages:', error);
+      }
+    }, [remoteId]);
+
     // Create thread-specific history adapter
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const history = useMemo<ThreadHistoryAdapter>(
@@ -325,9 +365,17 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
         },
 
         async append(item) {
-          if (!remoteId || typeof window === 'undefined') {
-            // Silently skip saving if thread not initialized yet (race condition on first render)
-            // Message will be re-added once thread ID is available
+          if (typeof window === 'undefined') {
+            return;
+          }
+
+          // If remoteId not yet available, queue the message for later
+          if (!remoteId) {
+            pendingMessagesRef.current.push({
+              message: item.message,
+              parentId: item.parentId ?? null,
+              runConfig: item.runConfig,
+            });
             return;
           }
 
@@ -337,9 +385,23 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
               ? JSON.parse(stored)
               : { messages: [] };
 
+            // Validate parentId - ensure it exists in the repository
+            // This prevents the "Parent message not found" error in assistant-ui
+            let validatedParentId = item.parentId;
+            if (validatedParentId) {
+              const parentExists = repository.messages.some(
+                (m) => m.message.id === validatedParentId
+              );
+              if (!parentExists) {
+                // If parent doesn't exist, use the last message's id or null
+                const lastMessage = repository.messages[repository.messages.length - 1];
+                validatedParentId = lastMessage?.message.id ?? null;
+              }
+            }
+
             repository.messages.push({
               message: item.message,
-              parentId: item.parentId,
+              parentId: validatedParentId,
               runConfig: item.runConfig,
             });
 
