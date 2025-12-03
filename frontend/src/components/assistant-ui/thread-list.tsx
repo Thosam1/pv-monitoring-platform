@@ -49,7 +49,7 @@ function ThreadListItem() {
 
   return (
     <ThreadListItemPrimitive.Root className="group relative flex items-center rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent data-[active=true]:bg-accent">
-      <ThreadListItemPrimitive.Trigger className="flex flex-1 items-center gap-2 truncate text-left min-w-0">
+      <ThreadListItemPrimitive.Trigger className="flex flex-1 items-center gap-2 truncate text-left min-w-0 pr-8">
         <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="truncate">
           <ThreadListItemPrimitive.Title />
@@ -64,7 +64,7 @@ function ThreadListItem() {
             size="icon"
             type="button"
             className={cn(
-              'absolute right-1 z-10 h-6 w-6 shrink-0 opacity-0 transition-opacity',
+              'absolute right-1 top-1/2 -translate-y-1/2 z-10 h-6 w-6 shrink-0 opacity-0 transition-opacity',
               'bg-card hover:bg-muted rounded',
               'group-hover:opacity-100 focus:opacity-100',
               isMenuOpen && 'opacity-100'
