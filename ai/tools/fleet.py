@@ -3,6 +3,9 @@
 Provides tools for site-wide aggregation and fleet status.
 """
 
+from datetime import datetime, timezone
+from typing import Optional
+
 import pandas as pd
 
 from database import engine, get_anchor_date
@@ -18,11 +21,16 @@ from models.context import (
     UIComponentHint,
     UISuggestion,
 )
-from models.responses import FleetOverviewResponse, FleetStatus, FleetProduction
+from models.responses import (
+    DateMismatchInfo,
+    FleetOverviewResponse,
+    FleetProduction,
+    FleetStatus,
+)
 from queries.builders import (
-    build_fleet_power_query,
-    build_fleet_energy_query,
     build_fleet_count_query,
+    build_fleet_energy_query,
+    build_fleet_power_query,
 )
 
 
@@ -96,6 +104,21 @@ def get_fleet_overview() -> dict:
 
     # Use anchor date (latest data timestamp) instead of current time
     anchor = get_anchor_date()
+    current_date = datetime.now(timezone.utc)
+
+    # Detect date mismatch between current date and anchor date
+    anchor_date_only = anchor.date()
+    current_date_only = current_date.date()
+    days_diff = (current_date_only - anchor_date_only).days
+
+    date_mismatch: Optional[DateMismatchInfo] = None
+    if days_diff > 0:
+        date_mismatch = DateMismatchInfo(
+            requestedDate=current_date_only.isoformat(),
+            actualDataDate=anchor_date_only.isoformat(),
+            daysDifference=days_diff,
+            isHistorical=True,
+        )
 
     # Build user-friendly context
     context = _build_fleet_context(
@@ -106,6 +129,7 @@ def get_fleet_overview() -> dict:
         total_power=total_power,
         total_energy=total_energy,
         avg_irradiance=avg_irradiance,
+        date_mismatch=date_mismatch,
     )
 
     return FleetOverviewResponse(
@@ -113,6 +137,7 @@ def get_fleet_overview() -> dict:
         status=status,
         production=production,
         summary=summary,
+        dateMismatch=date_mismatch,
         context=context,
     ).model_dump()
 
@@ -125,26 +150,36 @@ def _build_fleet_context(
     total_power: float,
     total_energy: float,
     avg_irradiance: float,
+    date_mismatch: Optional[DateMismatchInfo] = None,
 ) -> ContextEnvelope:
     """Build user-friendly context for fleet overview response."""
     # Build summary
     power_kw = total_power / 1000
     offline_count = total_loggers - active_loggers
 
+    # Prepend date mismatch warning to summary if applicable
+    date_warning = ""
+    if date_mismatch and date_mismatch.isHistorical:
+        days_text = "day" if date_mismatch.daysDifference == 1 else "days"
+        date_warning = (
+            f"Note: This data is from {date_mismatch.actualDataDate} "
+            f"({date_mismatch.daysDifference} {days_text} ago). "
+        )
+
     if fleet_health == "Healthy":
         summary = (
-            f"Your solar site is running smoothly! All {active_loggers} inverters are online "
+            f"{date_warning}Your solar site is running smoothly! All {active_loggers} inverters are online "
             f"and generating {power_kw:.1f} kW of clean power. "
             f"You've already produced {total_energy:.1f} kWh today."
         )
     elif fleet_health == "Degraded":
         summary = (
-            f"Your site is generating {power_kw:.1f} kW, but {offline_count} of your {total_loggers} "
+            f"{date_warning}Your site is generating {power_kw:.1f} kW, but {offline_count} of your {total_loggers} "
             f"inverters appear to be offline. Today's production is {total_energy:.1f} kWh so far."
         )
     else:  # Critical
         summary = (
-            f"Attention needed: Only {active_loggers} of {total_loggers} inverters are online. "
+            f"{date_warning}Attention needed: Only {active_loggers} of {total_loggers} inverters are online. "
             f"Your site is generating just {power_kw:.1f} kW. Check your system status."
         )
 
@@ -251,10 +286,18 @@ def _build_fleet_context(
         color_scheme=color_scheme,
     )
 
+    # Build alert with date mismatch priority
+    alert = None
+    if date_mismatch and date_mismatch.isHistorical:
+        days_text = "day" if date_mismatch.daysDifference == 1 else "days"
+        alert = f"Showing data from {date_mismatch.actualDataDate} ({date_mismatch.daysDifference} {days_text} ago)"
+    elif fleet_health == "Critical":
+        alert = f"Only {percent_online:.0f}% of devices online"
+
     return ContextEnvelope(
         summary=summary,
         insights=insights[:3],
         next_steps=next_steps[:3],
         ui_suggestion=ui_suggestion,
-        alert=f"Only {percent_online:.0f}% of devices online" if fleet_health == "Critical" else None,
+        alert=alert,
     )

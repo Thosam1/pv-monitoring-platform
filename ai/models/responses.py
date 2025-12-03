@@ -265,6 +265,19 @@ class DiagnosticsReportResponse(BaseModel):
 # ============================================================
 # TOOL 9: get_fleet_overview - Fleet Status
 # ============================================================
+class DateMismatchInfo(BaseModel):
+    """Information about date mismatch between requested and actual data date.
+
+    Used when the anchor date (latest data in DB) differs from the current date,
+    to inform users that they're viewing historical data.
+    """
+
+    requestedDate: str  # Today's date (what user implicitly asked for)
+    actualDataDate: str  # The anchor date (when data is actually from)
+    daysDifference: int  # How many days old the data is
+    isHistorical: bool  # True if data is not from today
+
+
 class FleetStatus(BaseModel):
     """Fleet status summary."""
 
@@ -290,6 +303,7 @@ class FleetOverviewResponse(BaseModel):
     status: FleetStatus
     production: FleetProduction
     summary: str
+    dateMismatch: Optional[DateMismatchInfo] = None  # For historical data notification
     context: Optional[ContextEnvelope] = None
 
 

@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { StateGraph, START, END } from '@langchain/langgraph';
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import { AIMessage } from '@langchain/core/messages';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
@@ -10,15 +10,32 @@ import {
   ExplicitFlowState,
   ExplicitFlowStateAnnotation,
   ToolResponse,
+  FleetStatusSnapshot,
 } from '../types/flow-state';
 import {
   executeTool,
   generateToolCallId,
   createRenderArgs,
-  COMMON_SUGGESTIONS,
 } from './flow-utils';
+import {
+  NarrativeEngine,
+  NarrativeContext,
+  DEFAULT_NARRATIVE_PREFERENCES,
+  createDefaultDataQuality,
+  buildTemporalContext,
+} from '../narrative';
 
 const logger = new Logger('MorningBriefingFlow');
+
+/**
+ * Date mismatch information when viewing historical data.
+ */
+interface DateMismatchInfo {
+  requestedDate: string;
+  actualDataDate: string;
+  daysDifference: number;
+  isHistorical: boolean;
+}
 
 /**
  * Fleet overview response structure.
@@ -27,6 +44,8 @@ interface FleetOverviewResult {
   status: { totalPower: number; totalEnergy: number; percentOnline: number };
   devices: { total: number; online: number; offline: number };
   offlineLoggers?: string[];
+  timestamp?: string;
+  dateMismatch?: DateMismatchInfo;
 }
 
 /**
@@ -180,14 +199,19 @@ export function createMorningBriefingFlow(
 
     const toolCallId = generateToolCallId();
 
-    // Build props for FleetOverview component
+    // Extract date mismatch info
     const fleetData = fleetResult?.result;
+    const dateMismatch = fleetData?.dateMismatch;
+
+    // Build props for FleetOverview component - include date mismatch info
     const props = {
       totalPower: fleetData?.status?.totalPower || 0,
       totalEnergy: fleetData?.status?.totalEnergy || 0,
       deviceCount: fleetData?.devices?.total || 0,
       onlineCount: fleetData?.devices?.online || 0,
       percentOnline: fleetData?.status?.percentOnline || 100,
+      dataTimestamp: fleetData?.timestamp || null,
+      dateMismatch: dateMismatch || null,
       alerts: hasIssues
         ? [
             {
@@ -198,34 +222,82 @@ export function createMorningBriefingFlow(
         : [],
     };
 
-    // Get suggestions based on status
-    const suggestions = COMMON_SUGGESTIONS.afterFleetOverview(hasIssues);
+    // Build NarrativeContext for fleet overview
+    const narrativeEngine = new NarrativeEngine(model);
+    const preferences =
+      state.flowContext.narrativePreferences || DEFAULT_NARRATIVE_PREFERENCES;
 
-    // Generate LLM narrative
-    const narrativePrompt = hasIssues
-      ? `Generate a brief (2-3 sentences) morning briefing narrative.
-         Total power: ${props.totalPower}W, Energy: ${props.totalEnergy}kWh.
-         ${props.onlineCount}/${props.deviceCount} devices online (${props.percentOnline}%).
-         Issues detected: ${diagnosis?.result?.summary || 'Some devices are offline'}.
-         Be concise and focus on the key insight.`
-      : `Generate a brief (2-3 sentences) morning briefing narrative.
-         Total power: ${props.totalPower}W, Energy: ${props.totalEnergy}kWh.
-         All ${props.deviceCount} devices online. System operating normally.
-         Be positive but concise.`;
+    // Get offline loggers for temporal comparison
+    const currentOfflineLoggers =
+      (fleetResult?.result?.offlineLoggers as string[]) || [];
 
-    let narrative = '';
-    try {
-      const response = await model.invoke([new HumanMessage(narrativePrompt)]);
-      narrative =
-        typeof response.content === 'string'
-          ? response.content
-          : 'Fleet status retrieved successfully.';
-    } catch (error) {
-      logger.warn(`Failed to generate narrative: ${error}`);
-      narrative = hasIssues
-        ? `Fleet status: ${props.onlineCount}/${props.deviceCount} devices online. Some issues detected.`
-        : `Fleet status: All ${props.deviceCount} devices online. System operating normally.`;
-    }
+    // Build temporal context from previous state (if available)
+    const temporalContext = buildTemporalContext(
+      {
+        percentOnline: props.percentOnline,
+        offlineLoggers: currentOfflineLoggers,
+      },
+      state.flowContext.previousFleetStatus,
+    );
+
+    logger.debug(
+      `Temporal context: trend=${temporalContext.trend}, daysTracked=${temporalContext.daysTracked}`,
+    );
+
+    const narrativeContext: NarrativeContext = {
+      flowType: 'morning_briefing',
+      subject: 'fleet',
+      data: {
+        totalPower: props.totalPower,
+        totalEnergy: props.totalEnergy,
+        deviceCount: props.deviceCount,
+        onlineCount: props.onlineCount,
+        percentOnline: props.percentOnline,
+        anomalies: hasIssues
+          ? [
+              {
+                type: 'offline_devices',
+                severity: 'medium' as const,
+                description:
+                  diagnosis?.result?.summary || 'Some devices are offline',
+              },
+            ]
+          : [],
+        healthScore: props.percentOnline,
+      },
+      dataQuality: dateMismatch?.isHistorical
+        ? {
+            completeness: 100,
+            isExpectedWindow: false,
+            actualWindow: {
+              start: dateMismatch.actualDataDate,
+              end: dateMismatch.actualDataDate,
+            },
+          }
+        : createDefaultDataQuality(),
+      isFleetAnalysis: true,
+      fleetSize: props.deviceCount,
+      // Add temporal context for "compared to yesterday" narratives
+      temporalContext,
+      // Update historical context with trend from temporal
+      historicalContext: {
+        isRecurrent: false,
+        trend: temporalContext.trend === 'declining' ? 'degrading' : 'stable',
+      },
+    };
+
+    // Generate narrative and suggestions using NarrativeEngine
+    const narrativeResult = await narrativeEngine.generate(
+      narrativeContext,
+      preferences,
+    );
+    const suggestions = narrativeEngine.generateSuggestions(narrativeContext);
+
+    logger.debug(
+      `Morning briefing narrative generated via branch: ${narrativeResult.metadata.branchPath}`,
+    );
+
+    const narrative = narrativeResult.narrative;
 
     // Create AI message with render_ui_component tool call
     const aiMessage = new AIMessage({
@@ -239,9 +311,29 @@ export function createMorningBriefingFlow(
       ],
     });
 
+    // Create snapshot for next briefing (temporal continuity)
+    const statusSnapshot: FleetStatusSnapshot = {
+      timestamp: new Date().toISOString(),
+      percentOnline: props.percentOnline,
+      totalPower: props.totalPower,
+      totalEnergy: props.totalEnergy,
+      offlineLoggers: currentOfflineLoggers,
+      healthScore: props.percentOnline,
+    };
+
     return {
       messages: [aiMessage],
       flowStep: 4,
+      flowContext: {
+        ...state.flowContext,
+        lastNarrativeMetadata: {
+          branchPath: narrativeResult.metadata.branchPath,
+          wasRefined: narrativeResult.metadata.wasRefined,
+          generationTimeMs: narrativeResult.metadata.generationTimeMs,
+        },
+        // Store snapshot for next briefing (session-only persistence)
+        previousFleetStatus: statusSnapshot,
+      },
       pendingUiActions: [
         {
           toolCallId,
