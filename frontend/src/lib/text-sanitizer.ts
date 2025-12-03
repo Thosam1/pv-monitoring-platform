@@ -25,7 +25,15 @@ export function sanitizeLLMOutput(text: string): string {
     return '';
   }
 
+  // Handle case where an object was accidentally converted to string
+  if (text === '[object Object]') {
+    return '';
+  }
+
   const sanitized = text
+    // Remove raw JSON objects that look like tool call args
+    // These appear when LLM outputs tool args as text instead of proper tool calls
+    .replace(/\{\s*"prompt"\s*:\s*"[^"]*"\s*,\s*"options"\s*:\s*\[[\s\S]*?\]\s*,\s*"selectionType"\s*:\s*"[^"]*"[^}]*\}/g, '')
     // Remove Ollama special tokens
     .replace(/<\|python_tag\|>/g, '')
     .replace(/<\|eot_id\|>/g, '')
@@ -69,6 +77,44 @@ export function sanitizeLLMOutput(text: string): string {
     // Remove raw function calls that appear on their own lines
     // Matches: function_name(args) or function_name()
     .replace(/^\s*\w+\([^)]*\)\s*$/gm, '')
+
+    // Remove raw tool/function names in parentheses (leaked from LLM)
+    // These appear when the LLM mentions a tool name instead of calling it
+    .replace(/\(render_ui_component\)/g, '')
+    .replace(/\(request_user_selection\)/g, '')
+    .replace(/\(list_loggers\)/g, '')
+    .replace(/\(analyze_inverter_health\)/g, '')
+    .replace(/\(get_power_curve\)/g, '')
+    .replace(/\(compare_loggers\)/g, '')
+    .replace(/\(calculate_financial_savings\)/g, '')
+    .replace(/\(calculate_performance_ratio\)/g, '')
+    .replace(/\(forecast_production\)/g, '')
+    .replace(/\(diagnose_error_codes\)/g, '')
+    .replace(/\(get_fleet_overview\)/g, '')
+    .replace(/\(health_check\)/g, '')
+
+    // Remove internal prompt structure labels that leak from LLM output
+    // Handles both plain and markdown bold versions (e.g., "Opening:" and "**Opening**:")
+    .replace(/^\*{0,2}Opening\*{0,2}:\s*/gm, '')
+    .replace(/^\*{0,2}Insight\*{0,2}:\s*/gm, '')
+    .replace(/^\*{0,2}Next Step\*{0,2}:\s*/gm, '')
+    .replace(/^\*{0,2}Note\*{0,2}:\s*/gm, '')
+    .replace(/^\*{0,2}Visualization\*{0,2}:\s*/gm, '')
+    .replace(/^\*{0,2}Action\*{0,2}:\s*/gm, '')
+    .replace(/^\*{0,2}Summary\*{0,2}:\s*/gm, '')
+    .replace(/^\*{0,2}Conclusion\*{0,2}:\s*/gm, '')
+
+    // Remove visualization placeholder text patterns
+    // These occur when the LLM describes rendering instead of actually rendering
+    .replace(/Visualizing (?:the )?data\.{0,3}/gi, '')
+    .replace(/\(?I(?:'m| am) rendering[^.]*\.?\)?/gi, '')
+    .replace(/(?:The )?chart (?:will be|is being|is) (?:rendered|displayed|shown)[^.]*\.?/gi, '')
+    .replace(/\(?(?:I'm |I am )?showing (?:you )?(?:a |the )?(?:chart|visualization|graph)[^.]*\.?\)?/gi, '')
+    .replace(/Let me (?:show|visualize|render|display)[^.]*\.?/gi, '')
+    .replace(/(?:Here(?:'s| is) |Below is )(?:a |the )?(?:chart|visualization|graph)[^.]*\.?/gi, '')
+    .replace(/\[Chart[^\]]*\]/gi, '')
+    .replace(/\[Visualiz[^\]]*\]/gi, '')
+    .replace(/\((?:Chart|Visualization|Graph)[^)]*\)/gi, '')
 
     // Remove empty markdown code blocks
     .replace(/```\s*```/g, '')
