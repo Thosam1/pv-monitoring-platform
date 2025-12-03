@@ -16,6 +16,7 @@ import {
   type BackendStatus,
   type DataStatus,
 } from './lib/date-utils'
+import { cn } from './lib/utils'
 import { type LoggerType } from './types/logger'
 import { type ViewMode } from './types/view-mode'
 
@@ -364,7 +365,10 @@ function App() {
           onRefresh={handleRefresh}
           isLoading={dataStatus === 'loading'}
         />
-        <main className="flex-1 overflow-auto">{renderContent()}</main>
+        <main className={cn(
+          "flex-1 flex flex-col",
+          currentView === 'ai-chat' ? 'h-full overflow-hidden' : 'overflow-auto'
+        )}>{renderContent()}</main>
       </SidebarInset>
     </SidebarProvider>
   )

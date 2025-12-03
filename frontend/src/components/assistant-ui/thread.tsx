@@ -9,7 +9,17 @@ import { Button } from '@/components/ui/button';
 import { WorkflowCard } from '@/components/ai/workflow-card';
 import { UserMessage } from './user-message';
 import { AssistantMessage } from './assistant-message';
-import { SelectionTool, RenderUITool } from './tools';
+import {
+  SelectionTool,
+  RenderUITool,
+  PowerCurveTool,
+  CompareLoggersTool,
+  ForecastTool,
+  FleetOverviewTool,
+  HealthTool,
+  FinancialTool,
+  PerformanceTool,
+} from './tools';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sun,
@@ -165,6 +175,14 @@ export function Thread({ className }: ThreadProps) {
       {/* Tool UIs - these are rendered inline with messages */}
       <SelectionTool />
       <RenderUITool />
+      {/* Direct tool UIs - auto-render charts when tools return data */}
+      <PowerCurveTool />
+      <CompareLoggersTool />
+      <ForecastTool />
+      <FleetOverviewTool />
+      <HealthTool />
+      <FinancialTool />
+      <PerformanceTool />
 
       <ThreadPrimitive.Viewport className="relative flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4">
@@ -185,7 +203,7 @@ export function Thread({ className }: ThreadProps) {
         <ScrollToBottomButton />
       </ThreadPrimitive.Viewport>
 
-      <div className="bg-background p-4">
+      <div className="sticky bottom-0 bg-background p-4 border-t">
         <div className="mx-auto w-full max-w-3xl">
           <Composer />
         </div>
