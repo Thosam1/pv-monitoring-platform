@@ -44,8 +44,7 @@ describeOrSkip('LanggraphService Integration Tests', () => {
     if (TEST_AI_PROVIDER === 'ollama') {
       config.OLLAMA_BASE_URL =
         process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
-      config.OLLAMA_MODEL =
-        process.env.OLLAMA_MODEL || 'gpt-oss:20b';
+      config.OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'gpt-oss:20b';
     } else if (TEST_AI_PROVIDER === 'gemini') {
       const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
       if (!apiKey) {

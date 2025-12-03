@@ -162,11 +162,11 @@ export const MOCK_FLEET_OVERVIEW = {
 export const MOCK_FINANCIAL_SAVINGS = {
   status: 'ok' as ToolStatus,
   result: {
-    totalEnergy: 1250.5,
-    totalSavings: 250.1,
+    energyGenerated: 1250.5,
+    savings: 250.1,
     co2Offset: 1063.0,
     treesEquivalent: 48,
-    period: '30 days',
+    period: { start: '2024-12-01', end: '2024-12-31' },
     electricityRate: 0.2,
     currency: 'USD',
     projectedAnnualSavings: 3001.2,
