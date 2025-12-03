@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Logger } from '@nestjs/common';
 import {
   AIMessage,
@@ -6,6 +7,7 @@ import {
   ToolMessage,
 } from '@langchain/core/messages';
 import {
+  AnySuggestion,
   EnhancedPriority,
   EnhancedSuggestion,
   FlowContext,
@@ -68,7 +70,7 @@ export function createToolResultMessage(
   result: unknown,
 ): ToolMessage {
   return new ToolMessage({
-    content: JSON.stringify(result),
+    content: typeof result === 'string' ? result : JSON.stringify(result),
     tool_call_id: toolCallId,
     name: toolName,
   });
@@ -76,11 +78,12 @@ export function createToolResultMessage(
 
 /**
  * Create render_ui_component arguments with suggestions.
+ * Accepts both legacy SuggestionItem[] and EnhancedSuggestion[] arrays.
  */
 export function createRenderArgs(
   component: string,
   props: Record<string, unknown>,
-  suggestions: SuggestionItem[] = [],
+  suggestions: AnySuggestion[] = [],
 ): Record<string, unknown> {
   return {
     component,
@@ -124,7 +127,7 @@ export function createSelectionArgs(options: {
  * Generate a unique tool call ID.
  */
 export function generateToolCallId(): string {
-  return `tool_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  return `tool_${randomUUID()}`;
 }
 
 /**
@@ -214,10 +217,10 @@ export function getLastUserMessage(messages: BaseMessage[]): string {
       }
       if (Array.isArray(content)) {
         return content
-          .filter((c) => typeof c === 'string' || c.type === 'text')
           .map((c) =>
-            typeof c === 'string' ? c : (c as { text: string }).text,
+            typeof c === 'string' ? c : ((c as { text?: string }).text ?? ''),
           )
+          .filter(Boolean)
           .join(' ');
       }
     }
@@ -227,9 +230,10 @@ export function getLastUserMessage(messages: BaseMessage[]): string {
 
 /**
  * Pattern to detect "all devices" intent in user messages.
+ * Matches variations like: "all devices", "fleet", "everything", "full fleet", "entire plant", etc.
  */
 export const ALL_DEVICES_PATTERN =
-  /\ball\s+(devices?|loggers?|inverters?)\b|\bfleet\b|\bevery\s+(device|logger|inverter)\b|\beach\s+(device|logger|inverter)\b/i;
+  /\ball\s+(devices?|loggers?|inverters?)\b|\bfleet\b|\bevery\s+(device|logger|inverter)\b|\beach\s+(device|logger|inverter)\b|\bfull\s+fleet\b|\bthe\s+entire\s+(fleet|plant|system)\b|\beverything\b|\ball\s+of\s+them\b|\bwhole\s+(fleet|system)\b/i;
 
 /**
  * Common suggestions for different flow outcomes.
@@ -419,15 +423,27 @@ export function contextToSuggestions(
 
 /**
  * Extract context envelope from tool result if present.
+ * Checks multiple possible locations for context to handle structure variations.
  */
 export function extractContextFromResult(
   result: ToolResponse,
 ): ContextEnvelope | undefined {
-  // Check if result has a context property (nested in result object)
-  const innerResult = result.result as Record<string, unknown> | undefined;
-  if (innerResult?.context) {
-    return innerResult.context as ContextEnvelope;
+  const inner = result?.result;
+
+  if (!inner || typeof inner !== 'object') {
+    return undefined;
   }
+
+  // Check multiple possible locations for context
+  const innerRecord = inner as Record<string, unknown>;
+  const context =
+    innerRecord.context ||
+    (innerRecord.data as Record<string, unknown> | undefined)?.context;
+
+  if (context && typeof context === 'object') {
+    return context as ContextEnvelope;
+  }
+
   return undefined;
 }
 
@@ -441,6 +457,17 @@ export function generateDynamicSuggestions(
 ): EnhancedSuggestion[] {
   // First, try to use context from the tool response
   const context = extractContextFromResult(result);
+
+  // Honor explicit empty next_steps from tool (tool says "no suggestions")
+  if (
+    context &&
+    'next_steps' in context &&
+    Array.isArray(context.next_steps) &&
+    context.next_steps.length === 0
+  ) {
+    return [];
+  }
+
   if (context?.next_steps?.length) {
     return contextToSuggestions(context);
   }
@@ -636,4 +663,129 @@ export function mapHintToChartType(
     chart_pie: 'pie',
   };
   return chartTypeMap[hint || ''] || 'composed';
+}
+
+// ============================================================
+// Comparison Analysis Helpers
+// ============================================================
+
+/**
+ * Logger performance summary from comparison results.
+ */
+export interface LoggerPerformance {
+  loggerId: string;
+  average: number;
+  peak: number;
+  total?: number;
+}
+
+/**
+ * Comparison severity classification based on spread percentage.
+ * Thresholds match Python comparison.py (lines 180-194).
+ */
+export type ComparisonSeverity =
+  | 'similar' // < 10% spread - consistent performance
+  | 'moderate_difference' // 10-30% spread - noticeable variation
+  | 'large_difference'; // > 30% spread - significant gap
+
+/**
+ * Compute best performer from comparison summary stats.
+ * Returns the logger with highest average metric value.
+ *
+ * @param summary - Summary stats from compare_loggers result
+ * @returns Logger with highest average, or undefined if empty
+ */
+export function computeBestPerformer(
+  summary: Record<string, { average: number; peak: number; total: number }>,
+): LoggerPerformance | undefined {
+  if (!summary || Object.keys(summary).length === 0) {
+    return undefined;
+  }
+
+  let best: LoggerPerformance | undefined;
+  let bestAvg = -Infinity;
+
+  for (const [loggerId, stats] of Object.entries(summary)) {
+    if (stats.average > bestAvg) {
+      bestAvg = stats.average;
+      best = {
+        loggerId,
+        average: stats.average,
+        peak: stats.peak,
+        total: stats.total,
+      };
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Compute worst performer from comparison summary stats.
+ * Returns the logger with lowest average metric value.
+ *
+ * @param summary - Summary stats from compare_loggers result
+ * @returns Logger with lowest average, or undefined if empty
+ */
+export function computeWorstPerformer(
+  summary: Record<string, { average: number; peak: number; total: number }>,
+): LoggerPerformance | undefined {
+  if (!summary || Object.keys(summary).length === 0) {
+    return undefined;
+  }
+
+  let worst: LoggerPerformance | undefined;
+  let worstAvg = Infinity;
+
+  for (const [loggerId, stats] of Object.entries(summary)) {
+    if (stats.average < worstAvg) {
+      worstAvg = stats.average;
+      worst = {
+        loggerId,
+        average: stats.average,
+        peak: stats.peak,
+        total: stats.total,
+      };
+    }
+  }
+
+  return worst;
+}
+
+/**
+ * Compute spread percentage between best and worst performers.
+ * Uses same formula as Python comparison.py (line 175).
+ *
+ * @param best - Best performing logger
+ * @param worst - Worst performing logger
+ * @returns Percentage difference relative to best performer
+ */
+export function computeSpreadPercent(
+  best: LoggerPerformance | undefined,
+  worst: LoggerPerformance | undefined,
+): number {
+  if (!best || !worst || best.average === 0) {
+    return 0;
+  }
+
+  return ((best.average - worst.average) / best.average) * 100;
+}
+
+/**
+ * Classify comparison severity based on spread percentage.
+ * Thresholds match Python comparison.py summary logic (lines 180-194).
+ *
+ * @param spreadPercent - Percentage difference between best and worst
+ * @returns Severity classification
+ */
+export function computeComparisonSeverity(
+  spreadPercent: number,
+): ComparisonSeverity {
+  if (spreadPercent < 10) {
+    return 'similar';
+  } else if (spreadPercent < 30) {
+    return 'moderate_difference';
+  } else {
+    return 'large_difference';
+  }
 }

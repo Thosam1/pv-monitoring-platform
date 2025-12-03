@@ -30,6 +30,7 @@ import { createMorningBriefingFlow } from './flows/morning-briefing.flow';
 import { createFinancialReportFlow } from './flows/financial-report.flow';
 import { createPerformanceAuditFlow } from './flows/performance-audit.flow';
 import { createHealthCheckFlow } from './flows/health-check.flow';
+import { createGreetingFlow } from './flows/greeting.flow';
 import { createRecoverySubgraph } from './subgraphs/recovery.subgraph';
 import { USER_FRIENDLY_SYSTEM_PROMPT } from './prompts/user-friendly.prompt';
 
@@ -214,6 +215,7 @@ export class LanggraphService {
       model,
     );
     const healthCheckGraph = createHealthCheckFlow(this.toolsHttpClient, model);
+    const greetingGraph = createGreetingFlow(this.toolsHttpClient);
     const recoveryGraph = createRecoverySubgraph(this.toolsHttpClient);
 
     // Router node wrapper to inject model
@@ -375,6 +377,10 @@ export class LanggraphService {
         const result = await healthCheckGraph.invoke(state);
         return result;
       })
+      .addNode('greeting', async (state) => {
+        const result = await greetingGraph.invoke(state);
+        return result;
+      })
 
       // Free chat nodes (fallback)
       .addNode('free_chat', callModel)
@@ -397,6 +403,7 @@ export class LanggraphService {
         performance_audit: 'performance_audit',
         health_check: 'health_check',
         free_chat: 'free_chat',
+        greeting: 'greeting',
       })
 
       // Edges: Workflow completions
@@ -404,6 +411,7 @@ export class LanggraphService {
       .addEdge('financial_report', END)
       .addEdge('performance_audit', END)
       .addEdge('health_check', END)
+      .addEdge('greeting', END)
 
       // Edges: Free chat loop
       .addConditionalEdges('free_chat', shouldContinue, {
@@ -644,12 +652,33 @@ export class LanggraphService {
           }
 
           // Streaming text from the model
+          // LangChain content can be string OR array of content blocks
           const chunk = event.data?.chunk as
-            | { content?: string }
+            | { content?: string | unknown[] }
             | null
             | undefined;
-          if (chunk?.content && typeof chunk.content === 'string') {
-            yield { type: 'text-delta', delta: chunk.content };
+
+          if (chunk?.content) {
+            // Handle string content directly
+            if (typeof chunk.content === 'string') {
+              yield { type: 'text-delta', delta: chunk.content };
+            }
+            // Handle array content (e.g., [{ type: 'text', text: '...' }])
+            else if (Array.isArray(chunk.content)) {
+              for (const part of chunk.content) {
+                if (
+                  part &&
+                  typeof part === 'object' &&
+                  'type' in part &&
+                  part.type === 'text' &&
+                  'text' in part &&
+                  typeof part.text === 'string'
+                ) {
+                  yield { type: 'text-delta', delta: part.text };
+                }
+              }
+            }
+            // Skip non-string, non-array content (e.g., objects)
           }
         } else if (event.event === 'on_chat_model_end') {
           // Filter out internal node output (e.g., router classification JSON)

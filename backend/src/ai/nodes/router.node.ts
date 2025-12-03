@@ -18,6 +18,32 @@ import {
 const logger = new Logger('RouterNode');
 
 /**
+ * Regex patterns for detecting simple greetings.
+ * These are matched BEFORE LLM classification to provide instant responses.
+ * Patterns use anchors to prevent false positives (e.g., "Hello, check my system").
+ */
+const GREETING_PATTERNS: RegExp[] = [
+  /^(hi|hello|hey|hiya|howdy|greetings)[\s!.,]*$/i,
+  /^good\s+(morning|afternoon|evening|day)[\s!.,]*$/i,
+  /^what('?s| is)\s+up[\s!?.,]*$/i,
+  /^yo[\s!.,]*$/i,
+  /^sup[\s!.,]*$/i,
+  /^(hey|hi|hello)\s+there[\s!.,]*$/i,
+  /^(hello|hi)\s+sunny[\s!.,]*$/i,
+];
+
+/**
+ * Check if a message is a simple greeting.
+ * Uses pattern matching to detect greetings without LLM call.
+ * @param message - User message to check
+ * @returns True if the message is a simple greeting
+ */
+export function isGreeting(message: string): boolean {
+  const trimmed = message.trim();
+  return GREETING_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+/**
  * Classification prompt for LLM-based intent detection.
  */
 const CLASSIFICATION_PROMPT = `You are a classification assistant. Analyze the user's message and classify their intent into one of these workflows:
@@ -138,6 +164,20 @@ export async function routerNode(
     };
   }
 
+  // Check for simple greetings BEFORE LLM classification (zero latency)
+  if (isGreeting(userMessage)) {
+    logger.debug(`Detected greeting: "${userMessage.substring(0, 50)}"`);
+    return {
+      activeFlow: 'greeting',
+      flowStep: 0,
+      flowContext: {
+        // Preserve user timezone if already in context
+        userTimezone: state.flowContext?.userTimezone,
+      },
+      recoveryAttempts: 0,
+    };
+  }
+
   logger.debug(`Classifying intent for: "${userMessage.substring(0, 100)}..."`);
 
   // Get conversation context to help detect selection responses
@@ -207,8 +247,15 @@ export function routeToFlow(
   | 'financial_report'
   | 'performance_audit'
   | 'health_check'
-  | 'free_chat' {
+  | 'free_chat'
+  | 'greeting' {
   const flow = state.activeFlow || 'free_chat';
   logger.debug(`Routing to flow: ${flow}`);
-  return flow;
+  return flow as
+    | 'morning_briefing'
+    | 'financial_report'
+    | 'performance_audit'
+    | 'health_check'
+    | 'free_chat'
+    | 'greeting';
 }

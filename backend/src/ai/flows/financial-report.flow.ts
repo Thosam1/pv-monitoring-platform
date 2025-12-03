@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { StateGraph, START, END } from '@langchain/langgraph';
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import { AIMessage } from '@langchain/core/messages';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
@@ -19,8 +19,12 @@ import {
   formatLoggerOptions,
   getDateDaysAgo,
   getLatestDateString,
-  COMMON_SUGGESTIONS,
 } from './flow-utils';
+import {
+  NarrativeEngine,
+  NarrativeContext,
+  DEFAULT_NARRATIVE_PREFERENCES,
+} from '../narrative';
 
 const logger = new Logger('FinancialReportFlow');
 
@@ -293,9 +297,20 @@ export function createFinancialReportFlow(
 
     const toolCallId = generateToolCallId();
 
+    // Check if we recovered to a different date range
+    const needsRecoveryContext = state.flowContext.toolResults?.needsRecovery;
+    const availableRange = state.flowContext.toolResults?.availableRange as
+      | { start: string; end: string }
+      | undefined;
+
     // Build props for FinancialReport component
     const savings = savingsResult?.result;
     const forecast = forecastResult?.result;
+
+    // Build forecast line with fallback (GAP 2: Forecast fallback messaging)
+    const forecastLine = forecast
+      ? `Forecast: ${forecast.totalPredicted?.toFixed(1)} kWh over next 7 days.`
+      : 'No forecast available for the selected logger.';
 
     const props = {
       energyGenerated: savings?.energyGenerated || 0,
@@ -311,27 +326,57 @@ export function createFinancialReportFlow(
         : undefined,
     };
 
-    const suggestions = COMMON_SUGGESTIONS.afterFinancialReport();
+    // Detect zero/missing data scenario
+    const isZeroReport =
+      props.energyGenerated === 0 &&
+      props.savings === 0 &&
+      props.co2Offset === 0;
 
-    // Generate LLM narrative
-    const narrativePrompt = `Generate a brief (2-3 sentences) financial summary narrative.
-      Energy generated: ${props.energyGenerated} kWh
-      Savings: $${props.savings?.toFixed(2)}
-      CO2 offset: ${props.co2Offset?.toFixed(1)} kg
-      ${forecast ? `Forecast: ${forecast.totalPredicted?.toFixed(1)} kWh over next 7 days` : ''}
-      Be concise and highlight the key financial impact.`;
+    // Build NarrativeContext for financial report
+    const narrativeEngine = new NarrativeEngine(model);
+    const preferences =
+      state.flowContext.narrativePreferences || DEFAULT_NARRATIVE_PREFERENCES;
 
-    let narrative = '';
-    try {
-      const response = await model.invoke([new HumanMessage(narrativePrompt)]);
-      narrative =
-        typeof response.content === 'string'
-          ? response.content
-          : 'Financial report generated successfully.';
-    } catch (error) {
-      logger.warn(`Failed to generate narrative: ${error}`);
-      narrative = `Your solar system generated ${props.energyGenerated?.toFixed(1)} kWh, saving $${props.savings?.toFixed(2)} and offsetting ${props.co2Offset?.toFixed(1)} kg of CO2.`;
-    }
+    const narrativeContext: NarrativeContext = {
+      flowType: 'financial_report',
+      subject: state.flowContext.selectedLoggerId || 'Unknown',
+      data: {
+        energyGenerated: props.energyGenerated,
+        savings: props.savings,
+        co2Offset: props.co2Offset,
+        treesEquivalent: props.treesEquivalent,
+        period: props.period,
+        forecast: props.forecast,
+        forecastLine,
+        anomalies: [],
+        healthScore: isZeroReport ? 0 : 100,
+      },
+      dataQuality:
+        needsRecoveryContext && availableRange
+          ? {
+              completeness: isZeroReport ? 0 : 100,
+              isExpectedWindow: false,
+              actualWindow: availableRange,
+            }
+          : {
+              completeness: isZeroReport ? 0 : 100,
+              isExpectedWindow: true,
+            },
+      isFleetAnalysis: false,
+    };
+
+    // Generate narrative and suggestions using NarrativeEngine
+    const narrativeResult = await narrativeEngine.generate(
+      narrativeContext,
+      preferences,
+    );
+    const suggestions = narrativeEngine.generateSuggestions(narrativeContext);
+
+    logger.debug(
+      `Financial report narrative generated via branch: ${narrativeResult.metadata.branchPath}`,
+    );
+
+    const narrative = narrativeResult.narrative;
 
     const aiMessage = new AIMessage({
       content: narrative,
@@ -347,6 +392,14 @@ export function createFinancialReportFlow(
     return {
       messages: [aiMessage],
       flowStep: 5,
+      flowContext: {
+        ...state.flowContext,
+        lastNarrativeMetadata: {
+          branchPath: narrativeResult.metadata.branchPath,
+          wasRefined: narrativeResult.metadata.wasRefined,
+          generationTimeMs: narrativeResult.metadata.generationTimeMs,
+        },
+      },
       pendingUiActions: [
         {
           toolCallId,

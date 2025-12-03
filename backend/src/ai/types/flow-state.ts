@@ -1,5 +1,6 @@
 import { Annotation, MessagesAnnotation } from '@langchain/langgraph';
 import { z } from 'zod';
+import { NarrativePreferences } from '../narrative/narrative-preferences';
 
 /**
  * Flow type enumeration for explicit workflow routing.
@@ -9,7 +10,28 @@ export type FlowType =
   | 'financial_report'
   | 'performance_audit'
   | 'health_check'
-  | 'free_chat';
+  | 'free_chat'
+  | 'greeting';
+
+/**
+ * Snapshot of fleet status for temporal comparison.
+ * Stored between flow executions for delta calculations.
+ * Used by morning briefing to enable "compared to yesterday" narratives.
+ */
+export interface FleetStatusSnapshot {
+  /** ISO timestamp when snapshot was taken */
+  timestamp: string;
+  /** Percentage of devices online (0-100) */
+  percentOnline: number;
+  /** Total power in watts */
+  totalPower: number;
+  /** Total energy in kWh */
+  totalEnergy: number;
+  /** List of offline logger IDs */
+  offlineLoggers: string[];
+  /** Average health score across fleet (0-100) */
+  healthScore: number;
+}
 
 /**
  * Context accumulated during flow execution.
@@ -30,6 +52,18 @@ export interface FlowContext {
   extractedLoggerName?: string;
   /** Flag to analyze all loggers (for "all devices" intent) */
   analyzeAllLoggers?: boolean;
+  /** User preferences for narrative generation (session-level) */
+  narrativePreferences?: NarrativePreferences;
+  /** Metadata from last narrative generation (for debugging/analytics) */
+  lastNarrativeMetadata?: {
+    branchPath: string;
+    wasRefined: boolean;
+    generationTimeMs: number;
+  };
+  /** Previous fleet status for temporal comparison (morning briefing) */
+  previousFleetStatus?: FleetStatusSnapshot;
+  /** User's timezone for time-aware greetings (IANA format, e.g., "America/New_York") */
+  userTimezone?: string;
 }
 
 /**
@@ -217,6 +251,7 @@ export const FlowClassificationSchema = z.object({
     'performance_audit',
     'health_check',
     'free_chat',
+    'greeting',
   ]),
   confidence: z.number().min(0).max(1),
   /** If true, the user is responding to a selection prompt (not a new question) */

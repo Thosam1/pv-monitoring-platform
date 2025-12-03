@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { StateGraph, START, END } from '@langchain/langgraph';
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import { AIMessage } from '@langchain/core/messages';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
@@ -17,8 +17,17 @@ import {
   createRenderArgs,
   createSelectionArgs,
   formatLoggerOptions,
-  COMMON_SUGGESTIONS,
+  computeBestPerformer,
+  computeWorstPerformer,
+  computeSpreadPercent,
+  computeComparisonSeverity,
 } from './flow-utils';
+import {
+  NarrativeEngine,
+  NarrativeContext,
+  DEFAULT_NARRATIVE_PREFERENCES,
+  createDefaultDataQuality,
+} from '../narrative';
 
 const logger = new Logger('PerformanceAuditFlow');
 
@@ -266,34 +275,54 @@ export function createPerformanceAuditFlow(
       summaryStats: comparison?.summary,
     };
 
-    const suggestions = COMMON_SUGGESTIONS.afterComparison();
+    // Compute comparison-specific metadata for narrative generation
+    const summary = comparison?.summary || {};
+    const bestPerformer = computeBestPerformer(summary);
+    const worstPerformer = computeWorstPerformer(summary);
+    const spreadPercent = computeSpreadPercent(bestPerformer, worstPerformer);
+    const comparisonSeverity = computeComparisonSeverity(spreadPercent);
 
-    // Generate LLM narrative analyzing the comparison
-    const summaryText = loggerIds
-      .map((id) => {
-        const stats = comparison?.summary?.[id];
-        return stats
-          ? `${id}: avg ${stats.average?.toFixed(0)}W, peak ${stats.peak?.toFixed(0)}W`
-          : `${id}: no data`;
-      })
-      .join('; ');
+    logger.debug(
+      `Performance Audit: Best=${bestPerformer?.loggerId}, Worst=${worstPerformer?.loggerId}, Spread=${spreadPercent.toFixed(1)}%, Severity=${comparisonSeverity}`,
+    );
 
-    const narrativePrompt = `Generate a brief (2-3 sentences) performance comparison analysis.
-      Comparison data: ${summaryText}
-      Identify the best performer and any notable differences.
-      Be analytical and concise.`;
+    // Build NarrativeContext for performance audit
+    const narrativeEngine = new NarrativeEngine(model);
+    const preferences =
+      state.flowContext.narrativePreferences || DEFAULT_NARRATIVE_PREFERENCES;
 
-    let narrative = '';
-    try {
-      const response = await model.invoke([new HumanMessage(narrativePrompt)]);
-      narrative =
-        typeof response.content === 'string'
-          ? response.content
-          : 'Comparison chart generated.';
-    } catch (error) {
-      logger.warn(`Failed to generate narrative: ${error}`);
-      narrative = `Comparing power output across ${loggerIds.length} loggers.`;
-    }
+    const narrativeContext: NarrativeContext = {
+      flowType: 'performance_audit',
+      subject: loggerIds.join(', '),
+      data: {
+        comparison,
+        loggerIds,
+        summaryStats: comparison?.summary,
+        // Add comparison-specific fields for branch selection and narrative generation
+        bestPerformer,
+        worstPerformer,
+        spreadPercent,
+        comparisonSeverity,
+        anomalies: [],
+        healthScore: 100, // Comparison doesn't have health score concept
+      },
+      dataQuality: createDefaultDataQuality(),
+      isFleetAnalysis: true,
+      fleetSize: loggerIds.length,
+    };
+
+    // Generate narrative and suggestions using NarrativeEngine
+    const narrativeResult = await narrativeEngine.generate(
+      narrativeContext,
+      preferences,
+    );
+    const suggestions = narrativeEngine.generateSuggestions(narrativeContext);
+
+    logger.debug(
+      `Performance audit narrative generated via branch: ${narrativeResult.metadata.branchPath}`,
+    );
+
+    const narrative = narrativeResult.narrative;
 
     const aiMessage = new AIMessage({
       content: narrative,
@@ -309,6 +338,14 @@ export function createPerformanceAuditFlow(
     return {
       messages: [aiMessage],
       flowStep: 4,
+      flowContext: {
+        ...state.flowContext,
+        lastNarrativeMetadata: {
+          branchPath: narrativeResult.metadata.branchPath,
+          wasRefined: narrativeResult.metadata.wasRefined,
+          generationTimeMs: narrativeResult.metadata.generationTimeMs,
+        },
+      },
       pendingUiActions: [
         {
           toolCallId,

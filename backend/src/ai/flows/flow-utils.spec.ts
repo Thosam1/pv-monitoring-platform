@@ -24,6 +24,10 @@ import {
   extractContextFromResult,
   generateDynamicSuggestions,
   ContextEnvelope,
+  computeBestPerformer,
+  computeWorstPerformer,
+  computeSpreadPercent,
+  computeComparisonSeverity,
 } from './flow-utils';
 import { createMockToolsClient } from '../test-utils';
 
@@ -221,10 +225,13 @@ describe('FlowUtils', () => {
       expect(id1).not.toBe(id2);
     });
 
-    it('should have correct format (tool_ prefix)', () => {
+    it('should have correct format (tool_ prefix with UUID)', () => {
       const id = generateToolCallId();
 
-      expect(id).toMatch(/^tool_\d+_[a-z0-9]+$/);
+      // UUID format: tool_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      expect(id).toMatch(
+        /^tool_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      );
     });
   });
 
@@ -991,6 +998,176 @@ describe('FlowUtils', () => {
       // Should use context, not fallback logic
       expect(suggestions).toHaveLength(1);
       expect(suggestions[0].action).toBe('Context suggestion wins');
+    });
+  });
+
+  // ============================================================
+  // Comparison Analysis Helpers Tests
+  // ============================================================
+
+  describe('computeBestPerformer', () => {
+    it('should return logger with highest average', () => {
+      const summary = {
+        'logger-1': { average: 5000, peak: 6000, total: 50000 },
+        'logger-2': { average: 5500, peak: 6500, total: 55000 },
+        'logger-3': { average: 4800, peak: 5800, total: 48000 },
+      };
+
+      const result = computeBestPerformer(summary);
+
+      expect(result).toEqual({
+        loggerId: 'logger-2',
+        average: 5500,
+        peak: 6500,
+        total: 55000,
+      });
+    });
+
+    it('should return undefined for empty summary', () => {
+      expect(computeBestPerformer({})).toBeUndefined();
+    });
+
+    it('should return undefined for null/undefined summary', () => {
+      expect(computeBestPerformer(null as never)).toBeUndefined();
+      expect(computeBestPerformer(undefined as never)).toBeUndefined();
+    });
+
+    it('should handle single logger', () => {
+      const summary = {
+        'single-logger': { average: 3000, peak: 4000, total: 30000 },
+      };
+
+      const result = computeBestPerformer(summary);
+
+      expect(result?.loggerId).toBe('single-logger');
+    });
+
+    it('should handle loggers with equal averages', () => {
+      const summary = {
+        'logger-a': { average: 5000, peak: 6000, total: 50000 },
+        'logger-b': { average: 5000, peak: 7000, total: 50000 },
+      };
+
+      const result = computeBestPerformer(summary);
+
+      // Should return one of them (first encountered)
+      expect(result?.average).toBe(5000);
+    });
+  });
+
+  describe('computeWorstPerformer', () => {
+    it('should return logger with lowest average', () => {
+      const summary = {
+        'logger-1': { average: 5000, peak: 6000, total: 50000 },
+        'logger-2': { average: 5500, peak: 6500, total: 55000 },
+        'logger-3': { average: 4800, peak: 5800, total: 48000 },
+      };
+
+      const result = computeWorstPerformer(summary);
+
+      expect(result).toEqual({
+        loggerId: 'logger-3',
+        average: 4800,
+        peak: 5800,
+        total: 48000,
+      });
+    });
+
+    it('should return undefined for empty summary', () => {
+      expect(computeWorstPerformer({})).toBeUndefined();
+    });
+
+    it('should return undefined for null/undefined summary', () => {
+      expect(computeWorstPerformer(null as never)).toBeUndefined();
+      expect(computeWorstPerformer(undefined as never)).toBeUndefined();
+    });
+
+    it('should handle single logger', () => {
+      const summary = {
+        'single-logger': { average: 3000, peak: 4000, total: 30000 },
+      };
+
+      const result = computeWorstPerformer(summary);
+
+      expect(result?.loggerId).toBe('single-logger');
+    });
+  });
+
+  describe('computeSpreadPercent', () => {
+    it('should calculate percentage difference correctly', () => {
+      const best = { loggerId: 'best', average: 5000, peak: 6000 };
+      const worst = { loggerId: 'worst', average: 4000, peak: 5000 };
+
+      const result = computeSpreadPercent(best, worst);
+
+      // (5000-4000)/5000 * 100 = 20%
+      expect(result).toBeCloseTo(20, 1);
+    });
+
+    it('should return 0 when best and worst are equal', () => {
+      const best = { loggerId: 'best', average: 5000, peak: 6000 };
+      const worst = { loggerId: 'worst', average: 5000, peak: 5000 };
+
+      const result = computeSpreadPercent(best, worst);
+
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 when best average is 0', () => {
+      const best = { loggerId: 'best', average: 0, peak: 0 };
+      const worst = { loggerId: 'worst', average: 0, peak: 0 };
+
+      expect(computeSpreadPercent(best, worst)).toBe(0);
+    });
+
+    it('should return 0 when best is undefined', () => {
+      const worst = { loggerId: 'worst', average: 4000, peak: 5000 };
+
+      expect(computeSpreadPercent(undefined, worst)).toBe(0);
+    });
+
+    it('should return 0 when worst is undefined', () => {
+      const best = { loggerId: 'best', average: 5000, peak: 6000 };
+
+      expect(computeSpreadPercent(best, undefined)).toBe(0);
+    });
+
+    it('should handle large spread percentages', () => {
+      const best = { loggerId: 'best', average: 10000, peak: 12000 };
+      const worst = { loggerId: 'worst', average: 5000, peak: 6000 };
+
+      const result = computeSpreadPercent(best, worst);
+
+      // (10000-5000)/10000 * 100 = 50%
+      expect(result).toBeCloseTo(50, 1);
+    });
+  });
+
+  describe('computeComparisonSeverity', () => {
+    it('should classify < 10% as similar', () => {
+      expect(computeComparisonSeverity(0)).toBe('similar');
+      expect(computeComparisonSeverity(5)).toBe('similar');
+      expect(computeComparisonSeverity(9.9)).toBe('similar');
+    });
+
+    it('should classify 10-30% as moderate_difference', () => {
+      expect(computeComparisonSeverity(10)).toBe('moderate_difference');
+      expect(computeComparisonSeverity(20)).toBe('moderate_difference');
+      expect(computeComparisonSeverity(29.9)).toBe('moderate_difference');
+    });
+
+    it('should classify >= 30% as large_difference', () => {
+      expect(computeComparisonSeverity(30)).toBe('large_difference');
+      expect(computeComparisonSeverity(35)).toBe('large_difference');
+      expect(computeComparisonSeverity(50)).toBe('large_difference');
+      expect(computeComparisonSeverity(100)).toBe('large_difference');
+    });
+
+    it('should handle boundary values correctly', () => {
+      // Exactly at 10% should be moderate_difference
+      expect(computeComparisonSeverity(10)).toBe('moderate_difference');
+      // Exactly at 30% should be large_difference
+      expect(computeComparisonSeverity(30)).toBe('large_difference');
     });
   });
 });

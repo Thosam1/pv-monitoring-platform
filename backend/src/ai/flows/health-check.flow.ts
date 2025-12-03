@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { StateGraph, START, END } from '@langchain/langgraph';
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import { AIMessage } from '@langchain/core/messages';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
@@ -19,8 +19,13 @@ import {
   formatLoggerOptions,
   getLastUserMessage,
   ALL_DEVICES_PATTERN,
-  COMMON_SUGGESTIONS,
 } from './flow-utils';
+import {
+  NarrativeEngine,
+  NarrativeContext,
+  DEFAULT_NARRATIVE_PREFERENCES,
+  createDefaultDataQuality,
+} from '../narrative';
 
 const logger = new Logger('HealthCheckFlow');
 
@@ -314,6 +319,9 @@ export function createHealthCheckFlow(
     logger.debug('Health Check: Rendering report');
 
     const toolCallId = generateToolCallId();
+    const narrativeEngine = new NarrativeEngine(model);
+    const preferences =
+      state.flowContext.narrativePreferences || DEFAULT_NARRATIVE_PREFERENCES;
 
     // Handle "all devices" case
     if (state.flowContext.analyzeAllLoggers) {
@@ -358,6 +366,18 @@ export function createHealthCheckFlow(
         (l) => l.anomalyCount > 0,
       ).length;
 
+      // Collect all anomalies from fleet for NarrativeContext
+      const allAnomalies = allLoggersHealth.flatMap(
+        (item) =>
+          item.health.result?.anomalies?.map((a) => ({
+            timestamp: a.timestamp,
+            type: a.type,
+            description: a.description,
+            severity: a.severity,
+            metrics: a.metrics,
+          })) || [],
+      );
+
       // Build props for FleetHealthReport component
       const props = {
         period: 'Last 7 days',
@@ -368,41 +388,35 @@ export function createHealthCheckFlow(
         loggers: fleetSummary,
       };
 
-      const hasAnomalies = totalAnomalies > 0;
-      const suggestions = COMMON_SUGGESTIONS.afterHealthCheck(hasAnomalies);
+      // Build NarrativeContext for fleet analysis
+      const narrativeContext: NarrativeContext = {
+        flowType: 'health_check',
+        subject: 'fleet',
+        data: {
+          anomalies: allAnomalies,
+          healthScore: Math.round(avgHealthScore),
+          period: 'Last 7 days',
+          loggersWithIssues,
+          totalLoggers: fleetSummary.length,
+        },
+        dataQuality: createDefaultDataQuality(),
+        isFleetAnalysis: true,
+        fleetSize: fleetSummary.length,
+      };
 
-      // Generate LLM narrative for fleet
-      const narrativePrompt = hasAnomalies
-        ? `Generate a brief (2-3 sentences) fleet health analysis narrative.
-           Total loggers analyzed: ${fleetSummary.length}
-           Average health score: ${Math.round(avgHealthScore)}%
-           Loggers with issues: ${loggersWithIssues}
-           Total anomalies: ${totalAnomalies}
-           Be diagnostic and identify the worst performers.`
-        : `Generate a brief (2-3 sentences) fleet health analysis narrative.
-           Total loggers analyzed: ${fleetSummary.length}
-           Average health score: ${Math.round(avgHealthScore)}%
-           No anomalies detected across the fleet.
-           Be positive but concise.`;
+      // Generate narrative using NarrativeEngine
+      const narrativeResult = await narrativeEngine.generate(
+        narrativeContext,
+        preferences,
+      );
+      const suggestions = narrativeEngine.generateSuggestions(narrativeContext);
 
-      let narrative = '';
-      try {
-        const response = await model.invoke([
-          new HumanMessage(narrativePrompt),
-        ]);
-        narrative =
-          typeof response.content === 'string'
-            ? response.content
-            : 'Fleet health analysis complete.';
-      } catch (error) {
-        logger.warn(`Failed to generate narrative: ${error}`);
-        narrative = hasAnomalies
-          ? `Fleet health check: ${totalAnomalies} anomalies found across ${loggersWithIssues} of ${fleetSummary.length} loggers. Average health score: ${Math.round(avgHealthScore)}%.`
-          : `Fleet health check: All ${fleetSummary.length} loggers healthy. Average health score: ${Math.round(avgHealthScore)}%.`;
-      }
+      logger.debug(
+        `Fleet narrative generated via branch: ${narrativeResult.metadata.branchPath}`,
+      );
 
       const aiMessage = new AIMessage({
-        content: narrative,
+        content: narrativeResult.narrative,
         tool_calls: [
           {
             id: toolCallId,
@@ -415,6 +429,14 @@ export function createHealthCheckFlow(
       return {
         messages: [aiMessage],
         flowStep: 4,
+        flowContext: {
+          ...state.flowContext,
+          lastNarrativeMetadata: {
+            branchPath: narrativeResult.metadata.branchPath,
+            wasRefined: narrativeResult.metadata.wasRefined,
+            generationTimeMs: narrativeResult.metadata.generationTimeMs,
+          },
+        },
         pendingUiActions: [
           {
             toolCallId,
@@ -433,7 +455,6 @@ export function createHealthCheckFlow(
 
     const health = healthResult?.result;
     const anomalies = health?.anomalies || [];
-    const hasAnomalies = anomalies.length > 0;
 
     // Build props for HealthReport component
     const props = {
@@ -450,38 +471,46 @@ export function createHealthCheckFlow(
       })),
     };
 
-    const suggestions = COMMON_SUGGESTIONS.afterHealthCheck(hasAnomalies);
+    // Build NarrativeContext for single logger analysis
+    const narrativeContext: NarrativeContext = {
+      flowType: 'health_check',
+      subject: loggerId,
+      data: {
+        anomalies: anomalies.map((a) => ({
+          timestamp: a.timestamp,
+          type: a.type,
+          description: a.description,
+          severity: a.severity,
+          metrics: a.metrics,
+        })),
+        healthScore: props.healthScore,
+        period: props.period,
+      },
+      dataQuality: state.flowContext.toolResults?.needsRecovery
+        ? {
+            completeness: 0,
+            isExpectedWindow: false,
+            actualWindow: state.flowContext.toolResults?.availableRange as
+              | { start: string; end: string }
+              | undefined,
+          }
+        : createDefaultDataQuality(),
+      isFleetAnalysis: false,
+    };
 
-    // Generate LLM narrative
-    const narrativePrompt = hasAnomalies
-      ? `Generate a brief (2-3 sentences) health analysis narrative.
-         Logger: ${loggerId}
-         Health score: ${props.healthScore}%
-         Anomalies found: ${anomalies.length}
-         Types: ${[...new Set(anomalies.map((a) => a.type))].join(', ')}
-         Be diagnostic and suggest next steps.`
-      : `Generate a brief (2-3 sentences) health analysis narrative.
-         Logger: ${loggerId}
-         Health score: ${props.healthScore}%
-         No anomalies detected in the past 7 days.
-         Be positive but concise.`;
+    // Generate narrative using NarrativeEngine
+    const narrativeResult = await narrativeEngine.generate(
+      narrativeContext,
+      preferences,
+    );
+    const suggestions = narrativeEngine.generateSuggestions(narrativeContext);
 
-    let narrative = '';
-    try {
-      const response = await model.invoke([new HumanMessage(narrativePrompt)]);
-      narrative =
-        typeof response.content === 'string'
-          ? response.content
-          : 'Health analysis complete.';
-    } catch (error) {
-      logger.warn(`Failed to generate narrative: ${error}`);
-      narrative = hasAnomalies
-        ? `Health check for ${loggerId}: ${anomalies.length} anomalies detected. Health score: ${props.healthScore}%.`
-        : `Health check for ${loggerId}: No issues detected. Health score: ${props.healthScore}%.`;
-    }
+    logger.debug(
+      `Single logger narrative generated via branch: ${narrativeResult.metadata.branchPath}`,
+    );
 
     const aiMessage = new AIMessage({
-      content: narrative,
+      content: narrativeResult.narrative,
       tool_calls: [
         {
           id: toolCallId,
@@ -494,6 +523,14 @@ export function createHealthCheckFlow(
     return {
       messages: [aiMessage],
       flowStep: 4,
+      flowContext: {
+        ...state.flowContext,
+        lastNarrativeMetadata: {
+          branchPath: narrativeResult.metadata.branchPath,
+          wasRefined: narrativeResult.metadata.wasRefined,
+          generationTimeMs: narrativeResult.metadata.generationTimeMs,
+        },
+      },
       pendingUiActions: [
         {
           toolCallId,
