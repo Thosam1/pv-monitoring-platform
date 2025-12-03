@@ -55,9 +55,46 @@ export {
   createMidFlowState,
   createStateWithPendingActions,
   createRecoveryState,
+  createStateWithWaitingForInput,
+  createStateWithExtractedArgs,
+  createMultiTurnConversation,
+  createStateWithSelectionResponse,
   SAMPLE_LOGGERS,
   SAMPLE_ANOMALIES,
   SAMPLE_POWER_CURVE,
   extractToolCalls,
   getLastAIMessageContent,
 } from './test-fixtures';
+
+// SSE event capture utilities
+export {
+  type CapturedTextDelta,
+  type CapturedToolInput,
+  type CapturedToolOutput,
+  type CapturedError,
+  type CapturedEvents,
+  type SSEEvent,
+  type EventCapture,
+  createEventCapture,
+  captureAllEvents,
+  findEvents,
+  hasToolCall,
+  getToolCalls,
+  getConcatenatedText,
+  findDuplicateToolCallIds,
+  verifyToolEventOrdering,
+} from './sse-capture';
+
+// Integration test helpers
+export {
+  type ConversationTurn,
+  type ConversationResult,
+  simulateConversation,
+  assertNoDuplicates,
+  createSequentialClassificationModel,
+  getToolCallMap,
+  wasToolCalled,
+  getToolOutput,
+  getFullText,
+  createConversationHistory,
+} from './integration-helpers';

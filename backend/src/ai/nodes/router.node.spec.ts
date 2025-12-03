@@ -367,6 +367,312 @@ describe('RouterNode', () => {
   });
 });
 
+describe('RouterNode Edge Cases', () => {
+  describe('selection response detection', () => {
+    it('should detect "I selected: 925" and update selectedLoggerId', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse(
+          'health_check',
+          0.95,
+          { loggerId: '925' },
+          true,
+        ),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Check health'],
+        ['assistant', 'Which logger?'],
+        ['user', 'I selected: 925'],
+      ]);
+      state.waitingForUserInput = true;
+      state.activeFlow = 'health_check';
+
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.flowContext?.selectedLoggerId).toBe('925');
+    });
+
+    it('should detect "I selected: 925, 926" and update selectedLoggerIds array', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse(
+          'performance_audit',
+          0.95,
+          { loggerIds: ['925', '926'] },
+          true,
+        ),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Compare inverters'],
+        ['assistant', 'Select 2-5 loggers'],
+        ['user', 'I selected: 925, 926'],
+      ]);
+      state.waitingForUserInput = true;
+      state.activeFlow = 'performance_audit';
+
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.flowContext?.selectedLoggerIds).toEqual(['925', '926']);
+    });
+
+    it('should detect bare ID "925" when waitingForUserInput=true', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse(
+          'health_check',
+          0.95,
+          { loggerId: '925' },
+          true,
+        ),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Check health'],
+        ['assistant', 'Which logger?'],
+        ['user', '925'],
+      ]);
+      state.waitingForUserInput = true;
+      state.activeFlow = 'health_check';
+
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.flowContext?.selectedLoggerId).toBe('925');
+    });
+
+    it('should NOT re-classify when valid selection received', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse(
+          'health_check',
+          0.95,
+          { loggerId: '925' },
+          true,
+        ),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Check health'],
+        ['assistant', 'Which logger?'],
+        ['user', 'I selected: 925'],
+      ]);
+      state.activeFlow = 'health_check';
+      state.waitingForUserInput = true;
+
+      const result = await routerNode(state, fakeModel as never);
+
+      // Should maintain the existing flow, not re-route
+      expect(result.activeFlow).toBe('health_check');
+    });
+  });
+
+  describe('parameter extraction accuracy', () => {
+    it('should extract loggerIds from "compare 925, 926 and 927"', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('performance_audit', 0.95, {
+          loggerIds: ['925', '926', '927'],
+        }),
+      ]);
+
+      const state = createStateWithUserMessage('Compare 925, 926 and 927');
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.flowContext?.selectedLoggerIds).toEqual([
+        '925',
+        '926',
+        '927',
+      ]);
+    });
+
+    it('should extract loggerTypePattern from "all inverters"', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('health_check', 0.9, {
+          loggerTypePattern: 'all',
+        }),
+      ]);
+
+      const state = createStateWithUserMessage('Check all inverters');
+      const result = await routerNode(state, fakeModel as never);
+
+      // loggerTypePattern is stored in extractedArgs
+      expect(result.flowContext?.extractedArgs?.loggerTypePattern).toBe('all');
+    });
+
+    it('should extract dateRange from "last 7 days"', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('health_check', 0.9, {
+          loggerId: '925',
+          dateRange: {
+            start: '2025-01-01',
+            end: '2025-01-07',
+          },
+        }),
+      ]);
+
+      const state = createStateWithUserMessage(
+        'Check health of 925 for last 7 days',
+      );
+      const result = await routerNode(state, fakeModel as never);
+
+      // dateRange is stored at flowContext.dateRange level
+      expect(result.flowContext?.dateRange).toBeDefined();
+    });
+
+    it('should handle multiple params: loggerId + date from "925 on Jan 10"', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('free_chat', 0.88, {
+          loggerId: '925',
+          date: '2025-01-10',
+        }),
+      ]);
+
+      const state = createStateWithUserMessage('Check 925 on Jan 10');
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.flowContext?.selectedLoggerId).toBe('925');
+      expect(result.flowContext?.selectedDate).toBe('2025-01-10');
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should handle empty messages array gracefully', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('free_chat', 0.5),
+      ]);
+
+      const state = createTestState({ messages: [] });
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.activeFlow).toBe('free_chat');
+      expect(result.flowContext).toEqual({});
+    });
+
+    it('should handle messages with only whitespace', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('free_chat', 0.5),
+      ]);
+
+      const state = createStateWithUserMessage('   \n\t  ');
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.activeFlow).toBe('free_chat');
+    });
+
+    it('should handle LLM timeout with fallback to free_chat', async () => {
+      const errorModel = createErrorModel('Request timed out');
+
+      const state = createStateWithUserMessage('Check my system');
+      const result = await routerNode(state, errorModel as never);
+
+      expect(result.activeFlow).toBe('free_chat');
+    });
+
+    it('should handle malformed classification response', async () => {
+      const fakeModel = createFakeModel([
+        { content: '{ flow: bad json }' } as never,
+      ]);
+
+      const state = createStateWithUserMessage('Morning briefing');
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.activeFlow).toBe('free_chat');
+    });
+
+    it('should handle classification with unknown flow type', async () => {
+      const fakeModel = createFakeModel([
+        {
+          content: JSON.stringify({
+            flow: 'unknown_flow_type',
+            confidence: 0.95,
+          }),
+        } as never,
+      ]);
+
+      const state = createStateWithUserMessage('Do something random');
+      const result = await routerNode(state, fakeModel as never);
+
+      // Should fall back to free_chat for unknown flows
+      expect(['free_chat', 'unknown_flow_type']).toContain(result.activeFlow);
+    });
+
+    it('should handle very long message gracefully', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('free_chat', 0.7),
+      ]);
+
+      const longMessage = 'Check health '.repeat(100);
+      const state = createStateWithUserMessage(longMessage);
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result).toBeDefined();
+      expect(result.activeFlow).toBeDefined();
+    });
+
+    it('should handle special characters in message', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('health_check', 0.85, { loggerId: '925' }),
+      ]);
+
+      const state = createStateWithUserMessage(
+        'Check health of logger "925" (main inverter)',
+      );
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.activeFlow).toBe('health_check');
+    });
+
+    it('should handle unicode characters', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('free_chat', 0.7),
+      ]);
+
+      const state = createStateWithUserMessage('Check health 你好 🌍');
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('continuation detection', () => {
+    it('should preserve active flow on continuation', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse(
+          'health_check',
+          0.95,
+          { loggerId: '925' },
+          true,
+        ),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Check health'],
+        ['assistant', 'Which logger?'],
+        ['user', '925'],
+      ]);
+      state.activeFlow = 'health_check';
+
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.activeFlow).toBe('health_check');
+    });
+
+    it('should detect flow change in multi-turn conversation', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('financial_report', 0.95),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Check health of 925'],
+        ['assistant', 'Health report: OK'],
+        ['user', 'Now show me the savings'],
+      ]);
+      state.activeFlow = 'health_check';
+
+      const result = await routerNode(state, fakeModel as never);
+
+      // Should switch to new flow
+      expect(result.activeFlow).toBe('financial_report');
+    });
+  });
+});
+
 describe('Integration: Router with sample messages', () => {
   it.each(USER_MESSAGES.morningBriefing)(
     'should classify "%s" as morning_briefing',

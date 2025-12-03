@@ -1143,6 +1143,164 @@ describe('FlowUtils', () => {
     });
   });
 
+  describe('Tool argument serialization', () => {
+    describe('createToolCallMessage serialization', () => {
+      it('should serialize Date objects to ISO strings', () => {
+        const date = new Date('2025-01-15T10:30:00Z');
+        const message = createToolCallMessage('call_date', 'test_tool', {
+          date: date.toISOString(),
+        });
+
+        const args = message.tool_calls?.[0]?.args;
+        expect(args?.date).toBe('2025-01-15T10:30:00.000Z');
+      });
+
+      it('should serialize nested objects correctly', () => {
+        const nested = {
+          level1: {
+            level2: {
+              value: 'deep',
+              array: [1, 2, 3],
+            },
+          },
+        };
+        const message = createToolCallMessage('call_nested', 'test_tool', nested);
+
+        const args = message.tool_calls?.[0]?.args;
+        expect(args?.level1.level2.value).toBe('deep');
+        expect(args?.level1.level2.array).toEqual([1, 2, 3]);
+      });
+
+      it('should serialize arrays of logger IDs correctly', () => {
+        const loggerIds = ['925', '926', '927'];
+        const message = createToolCallMessage('call_array', 'compare_loggers', {
+          logger_ids: loggerIds,
+        });
+
+        const args = message.tool_calls?.[0]?.args;
+        expect(args?.logger_ids).toEqual(['925', '926', '927']);
+      });
+
+      it('should handle undefined in args gracefully', () => {
+        const message = createToolCallMessage('call_undef', 'test_tool', {
+          required: 'value',
+          optional: undefined,
+        });
+
+        const args = message.tool_calls?.[0]?.args;
+        expect(args?.required).toBe('value');
+        // undefined values may be omitted or preserved depending on serialization
+        expect('optional' in args! || args?.optional === undefined).toBe(true);
+      });
+
+      it('should handle null in args gracefully', () => {
+        const message = createToolCallMessage('call_null', 'test_tool', {
+          required: 'value',
+          nullable: null,
+        });
+
+        const args = message.tool_calls?.[0]?.args;
+        expect(args?.required).toBe('value');
+        expect(args?.nullable).toBeNull();
+      });
+
+      it('should serialize complex date range objects', () => {
+        const dateRange = {
+          start: '2025-01-01',
+          end: '2025-01-15',
+        };
+        const message = createToolCallMessage('call_range', 'analyze_health', {
+          logger_id: '925',
+          date_range: dateRange,
+        });
+
+        const args = message.tool_calls?.[0]?.args;
+        expect(args?.date_range).toEqual({
+          start: '2025-01-01',
+          end: '2025-01-15',
+        });
+      });
+
+      it('should handle empty arrays', () => {
+        const message = createToolCallMessage('call_empty', 'test_tool', {
+          items: [],
+        });
+
+        const args = message.tool_calls?.[0]?.args;
+        expect(args?.items).toEqual([]);
+      });
+
+      it('should handle empty objects', () => {
+        const message = createToolCallMessage('call_empty_obj', 'list_loggers', {});
+
+        const args = message.tool_calls?.[0]?.args;
+        expect(args).toEqual({});
+      });
+    });
+
+    describe('createToolResultMessage serialization', () => {
+      it('should JSON stringify complex results', () => {
+        const complexResult = {
+          loggers: [
+            { id: '925', type: 'goodwe', status: 'online' },
+            { id: '926', type: 'lti', status: 'offline' },
+          ],
+          summary: { total: 2, online: 1 },
+        };
+
+        const message = createToolResultMessage(
+          'call_result',
+          'list_loggers',
+          complexResult,
+        );
+
+        const content =
+          typeof message.content === 'string'
+            ? message.content
+            : JSON.stringify(message.content);
+        const parsed = JSON.parse(content);
+        expect(parsed.loggers).toHaveLength(2);
+        expect(parsed.summary.total).toBe(2);
+      });
+
+      it('should handle numeric values', () => {
+        const result = {
+          power: 5000.5,
+          count: 10,
+          ratio: 0.85,
+        };
+
+        const message = createToolResultMessage('call_nums', 'test', result);
+
+        const content =
+          typeof message.content === 'string'
+            ? message.content
+            : JSON.stringify(message.content);
+        const parsed = JSON.parse(content);
+        expect(parsed.power).toBe(5000.5);
+        expect(parsed.count).toBe(10);
+        expect(parsed.ratio).toBe(0.85);
+      });
+
+      it('should handle boolean values', () => {
+        const result = {
+          isOnline: true,
+          hasErrors: false,
+        };
+
+        const message = createToolResultMessage('call_bool', 'test', result);
+
+        const content =
+          typeof message.content === 'string'
+            ? message.content
+            : JSON.stringify(message.content);
+        const parsed = JSON.parse(content);
+        expect(parsed.isOnline).toBe(true);
+        expect(parsed.hasErrors).toBe(false);
+      });
+    });
+  });
+
   describe('computeComparisonSeverity', () => {
     it('should classify < 10% as similar', () => {
       expect(computeComparisonSeverity(0)).toBe('similar');

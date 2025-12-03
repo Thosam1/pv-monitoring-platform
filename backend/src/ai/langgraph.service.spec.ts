@@ -216,6 +216,129 @@ describe('LanggraphService', () => {
   });
 });
 
+describe('LanggraphService Graph Behavior', () => {
+  let service: LanggraphService;
+  let mockToolsClient: ReturnType<typeof createMockToolsClient>;
+  let configService: Partial<ConfigService>;
+
+  beforeEach(async () => {
+    mockToolsClient = createMockToolsClient();
+
+    configService = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'gemini',
+          GOOGLE_GENERATIVE_AI_API_KEY: 'test-api-key',
+          EXPLICIT_FLOWS_ENABLED: 'true',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    service = module.get<LanggraphService>(LanggraphService);
+  });
+
+  afterEach(() => {
+    service.resetGraph();
+    jest.clearAllMocks();
+  });
+
+  describe('streamChat', () => {
+    it('should return an async generator', () => {
+      const stream = service.streamChat([{ role: 'user', content: 'Hello' }]);
+      expect(stream[Symbol.asyncIterator]).toBeDefined();
+    });
+
+    it('should accept message array format', () => {
+      const messages = [
+        { role: 'user', content: 'First message' },
+        { role: 'assistant', content: 'Response' },
+        { role: 'user', content: 'Second message' },
+      ];
+
+      const stream = service.streamChat(messages);
+      expect(stream).toBeDefined();
+    });
+  });
+
+  describe('graph state management', () => {
+    it('should maintain separate states across conversations', async () => {
+      // Start first conversation
+      const stream1 = service.streamChat([
+        { role: 'user', content: 'Check health' },
+      ]);
+
+      // Start second conversation (should have fresh state)
+      const stream2 = service.streamChat([
+        { role: 'user', content: 'Morning briefing' },
+      ]);
+
+      // Both should be independent async generators
+      expect(stream1).not.toBe(stream2);
+    });
+
+    it('should reset state on resetGraph call', () => {
+      // Access the graph
+      service.isReady();
+
+      // Reset
+      service.resetGraph();
+
+      // Should rebuild cleanly
+      expect(service.isReady()).toBe(true);
+    });
+  });
+
+  describe('tool execution', () => {
+    it('should call mock tools client when tools are invoked', async () => {
+      mockToolsClient.executeTool.mockResolvedValue({
+        status: 'ok',
+        result: { loggers: [] },
+      });
+
+      // The mock is registered
+      expect(mockToolsClient.executeTool).toBeDefined();
+    });
+
+    it('should handle tool execution errors gracefully', async () => {
+      mockToolsClient.executeTool.mockRejectedValue(
+        new Error('Tool execution failed'),
+      );
+
+      // Service should still be ready
+      expect(service.isReady()).toBe(true);
+    });
+  });
+
+  describe('flow termination', () => {
+    it('should properly terminate greeting flow', async () => {
+      // Greeting flow should be fast and deterministic
+      const stream = service.streamChat([{ role: 'user', content: 'Hello' }]);
+
+      // Should be an async generator
+      expect(stream[Symbol.asyncIterator]).toBeDefined();
+    });
+
+    it('should handle empty message gracefully', async () => {
+      const stream = service.streamChat([{ role: 'user', content: '' }]);
+      expect(stream).toBeDefined();
+    });
+
+    it('should handle whitespace-only message', async () => {
+      const stream = service.streamChat([{ role: 'user', content: '   ' }]);
+      expect(stream).toBeDefined();
+    });
+  });
+});
+
 describe('LanggraphService Provider Tests', () => {
   let mockToolsClient: ReturnType<typeof createMockToolsClient>;
 

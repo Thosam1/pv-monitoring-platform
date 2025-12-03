@@ -317,3 +317,135 @@ export function getLastAIMessageContent(
   }
   return null;
 }
+
+/**
+ * Create a state that is waiting for user input.
+ *
+ * @param argName - The argument being prompted for
+ * @param flow - The active flow type
+ * @param additionalState - Additional state overrides
+ * @returns ExplicitFlowState waiting for user input
+ */
+export function createStateWithWaitingForInput(
+  argName: string,
+  flow: FlowType,
+  additionalState: Partial<ExplicitFlowState> = {},
+): ExplicitFlowState {
+  return createTestState({
+    activeFlow: flow,
+    flowStep: 0,
+    flowContext: {
+      waitingForUserInput: true,
+      currentPromptArg: argName,
+    },
+    pendingUiActions: [
+      {
+        toolCallId: `pending_${argName}_${Date.now()}`,
+        toolName: 'request_user_selection',
+        args: {
+          prompt: `Select ${argName}`,
+          options: [],
+          selectionType: 'single',
+          inputType: 'dropdown',
+        },
+      },
+    ],
+    ...additionalState,
+  });
+}
+
+/**
+ * Create a state with extracted arguments from the router.
+ *
+ * @param args - Extracted arguments
+ * @param flow - Active flow type
+ * @param additionalState - Additional state overrides
+ * @returns ExplicitFlowState with extracted arguments
+ */
+export function createStateWithExtractedArgs(
+  args: {
+    loggerId?: string;
+    loggerIds?: string[];
+    loggerNamePattern?: string;
+    loggerTypePattern?: 'inverter' | 'meteo' | 'all';
+    date?: string;
+    dateRange?: { start: string; end: string };
+  },
+  flow: FlowType = 'health_check',
+  additionalState: Partial<ExplicitFlowState> = {},
+): ExplicitFlowState {
+  return createTestState({
+    activeFlow: flow,
+    flowStep: 0,
+    flowContext: {
+      extractedArgs: args,
+      extractedLoggerName: args.loggerNamePattern,
+      selectedLoggerId: args.loggerId,
+      selectedLoggerIds: args.loggerIds,
+      selectedDate: args.date,
+      dateRange: args.dateRange,
+    },
+    ...additionalState,
+  });
+}
+
+/**
+ * Create a multi-turn conversation state.
+ *
+ * @param turns - Array of message contents (alternating user/assistant)
+ * @param flow - Optional active flow
+ * @param additionalState - Additional state overrides
+ * @returns ExplicitFlowState with conversation history
+ */
+export function createMultiTurnConversation(
+  turns: string[],
+  flow: FlowType | null = null,
+  additionalState: Partial<ExplicitFlowState> = {},
+): ExplicitFlowState {
+  const history = turns.map(
+    (content, index): ['user' | 'assistant', string] => [
+      index % 2 === 0 ? 'user' : 'assistant',
+      content,
+    ],
+  );
+
+  return createStateWithHistory(history, {
+    activeFlow: flow,
+    ...additionalState,
+  });
+}
+
+/**
+ * Create a state simulating a user selection response.
+ *
+ * @param selectionValue - The value the user selected
+ * @param flow - The active flow
+ * @param argName - The argument that was being selected
+ * @param additionalState - Additional state overrides
+ * @returns ExplicitFlowState with selection response
+ */
+export function createStateWithSelectionResponse(
+  selectionValue: string | string[],
+  flow: FlowType,
+  argName: string,
+  additionalState: Partial<ExplicitFlowState> = {},
+): ExplicitFlowState {
+  const selectionMessage = Array.isArray(selectionValue)
+    ? `I selected: ${selectionValue.join(', ')}`
+    : `I selected: ${selectionValue}`;
+
+  return createTestState({
+    activeFlow: flow,
+    flowStep: 0,
+    flowContext: {
+      waitingForUserInput: true,
+      currentPromptArg: argName,
+    },
+    messages: [
+      new HumanMessage('Check health'),
+      new AIMessage({ content: `Please select a ${argName}` }),
+      new HumanMessage(selectionMessage),
+    ],
+    ...additionalState,
+  });
+}
