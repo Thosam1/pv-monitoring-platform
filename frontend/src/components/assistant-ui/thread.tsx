@@ -109,7 +109,7 @@ function Composer() {
       />
       <ThreadPrimitive.If running>
         <ComposerPrimitive.Cancel asChild>
-          <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0">
+          <Button size="icon" variant="ghost" type="button" className="h-9 w-9 shrink-0">
             <Square className="h-4 w-4" />
             <span className="sr-only">Stop</span>
           </Button>
@@ -119,6 +119,7 @@ function Composer() {
         <ComposerPrimitive.Send asChild>
           <Button
             size="icon"
+            type="submit"
             className="h-9 w-9 shrink-0 transition-opacity disabled:opacity-30"
           >
             <Send className="h-4 w-4" />

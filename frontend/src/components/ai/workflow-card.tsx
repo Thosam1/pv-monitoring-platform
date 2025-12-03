@@ -13,6 +13,7 @@ interface WorkflowCardProps {
 export function WorkflowCard({ icon: Icon, title, description, onClick }: WorkflowCardProps) {
   return (
     <motion.button
+      type="button"
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}

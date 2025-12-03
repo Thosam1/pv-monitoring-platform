@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   LineChart,
   Line,
@@ -68,6 +68,16 @@ function formatPower(watts: number): string {
 }
 
 export function GeneratorPowerChart({ data, isLoading, loggerId, dateLabel }: Readonly<GeneratorPowerChartProps>) {
+  // Delay chart rendering to avoid Recharts dimension warnings
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const timer = requestAnimationFrame(() => {
+      setIsReady(true);
+    });
+    return () => cancelAnimationFrame(timer);
+  }, []);
+
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return []
 
@@ -101,7 +111,7 @@ export function GeneratorPowerChart({ data, isLoading, loggerId, dateLabel }: Re
 
   const hasAnyData = hasPhaseA || hasPhaseB || hasPhaseC || hasTotal
 
-  if (isLoading) {
+  if (isLoading || !isReady) {
     return (
       <div className="h-full flex items-center justify-center bg-white dark:bg-gray-800 rounded-lg shadow">
         <div className="text-gray-500 dark:text-gray-400">Loading...</div>

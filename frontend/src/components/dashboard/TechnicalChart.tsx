@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   LineChart,
   Line,
@@ -151,6 +151,16 @@ function formatTime(timestamp: Date): string {
 }
 
 export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonly<TechnicalChartProps>) {
+  // Delay chart rendering to avoid Recharts dimension warnings
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const timer = requestAnimationFrame(() => {
+      setIsReady(true);
+    });
+    return () => cancelAnimationFrame(timer);
+  }, []);
+
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return []
 
@@ -195,7 +205,7 @@ export function TechnicalChart({ data, isLoading, loggerId, dateLabel }: Readonl
   const hasAnyCurrent = hasCurrentDC || hasCurrentAC
   const hasAnyData = hasAnyVoltage || hasAnyCurrent || hasTempData || hasReactivePower || hasWindSpeed || hasFrequency
 
-  if (isLoading) {
+  if (isLoading || !isReady) {
     return (
       <div className="h-full flex items-center justify-center bg-white dark:bg-gray-800 rounded-lg shadow">
         <div className="text-gray-500 dark:text-gray-400">Loading...</div>

@@ -91,6 +91,11 @@ export function processSSEEvent(state: StreamState, event: SSEEvent): StreamStat
  * that the LLM might have accidentally included in text output.
  */
 function sanitizeTextContent(text: string): string {
+  // Ensure we have a string to work with (prevents React child errors)
+  if (typeof text !== 'string') {
+    return '';
+  }
+
   // Remove patterns like {prompt: "...", options: [...]} that shouldn't be in text
   // These are tool call arguments that the LLM sometimes outputs as text
   let sanitized = text;

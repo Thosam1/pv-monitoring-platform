@@ -62,6 +62,7 @@ function ThreadListItem() {
           <Button
             variant="ghost"
             size="icon"
+            type="button"
             className={cn(
               'absolute right-1 z-10 h-6 w-6 shrink-0 opacity-0 transition-opacity',
               'bg-card hover:bg-muted rounded',
@@ -121,7 +122,7 @@ export function ThreadList({ className }: ThreadListProps) {
       {/* Footer with New Conversation button */}
       <div className="border-t border-border p-2">
         <ThreadListPrimitive.New asChild>
-          <Button variant="outline" className="w-full justify-start gap-2">
+          <Button type="button" variant="outline" className="w-full justify-start gap-2">
             <Plus className="h-4 w-4" />
             New conversation
           </Button>
