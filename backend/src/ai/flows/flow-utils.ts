@@ -1,0 +1,1058 @@
+import { randomUUID } from 'node:crypto';
+import { Logger } from '@nestjs/common';
+import { AIMessage, BaseMessage, ToolMessage } from '@langchain/core/messages';
+import { isHumanMessage } from '../utils/message-utils';
+import {
+  AnySuggestion,
+  EnhancedPriority,
+  EnhancedSuggestion,
+  FlowContext,
+  SuggestionIcon,
+  SuggestionItem,
+  ToolResponse,
+  isRecoverableError,
+  priorityToBadge,
+} from '../types/flow-state';
+import { ToolsHttpClient } from '../tools-http.client';
+
+const logger = new Logger('FlowUtils');
+
+/**
+ * Execute a tool and return the parsed result.
+ *
+ * NOTE: ToolsHttpClient.executeTool() returns the unwrapped result (just T),
+ * but flows expect ToolResponse<T> with { status, result } structure.
+ * This wrapper normalizes the response to the expected format.
+ */
+export async function executeTool<T = unknown>(
+  httpClient: ToolsHttpClient,
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<ToolResponse<T>> {
+  try {
+    const result = await httpClient.executeTool(toolName, args);
+
+    // Check if the result is already a ToolResponse-shaped object (has status field)
+    // This handles cases where the mock or real API returns { status, result, ... }
+    if (
+      result &&
+      typeof result === 'object' &&
+      'status' in result &&
+      typeof (result as { status: unknown }).status === 'string'
+    ) {
+      // Return as-is, it's already a ToolResponse
+      return result as ToolResponse<T>;
+    }
+
+    // Wrap the unwrapped result from HTTP client in ToolResponse format
+    return {
+      status: 'ok',
+      result: result as T,
+    };
+  } catch (error) {
+    logger.error(`Tool ${toolName} failed: ${error}`);
+    return {
+      status: 'error',
+      message: `Tool execution failed: ${error}`,
+    };
+  }
+}
+
+/**
+ * Create a tool call message for the LLM.
+ */
+export function createToolCallMessage(
+  toolCallId: string,
+  toolName: string,
+  args: unknown,
+): AIMessage {
+  return new AIMessage({
+    content: '',
+    tool_calls: [
+      {
+        id: toolCallId,
+        name: toolName,
+        args: args as Record<string, unknown>,
+      },
+    ],
+  });
+}
+
+/**
+ * Create a tool result message.
+ */
+export function createToolResultMessage(
+  toolCallId: string,
+  toolName: string,
+  result: unknown,
+): ToolMessage {
+  return new ToolMessage({
+    content: typeof result === 'string' ? result : JSON.stringify(result),
+    tool_call_id: toolCallId,
+    name: toolName,
+  });
+}
+
+/**
+ * Create render_ui_component arguments with suggestions.
+ * Accepts both legacy SuggestionItem[] and EnhancedSuggestion[] arrays.
+ */
+export function createRenderArgs(
+  component: string,
+  props: Record<string, unknown>,
+  suggestions: AnySuggestion[] = [],
+): Record<string, unknown> {
+  return {
+    component,
+    props,
+    suggestions,
+  };
+}
+
+/**
+ * Create request_user_selection arguments.
+ */
+export function createSelectionArgs(options: {
+  prompt: string;
+  options: Array<{
+    value: string;
+    label: string;
+    group?: string;
+    subtitle?: string;
+  }>;
+  selectionType?: 'single' | 'multiple';
+  inputType?: 'dropdown' | 'date' | 'date-range';
+  minDate?: string;
+  maxDate?: string;
+  flowHint?: {
+    expectedNext: string;
+    skipOption?: { label: string; action: string };
+  };
+}): Record<string, unknown> {
+  return {
+    prompt: options.prompt,
+    options: options.options,
+    selectionType: options.selectionType || 'single',
+    inputType: options.inputType || 'dropdown',
+    minDate: options.minDate,
+    maxDate: options.maxDate,
+    flowHint: options.flowHint,
+  };
+}
+
+/**
+ * Generate a unique tool call ID.
+ */
+export function generateToolCallId(): string {
+  return `tool_${randomUUID()}`;
+}
+
+/**
+ * Check if the flow should trigger recovery based on tool response.
+ */
+export function shouldTriggerRecovery(response: ToolResponse): boolean {
+  return isRecoverableError(response);
+}
+
+/**
+ * Extract available date range from a no_data_in_window response.
+ */
+export function extractAvailableRange(
+  response: ToolResponse,
+): { start: string; end: string } | null {
+  if (response.status === 'no_data_in_window' && response.availableRange) {
+    return response.availableRange;
+  }
+  return null;
+}
+
+/**
+ * Merge new context into existing flow context.
+ */
+export function mergeFlowContext(
+  existing: FlowContext,
+  updates: Partial<FlowContext>,
+): FlowContext {
+  return {
+    ...existing,
+    ...updates,
+    toolResults: {
+      ...existing.toolResults,
+      ...updates.toolResults,
+    },
+  };
+}
+
+/**
+ * Get the latest date string (YYYY-MM-DD) for today.
+ */
+export function getLatestDateString(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+/**
+ * Calculate a date N days ago.
+ */
+export function getDateDaysAgo(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return date.toISOString().split('T')[0];
+}
+
+/**
+ * Format logger options for selection from list_loggers response.
+ * Handles both flat structure (earliestData/latestData) and nested (dataRange).
+ */
+export function formatLoggerOptions(loggersResult: {
+  loggers?: Array<
+    LoggerInfo & { dataRange?: { earliestData: string; latestData: string } }
+  >;
+}): Array<{ value: string; label: string; group: string; subtitle: string }> {
+  const loggers = loggersResult?.loggers || [];
+
+  return loggers.map((l) => {
+    // Support both flat structure and nested dataRange
+    const earliestData = l.earliestData || l.dataRange?.earliestData;
+    const latestData = l.latestData || l.dataRange?.latestData;
+
+    return {
+      value: l.loggerId,
+      label: l.loggerId,
+      group: l.loggerType,
+      subtitle:
+        earliestData && latestData
+          ? `Data: ${earliestData.split('T')[0]} to ${latestData.split('T')[0]}`
+          : 'No data range available',
+    };
+  });
+}
+
+/**
+ * Extract the content of the last user message from the conversation.
+ */
+export function getLastUserMessage(messages: BaseMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (isHumanMessage(msg)) {
+      const content = msg.content;
+      if (typeof content === 'string') {
+        return content;
+      }
+      if (Array.isArray(content)) {
+        return content
+          .map((c) =>
+            typeof c === 'string' ? c : ((c as { text?: string }).text ?? ''),
+          )
+          .filter(Boolean)
+          .join(' ');
+      }
+    }
+  }
+  return '';
+}
+
+/**
+ * Simplified patterns to detect "all devices" intent in user messages.
+ * Split into multiple simpler patterns to reduce regex complexity.
+ */
+const ALL_DEVICES_SIMPLE_PATTERNS = [
+  /\ball\s+(?:devices?|loggers?|inverters?)\b/i,
+  /\b(?:fleet|everything)\b/i,
+  /\bevery\s+(?:device|logger|inverter)\b/i,
+  /\beach\s+(?:device|logger|inverter)\b/i,
+  /\b(?:full|whole)\s+(?:fleet|system)\b/i,
+  /\bthe\s+entire\s+(?:fleet|plant|system)\b/i,
+  /\ball\s+of\s+them\b/i,
+];
+
+/**
+ * Check if text matches "all devices" intent.
+ * @param text - User message text to check
+ * @returns True if text indicates user wants all devices
+ */
+export function matchesAllDevicesIntent(text: string): boolean {
+  return ALL_DEVICES_SIMPLE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/**
+ * Common suggestions for different flow outcomes.
+ */
+export const COMMON_SUGGESTIONS = {
+  afterFleetOverview: (hasIssues: boolean): SuggestionItem[] =>
+    hasIssues
+      ? [
+          {
+            label: 'Diagnose issues',
+            action: 'Run diagnostics on offline devices',
+            priority: 'primary',
+          },
+          {
+            label: 'Check health',
+            action: 'Analyze health of the affected loggers',
+            priority: 'secondary',
+          },
+        ]
+      : [
+          {
+            label: 'Check efficiency',
+            action: 'Calculate performance ratio for the fleet',
+            priority: 'primary',
+          },
+          {
+            label: 'Financial summary',
+            action: 'Show financial savings for the past month',
+            priority: 'secondary',
+          },
+        ],
+
+  afterFinancialReport: (): SuggestionItem[] => [
+    {
+      label: 'Extend forecast',
+      action: 'Forecast production for the next 30 days',
+      priority: 'primary',
+    },
+    {
+      label: 'Compare savings',
+      action: 'Compare financial performance across all loggers',
+      priority: 'secondary',
+    },
+  ],
+
+  afterComparison: (): SuggestionItem[] => [
+    {
+      label: 'Compare energy',
+      action: 'Compare total energy production instead of power',
+      priority: 'primary',
+    },
+    {
+      label: 'Health check',
+      action: 'Check health for the lowest performer',
+      priority: 'secondary',
+    },
+  ],
+
+  afterHealthCheck: (hasAnomalies: boolean): SuggestionItem[] =>
+    hasAnomalies
+      ? [
+          {
+            label: 'Show power curve',
+            action: 'Show power curve for the anomaly dates',
+            priority: 'primary',
+          },
+          {
+            label: 'Diagnose errors',
+            action: 'Check error codes in metadata',
+            priority: 'secondary',
+          },
+        ]
+      : [
+          {
+            label: 'Check efficiency',
+            action: 'Calculate performance ratio',
+            priority: 'primary',
+          },
+          {
+            label: 'Financial impact',
+            action: 'Calculate financial savings',
+            priority: 'secondary',
+          },
+        ],
+};
+
+// ============================================================
+// Context Envelope Types (matching Python models/context.py)
+// ============================================================
+
+/**
+ * Insight from MCP tool context.
+ */
+export interface ContextInsight {
+  type: 'performance' | 'financial' | 'operational' | 'maintenance' | 'weather';
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  description: string;
+  metric?: string;
+  benchmark?: string;
+}
+
+/**
+ * Next step from MCP tool context.
+ */
+export interface ContextNextStep {
+  priority: 'urgent' | 'recommended' | 'suggested' | 'optional';
+  action: string;
+  reason: string;
+  tool_hint?: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * UI suggestion from MCP tool context.
+ */
+export interface ContextUISuggestion {
+  preferred_component: string;
+  display_mode: 'compact' | 'standard' | 'detailed' | 'summary';
+  highlight_metric?: string;
+  color_scheme?: 'success' | 'warning' | 'danger' | 'neutral';
+}
+
+/**
+ * Context envelope from MCP tool response.
+ */
+export interface ContextEnvelope {
+  summary: string;
+  insights: ContextInsight[];
+  next_steps: ContextNextStep[];
+  ui_suggestion?: ContextUISuggestion;
+  alert?: string;
+}
+
+// ============================================================
+// Context-to-Suggestions Conversion
+// ============================================================
+
+/**
+ * Map tool hint to suggestion icon.
+ */
+function mapToolToIcon(toolHint?: string): SuggestionIcon | undefined {
+  if (!toolHint) return undefined;
+
+  const iconMap: Record<string, SuggestionIcon> = {
+    diagnose_error_codes: 'alert',
+    analyze_inverter_health: 'alert',
+    calculate_financial_savings: 'dollar',
+    calculate_performance_ratio: 'chart',
+    compare_loggers: 'chart',
+    forecast_production: 'lightbulb',
+    get_power_curve: 'chart',
+    get_fleet_overview: 'chart',
+  };
+
+  return iconMap[toolHint];
+}
+
+/**
+ * Truncate action text for label display.
+ */
+function truncateLabel(action: string, maxWords = 4): string {
+  const words = action.split(' ');
+  if (words.length <= maxWords) return action;
+  return words.slice(0, maxWords).join(' ') + '...';
+}
+
+/**
+ * Convert MCP context next steps to frontend EnhancedSuggestion array.
+ */
+export function contextToSuggestions(
+  context: ContextEnvelope | undefined,
+): EnhancedSuggestion[] {
+  if (!context?.next_steps?.length) return [];
+
+  return context.next_steps.map((step) => ({
+    label: truncateLabel(step.action),
+    action: step.action,
+    priority: step.priority as EnhancedPriority,
+    reason: step.reason,
+    badge: priorityToBadge(step.priority as EnhancedPriority),
+    icon: mapToolToIcon(step.tool_hint),
+    toolHint: step.tool_hint,
+    params: step.params,
+  }));
+}
+
+/**
+ * Extract context envelope from tool result if present.
+ * Checks multiple possible locations for context to handle structure variations.
+ */
+export function extractContextFromResult(
+  result: ToolResponse,
+): ContextEnvelope | undefined {
+  const inner = result?.result;
+
+  if (!inner || typeof inner !== 'object') {
+    return undefined;
+  }
+
+  // Check multiple possible locations for context
+  const innerRecord = inner as Record<string, unknown>;
+  const context =
+    innerRecord.context ||
+    (innerRecord.data as Record<string, unknown> | undefined)?.context;
+
+  if (context && typeof context === 'object') {
+    return context as ContextEnvelope;
+  }
+
+  return undefined;
+}
+
+/**
+ * Generate dynamic suggestions based on tool name and result.
+ * Fallback when tool doesn't provide context envelope.
+ */
+export function generateDynamicSuggestions(
+  toolName: string,
+  result: ToolResponse,
+): EnhancedSuggestion[] {
+  // First, try to use context from the tool response
+  const context = extractContextFromResult(result);
+
+  // Honor explicit empty next_steps from tool (tool says "no suggestions")
+  if (
+    context &&
+    'next_steps' in context &&
+    Array.isArray(context.next_steps) &&
+    context.next_steps.length === 0
+  ) {
+    return [];
+  }
+
+  if (context?.next_steps?.length) {
+    return contextToSuggestions(context);
+  }
+
+  // Otherwise, generate based on tool-specific logic
+  const suggestions: EnhancedSuggestion[] = [];
+
+  switch (toolName) {
+    case 'get_fleet_overview': {
+      const fleet = result.result as {
+        status?: { percentOnline?: number };
+        devices?: { offline?: number };
+      };
+      const percentOnline = fleet?.status?.percentOnline ?? 100;
+
+      if (percentOnline < 100) {
+        const offlineCount = fleet?.devices?.offline ?? 0;
+        suggestions.push({
+          label: 'Diagnose issues',
+          action: 'Run diagnostics on offline devices',
+          priority: 'urgent',
+          reason: `${offlineCount} device(s) are offline`,
+          badge: '!',
+          icon: 'alert',
+          toolHint: 'diagnose_error_codes',
+        });
+      }
+
+      if (percentOnline >= 90) {
+        suggestions.push({
+          label: 'Check efficiency',
+          action: 'Calculate performance ratio for the fleet',
+          priority: 'suggested',
+          reason: 'System is healthy - optimize performance',
+          badge: '>',
+          icon: 'chart',
+          toolHint: 'calculate_performance_ratio',
+        });
+      }
+      break;
+    }
+
+    case 'analyze_inverter_health': {
+      const health = result.result as { anomalyCount?: number };
+      const anomalyCount = health?.anomalyCount ?? 0;
+
+      if (anomalyCount > 0) {
+        suggestions.push(
+          {
+            label: 'Show affected days',
+            action: 'Show power curve for the anomaly dates',
+            priority: 'recommended',
+            reason: `${anomalyCount} anomalies need investigation`,
+            badge: '*',
+            icon: 'chart',
+            toolHint: 'get_power_curve',
+          },
+          {
+            label: 'Check error codes',
+            action: 'Diagnose error codes in metadata',
+            priority: 'recommended',
+            reason: 'May reveal underlying cause',
+            badge: '*',
+            icon: 'settings',
+            toolHint: 'diagnose_error_codes',
+          },
+        );
+      } else {
+        suggestions.push({
+          label: 'Check efficiency',
+          action: 'Calculate performance ratio',
+          priority: 'suggested',
+          reason: 'No anomalies - verify overall efficiency',
+          badge: '>',
+          icon: 'chart',
+          toolHint: 'calculate_performance_ratio',
+        });
+      }
+      break;
+    }
+
+    case 'calculate_performance_ratio': {
+      const perf = result.result as { performanceRatio?: number };
+      const ratio = perf?.performanceRatio ?? 100;
+
+      if (ratio < 70) {
+        suggestions.push({
+          label: 'Investigate low efficiency',
+          action: 'Analyze inverter health for potential issues',
+          priority: 'urgent',
+          reason: `Efficiency at ${ratio.toFixed(0)}% - well below typical 85%`,
+          badge: '!',
+          icon: 'alert',
+          toolHint: 'analyze_inverter_health',
+        });
+      } else if (ratio < 85) {
+        suggestions.push({
+          label: 'Check for issues',
+          action: 'Analyze inverter health',
+          priority: 'recommended',
+          reason: `Efficiency at ${ratio.toFixed(0)}% could be improved`,
+          badge: '*',
+          icon: 'chart',
+          toolHint: 'analyze_inverter_health',
+        });
+      }
+      break;
+    }
+
+    case 'calculate_financial_savings': {
+      suggestions.push({
+        label: 'Forecast future savings',
+        action: 'Forecast production for the next 30 days',
+        priority: 'suggested',
+        reason: 'See projected savings',
+        badge: '>',
+        icon: 'dollar',
+        toolHint: 'forecast_production',
+      });
+      break;
+    }
+
+    case 'get_power_curve': {
+      suggestions.push(
+        {
+          label: 'Compare inverters',
+          action: 'Compare with other inverters on this date',
+          priority: 'suggested',
+          reason: 'See relative performance',
+          badge: '>',
+          icon: 'chart',
+          toolHint: 'compare_loggers',
+        },
+        {
+          label: 'Check efficiency',
+          action: 'Calculate efficiency for this date',
+          priority: 'suggested',
+          reason: 'Verify output matches irradiance',
+          badge: '>',
+          icon: 'chart',
+          toolHint: 'calculate_performance_ratio',
+        },
+      );
+      break;
+    }
+  }
+
+  return suggestions.slice(0, 3); // Limit to 3 suggestions
+}
+
+/**
+ * Map color scheme from context to chart styling.
+ */
+export function mapColorSchemeToStyle(
+  colorScheme?: ContextUISuggestion['color_scheme'],
+): string {
+  const styleMap: Record<string, string> = {
+    success: '#22C55E',
+    warning: '#F59E0B',
+    danger: '#EF4444',
+    neutral: '#6B7280',
+  };
+  return styleMap[colorScheme || 'neutral'] || styleMap.neutral;
+}
+
+/**
+ * Map UI component hint to frontend component name.
+ */
+export function mapComponentHint(hint?: string): string {
+  const componentMap: Record<string, string> = {
+    chart_line: 'DynamicChart',
+    chart_bar: 'DynamicChart',
+    chart_composed: 'DynamicChart',
+    chart_pie: 'DynamicChart',
+    metric_card: 'MetricCard',
+    metric_grid: 'MetricCardGrid',
+    status_badge: 'StatusBadge',
+    alert_banner: 'AlertBanner',
+    data_table: 'DataTable',
+  };
+  return componentMap[hint || ''] || 'DynamicChart';
+}
+
+/**
+ * Map UI component hint to chart type for DynamicChart.
+ */
+export function mapHintToChartType(
+  hint?: string,
+): 'line' | 'bar' | 'composed' | 'pie' | 'area' {
+  const chartTypeMap: Record<
+    string,
+    'line' | 'bar' | 'composed' | 'pie' | 'area'
+  > = {
+    chart_line: 'line',
+    chart_bar: 'bar',
+    chart_composed: 'composed',
+    chart_pie: 'pie',
+  };
+  return chartTypeMap[hint || ''] || 'composed';
+}
+
+// ============================================================
+// Comparison Analysis Helpers
+// ============================================================
+
+/**
+ * Logger performance summary from comparison results.
+ */
+export interface LoggerPerformance {
+  loggerId: string;
+  average: number;
+  peak: number;
+  total?: number;
+}
+
+/**
+ * Comparison severity classification based on spread percentage.
+ * Thresholds match Python comparison.py (lines 180-194).
+ */
+export type ComparisonSeverity =
+  | 'similar' // < 10% spread - consistent performance
+  | 'moderate_difference' // 10-30% spread - noticeable variation
+  | 'large_difference'; // > 30% spread - significant gap
+
+/**
+ * Compute best performer from comparison summary stats.
+ * Returns the logger with highest average metric value.
+ *
+ * @param summary - Summary stats from compare_loggers result
+ * @returns Logger with highest average, or undefined if empty
+ */
+export function computeBestPerformer(
+  summary: Record<string, { average: number; peak: number; total: number }>,
+): LoggerPerformance | undefined {
+  if (!summary || Object.keys(summary).length === 0) {
+    return undefined;
+  }
+
+  let best: LoggerPerformance | undefined;
+  let bestAvg = -Infinity;
+
+  for (const [loggerId, stats] of Object.entries(summary)) {
+    if (stats.average > bestAvg) {
+      bestAvg = stats.average;
+      best = {
+        loggerId,
+        average: stats.average,
+        peak: stats.peak,
+        total: stats.total,
+      };
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Compute worst performer from comparison summary stats.
+ * Returns the logger with lowest average metric value.
+ *
+ * @param summary - Summary stats from compare_loggers result
+ * @returns Logger with lowest average, or undefined if empty
+ */
+export function computeWorstPerformer(
+  summary: Record<string, { average: number; peak: number; total: number }>,
+): LoggerPerformance | undefined {
+  if (!summary || Object.keys(summary).length === 0) {
+    return undefined;
+  }
+
+  let worst: LoggerPerformance | undefined;
+  let worstAvg = Infinity;
+
+  for (const [loggerId, stats] of Object.entries(summary)) {
+    if (stats.average < worstAvg) {
+      worstAvg = stats.average;
+      worst = {
+        loggerId,
+        average: stats.average,
+        peak: stats.peak,
+        total: stats.total,
+      };
+    }
+  }
+
+  return worst;
+}
+
+/**
+ * Compute spread percentage between best and worst performers.
+ * Uses same formula as Python comparison.py (line 175).
+ *
+ * @param best - Best performing logger
+ * @param worst - Worst performing logger
+ * @returns Percentage difference relative to best performer
+ */
+export function computeSpreadPercent(
+  best: LoggerPerformance | undefined,
+  worst: LoggerPerformance | undefined,
+): number {
+  if (!best || !worst || best.average === 0) {
+    return 0;
+  }
+
+  return ((best.average - worst.average) / best.average) * 100;
+}
+
+/**
+ * Classify comparison severity based on spread percentage.
+ * Thresholds match Python comparison.py summary logic (lines 180-194).
+ *
+ * @param spreadPercent - Percentage difference between best and worst
+ * @returns Severity classification
+ */
+export function computeComparisonSeverity(
+  spreadPercent: number,
+): ComparisonSeverity {
+  if (spreadPercent < 10) {
+    return 'similar';
+  } else if (spreadPercent < 30) {
+    return 'moderate_difference';
+  } else {
+    return 'large_difference';
+  }
+}
+
+// ============================================================
+// Proactive Argument Collection Helpers
+// ============================================================
+
+/**
+ * Logger type categories for pattern matching.
+ */
+export const METEO_LOGGER_TYPES = ['mbmet', 'meteocontrol', 'plexlog'];
+export const INVERTER_LOGGER_TYPES = [
+  'goodwe',
+  'lti',
+  'integra',
+  'meier',
+  'smartdog',
+];
+
+/**
+ * Logger info structure for argument resolution.
+ */
+export interface LoggerInfo {
+  loggerId: string;
+  loggerType: string;
+  // Python returns these at top-level, not nested in dataRange
+  earliestData?: string;
+  latestData?: string;
+  recordCount?: number;
+}
+
+/**
+ * Parse natural language date range references.
+ * Converts phrases like "last 7 days", "last week", "past month" to date range.
+ *
+ * @param input - Natural language date range string
+ * @returns Date range object or null if not recognized
+ */
+export function parseNaturalDateRange(
+  input: string,
+): { start: string; end: string } | null {
+  const today = getLatestDateString();
+  const lowered = input.toLowerCase().trim();
+
+  // "last N days" pattern
+  const lastNDaysMatch = /last\s+(\d+)\s+days?/.exec(lowered);
+  if (lastNDaysMatch) {
+    const days = Number.parseInt(lastNDaysMatch[1], 10);
+    return { start: getDateDaysAgo(days), end: today };
+  }
+
+  // "past N days" pattern
+  const pastNDaysMatch = /past\s+(\d+)\s+days?/.exec(lowered);
+  if (pastNDaysMatch) {
+    const days = Number.parseInt(pastNDaysMatch[1], 10);
+    return { start: getDateDaysAgo(days), end: today };
+  }
+
+  // Common phrases
+  if (lowered.includes('last week') || lowered.includes('past week')) {
+    return { start: getDateDaysAgo(7), end: today };
+  }
+
+  if (lowered.includes('last month') || lowered.includes('past month')) {
+    return { start: getDateDaysAgo(30), end: today };
+  }
+
+  if (lowered.includes('last 2 weeks') || lowered.includes('past 2 weeks')) {
+    return { start: getDateDaysAgo(14), end: today };
+  }
+
+  return null;
+}
+
+/**
+ * Resolve logger IDs from name patterns using available loggers list.
+ * Matches logger name/type patterns to actual logger IDs.
+ *
+ * @param pattern - Logger name pattern (e.g., "GoodWe", "meteo")
+ * @param typePattern - Logger type pattern (e.g., "inverter", "meteo", "all")
+ * @param availableLoggers - List of available loggers
+ * @returns Array of matching logger IDs
+ */
+export function resolveLoggersByPattern(
+  pattern: string | undefined,
+  typePattern: 'inverter' | 'meteo' | 'all' | undefined,
+  availableLoggers: LoggerInfo[],
+): string[] {
+  if (!availableLoggers.length) return [];
+
+  const results: string[] = [];
+
+  for (const logger of availableLoggers) {
+    let matched = false;
+
+    // Match by name pattern (case-insensitive)
+    if (pattern) {
+      const lowerPattern = pattern.toLowerCase();
+      if (
+        logger.loggerType.toLowerCase().includes(lowerPattern) ||
+        logger.loggerId.toLowerCase().includes(lowerPattern)
+      ) {
+        matched = true;
+      }
+    }
+
+    // Match by type pattern
+    const matchesTypePattern =
+      typePattern === 'all' ||
+      (typePattern === 'meteo' &&
+        METEO_LOGGER_TYPES.includes(logger.loggerType)) ||
+      (typePattern === 'inverter' &&
+        INVERTER_LOGGER_TYPES.includes(logger.loggerType));
+
+    if (matchesTypePattern) {
+      matched = true;
+    }
+
+    if (matched) {
+      results.push(logger.loggerId);
+    }
+  }
+
+  return [...new Set(results)];
+}
+
+/**
+ * Check if a logger type is a meteo station.
+ *
+ * @param loggerType - Logger type string
+ * @returns True if the logger is a meteo station
+ */
+export function isMeteoLogger(loggerType: string): boolean {
+  return METEO_LOGGER_TYPES.includes(loggerType.toLowerCase());
+}
+
+/**
+ * Check if a logger type is an inverter.
+ *
+ * @param loggerType - Logger type string
+ * @returns True if the logger is an inverter
+ */
+export function isInverterLogger(loggerType: string): boolean {
+  return INVERTER_LOGGER_TYPES.includes(loggerType.toLowerCase());
+}
+
+/**
+ * Enhanced selection arguments with pre-fill support.
+ */
+export interface EnhancedSelectionConfig {
+  prompt: string;
+  contextMessage?: string;
+  options: Array<{
+    value: string;
+    label: string;
+    group?: string;
+    subtitle?: string;
+  }>;
+  selectionType: 'single' | 'multiple';
+  inputType: 'dropdown' | 'date' | 'date-range';
+  preSelectedValues?: string[];
+  preFilledDateRange?: { start: string; end: string };
+  requireConfirmation?: boolean;
+  minDate?: string;
+  maxDate?: string;
+  /** Minimum number of selections required (for multiple selection) */
+  minCount?: number;
+  /** Maximum number of selections allowed (for multiple selection) */
+  maxCount?: number;
+  flowHint?: {
+    expectedNext: string;
+    skipOption?: { label: string; action: string };
+  };
+}
+
+/**
+ * Build enhanced selection args with pre-fill support.
+ * Extends the basic createSelectionArgs with context message and pre-selection.
+ *
+ * @param config - Enhanced selection configuration
+ * @returns Selection args object for request_user_selection tool
+ */
+export function createEnhancedSelectionArgs(
+  config: EnhancedSelectionConfig,
+): Record<string, unknown> {
+  return {
+    prompt: config.prompt,
+    contextMessage: config.contextMessage,
+    options: config.options,
+    selectionType: config.selectionType,
+    inputType: config.inputType,
+    preSelectedValues: config.preSelectedValues,
+    preFilledDateRange: config.preFilledDateRange,
+    requireConfirmation:
+      config.requireConfirmation ?? !!config.preSelectedValues?.length,
+    minDate: config.minDate,
+    maxDate: config.maxDate,
+    minCount: config.minCount,
+    maxCount: config.maxCount,
+    flowHint: config.flowHint,
+  };
+}
+
+/**
+ * Get the overall data range from a list of loggers.
+ * Returns the earliest start and latest end across all loggers.
+ *
+ * @param loggers - List of loggers with optional data ranges
+ * @returns Overall data range or undefined if no ranges available
+ */
+export function getOverallDataRange(
+  loggers: LoggerInfo[],
+): { start: string; end: string } | undefined {
+  const dates = loggers
+    .filter((l) => l.earliestData && l.latestData)
+    .flatMap((l) => [l.earliestData as string, l.latestData as string]);
+
+  if (dates.length === 0) return undefined;
+
+  // Create sorted copy to avoid mutating original array
+  const sorted = [...dates].sort((a, b) => a.localeCompare(b));
+  return {
+    start: sorted[0],
+    end: sorted.at(-1)!, // Safe: dates.length > 0 checked above
+  };
+}

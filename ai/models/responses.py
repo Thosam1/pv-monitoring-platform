@@ -2,10 +2,16 @@
 
 Type-safe response envelopes for all 9 solar-analyst tools.
 Each tool returns a specific response model that can be serialized with .model_dump().
+
+All response models include an optional `context` field for user-friendly
+summaries, insights, and next-step recommendations.
 """
 
-from pydantic import BaseModel
 from typing import Optional
+
+from pydantic import BaseModel
+
+from models.context import ContextEnvelope
 
 
 # ============================================================
@@ -27,6 +33,38 @@ class LoggerListResponse(BaseModel):
     type: str = "logger_list"
     count: int
     loggers: list[LoggerInfo]
+    context: Optional[ContextEnvelope] = None
+
+
+# ============================================================
+# Shared: Available Data Range (for smart recovery)
+# ============================================================
+class AvailableRange(BaseModel):
+    """Available data range for smart recovery when no data in requested window.
+
+    For NO_DATA status, both start and end will be None.
+    For NO_DATA_IN_WINDOW status, both will contain valid dates.
+    """
+
+    start: Optional[str] = None
+    end: Optional[str] = None
+
+
+# ============================================================
+# Shared: Summary Statistics (for narrative insights)
+# ============================================================
+class SummaryStats(BaseModel):
+    """Lightweight stats for AI narrative generation.
+
+    Enables the LLM to provide consultant-quality insights
+    without computing statistics from raw timeseries data.
+    """
+
+    peakValue: Optional[float] = None  # Maximum value (W)
+    peakTime: Optional[str] = None  # HH:MM format
+    avgValue: Optional[float] = None  # Average over period
+    totalEnergy: Optional[float] = None  # kWh (for power curves)
+    trend: Optional[str] = None  # "rising" | "falling" | "stable"
 
 
 # ============================================================
@@ -46,11 +84,14 @@ class AnomalyReportResponse(BaseModel):
 
     type: str = "anomaly_report"
     loggerId: str
+    status: Optional[str] = None  # "ok", "no_data", "no_data_in_window"
+    availableRange: Optional[AvailableRange] = None  # For smart recovery
     daysAnalyzed: Optional[int] = None
     totalRecords: Optional[int] = None
     anomalyCount: Optional[int] = None
     points: list[AnomalyPoint]
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -70,9 +111,13 @@ class PowerCurveResponse(BaseModel):
     type: str = "timeseries"
     loggerId: str
     date: str
+    status: Optional[str] = None  # "ok", "no_data", "no_data_in_window"
+    availableRange: Optional[AvailableRange] = None  # For smart recovery
     recordCount: Optional[int] = None
     data: list[PowerCurvePoint]
+    summaryStats: Optional[SummaryStats] = None  # For narrative insights
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -88,9 +133,12 @@ class ComparisonResponse(BaseModel):
     metric: str
     loggerIds: list[str]
     date: Optional[str] = None
+    status: Optional[str] = None  # "ok", "no_data", "no_data_in_window"
+    availableRange: Optional[AvailableRange] = None  # For smart recovery
     recordCount: Optional[int] = None
     data: list[dict]
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -117,6 +165,7 @@ class FinancialReportResponse(BaseModel):
     treesEquivalent: Optional[float] = None
     summary: Optional[str] = None
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -140,9 +189,11 @@ class PerformanceReportResponse(BaseModel):
     inferredCapacityKw: Optional[float] = None
     performanceRatio: Optional[float] = None
     status: Optional[str] = None
+    availableRange: Optional[AvailableRange] = None  # For smart recovery
     metrics: Optional[PerformanceMetrics] = None
     interpretation: Optional[str] = None
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -178,6 +229,7 @@ class ProductionForecastResponse(BaseModel):
     forecasts: Optional[list[ForecastDay]] = None
     summary: Optional[str] = None
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
@@ -207,11 +259,25 @@ class DiagnosticsReportResponse(BaseModel):
     issues: Optional[list[DiagnosticIssue]] = None
     summary: Optional[str] = None
     message: Optional[str] = None
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================
 # TOOL 9: get_fleet_overview - Fleet Status
 # ============================================================
+class DateMismatchInfo(BaseModel):
+    """Information about date mismatch between requested and actual data date.
+
+    Used when the anchor date (latest data in DB) differs from the current date,
+    to inform users that they're viewing historical data.
+    """
+
+    requestedDate: str  # Today's date (what user implicitly asked for)
+    actualDataDate: str  # The anchor date (when data is actually from)
+    daysDifference: int  # How many days old the data is
+    isHistorical: bool  # True if data is not from today
+
+
 class FleetStatus(BaseModel):
     """Fleet status summary."""
 
@@ -237,6 +303,8 @@ class FleetOverviewResponse(BaseModel):
     status: FleetStatus
     production: FleetProduction
     summary: str
+    dateMismatch: Optional[DateMismatchInfo] = None  # For historical data notification
+    context: Optional[ContextEnvelope] = None
 
 
 # ============================================================

@@ -197,8 +197,8 @@ export function KPIGrid({ data, isLoading, loggerType }: Readonly<KPIGridProps>)
   if (isLoading) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
-          <Card key={i}>
+        {[1, 2, 3, 4].map((skeletonId) => (
+          <Card key={`skeleton-${skeletonId}`}>
             <CardHeader className="pb-2">
               <div className="h-4 bg-muted rounded w-20 animate-pulse" />
             </CardHeader>

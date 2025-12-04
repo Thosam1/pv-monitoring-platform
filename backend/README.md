@@ -1,98 +1,208 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Backend - NestJS API Server
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS 11 backend for data ingestion, measurements API, and AI chat with LangGraph orchestration.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+![Data Flow](../diagrams/svg/data-flow.svg)
 
-## Description
+## Key Architectural Decisions
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+### 1. Parser Strategy Pattern (Specificity-First)
 
-## Project setup
+8 parsers registered in specificity order - most specific formats first, GoodWe fallback last:
 
-```bash
-$ npm install
+```
+Plexlog → LTI → Integra → MeteoControl → MBMET → Meier → SmartDog → GoodWe
 ```
 
-## Compile and run the project
+Each parser implements `IParser` with `canHandle(filename, snippet)` for auto-detection.
 
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+```
+src/ingestion/interfaces/parser.interface.ts  # Contract
+src/ingestion/strategies/                      # 8 implementations
 ```
 
-## Run tests
+### 2. AsyncGenerator for Memory-Efficient Streaming
 
-```bash
-# unit tests
-$ npm run test
+Parsers yield records via `AsyncGenerator<UnifiedMeasurementDto>` - files of any size processed without loading into memory:
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```typescript
+async *parse(buffer: Buffer): AsyncGenerator<UnifiedMeasurementDto>
 ```
 
-## Deployment
+Supports CSV, TXT (sectioned), XML, and SQLite formats.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### 3. Batch Insertion (1000 Records)
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+`IngestionService` batches records in groups of 1000 for optimal database performance. Upsert on composite key (loggerId + timestamp) ensures idempotent ingestion.
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+### 4. Hybrid Database Schema
+
+Golden metrics as columns for fast queries + JSONB for flexibility:
+
+```typescript
+- activePowerWatts: float   // 10-100x faster than JSONB queries
+- energyDailyKwh: float     // Billing calculations
+- irradiance: float         // PR calculations
+- metadata: jsonb           // All other sensors (GIN indexed)
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 5. LangGraph Explicit Flows + Free Chat Fallback
 
-## Resources
+Deterministic workflows for common queries, LLM agent loop for exploratory questions:
 
-Check out a few resources that may come in handy when working with NestJS:
+![LangGraph Main Graph](../diagrams/svg/langgraph-main-graph.svg)
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```
+src/ai/nodes/router.node.ts   # Intent classification
+src/ai/flows/                  # 5 explicit workflows
+```
 
-## Support
+### 6. Stateless Tool Execution via HTTP
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+Tools executed via HTTP POST to Python FastMCP (not SSE session). Each call independent - retry-friendly, no session state to manage.
 
-## Stay in touch
+```
+src/ai/tools-http.client.ts   # HTTP POST client
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## Modules
 
-## License
+```
+src/
+├── ingestion/        # Data ingestion with 8 parser strategies
+├── measurements/     # Data query API (smart date resolution)
+├── ai/               # LangGraph orchestration
+│   ├── ai.controller.ts      # SSE streaming endpoint
+│   ├── langgraph.service.ts  # StateGraph + provider initialization
+│   ├── tools-http.client.ts  # HTTP client for Python tools
+│   ├── nodes/                # Router node
+│   ├── flows/                # morning-briefing, financial-report, etc.
+│   ├── subgraphs/            # Recovery subgraph
+│   ├── narrative/            # Template-based text generation
+│   └── response/             # UIResponseBuilder with Zod validation
+└── database/         # TypeORM entities
+```
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## Parser Strategies
+
+![Parser Strategy](../diagrams/svg/parser-strategy.svg)
+
+| Parser | Detection | Format | Golden Metrics |
+|--------|-----------|--------|----------------|
+| Plexlog | SQLite magic bytes | .s3db | acproduction → Power |
+| LTI | `[header]/[data]` markers | Text | P_AC → Power |
+| Integra | `.xml` + root tag | XML | P_AC → Power |
+| MeteoControl | `[info]` + `Datum=` | INI-style | Pac → Power |
+| MBMET | `Zeitstempel` header | CSV (German) | Einstrahlung → Irradiance |
+| Meier | `serial;` prefix | CSV | Feed-In_Power → Power |
+| SmartDog | `B{}_A{}_S{}` filename | CSV | pac → Power |
+| GoodWe | Fallback | CSV (EAV) | Power, Energy |
+
+## API Endpoints
+
+![Request Sequence](../diagrams/svg/request-sequence.svg)
+
+### Ingestion
+```
+POST /ingest/:loggerType    # multipart/form-data (field: "files")
+```
+
+### Measurements
+```
+GET /measurements                      # List loggers
+GET /measurements/:loggerId            # Get data (?start=&end=)
+GET /measurements/:loggerId/date-range # Date bounds
+```
+
+### AI Chat
+```
+POST /ai/chat    # SSE streaming (body: { messages, threadId })
+GET /ai/status   # Service readiness
+```
+
+## AI Architecture
+
+> **Full documentation**: [src/ai/README.md](src/ai/README.md)
+
+| Flow | Triggers | Primary Tool |
+|------|----------|--------------|
+| `morning_briefing` | "Fleet overview", "How is the site?" | get_fleet_overview |
+| `financial_report` | "How much saved?", "ROI" | calculate_financial_savings |
+| `performance_audit` | "Compare inverters" | compare_loggers |
+| `health_check` | "Any problems?" | analyze_inverter_health |
+| `free_chat` | Fallback | LLM agent loop |
+
+**Providers**: Gemini (default), Anthropic, OpenAI, Ollama. Set `AI_PROVIDER` env var.
+
+## Database Schema
+
+![Database Schema](../diagrams/svg/database-schema.svg)
+
+```typescript
+@Entity('measurements')
+- timestamp: Date (PK)       // UTC
+- loggerId: string (PK)      // Serial number
+- loggerType: varchar(20)    // Parser identifier
+- activePowerWatts: float    // Golden metric
+- energyDailyKwh: float      // Golden metric
+- irradiance: float          // Golden metric
+- metadata: jsonb            // Flexible storage
+- createdAt: timestamptz     // Audit
+```
+
+Composite PK + BRIN index on timestamp for time-series performance.
+
+## Development
+
+```bash
+npm install
+npm run start:dev     # Hot-reload (port 3000)
+npm run start:prod    # Production
+```
+
+## Testing
+
+```bash
+npm test              # Unit tests
+npm run test:cov      # Coverage
+npm run test:e2e      # E2E tests
+npm run test:ai       # AI module tests
+```
+
+## Environment
+
+```env
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=admin
+DB_PASSWORD=admin
+DB_DATABASE=pv_db
+
+# AI
+AI_PROVIDER=gemini
+MCP_SERVER_URL=http://localhost:4000
+```
+
+## Diagrams
+
+| Diagram | Description |
+|---------|-------------|
+| [Data Flow](../diagrams/svg/data-flow.svg) | System data flow |
+| [Parser Strategy](../diagrams/svg/parser-strategy.svg) | Strategy pattern |
+| [Request Sequence](../diagrams/svg/request-sequence.svg) | API sequence |
+| [Database Schema](../diagrams/svg/database-schema.svg) | Entity relationships |
+| [LangGraph Main](../diagrams/svg/langgraph-main-graph.svg) | StateGraph structure |
+| [Morning Briefing](../diagrams/svg/flow-morning-briefing.svg) | Fleet overview flow |
+| [Financial Report](../diagrams/svg/flow-financial-report.svg) | Savings flow |
+| [Health Check](../diagrams/svg/flow-health-check.svg) | Anomaly detection |
+| [Performance Audit](../diagrams/svg/flow-performance-audit.svg) | Comparison flow |
+| [Recovery Subgraph](../diagrams/svg/recovery-subgraph.svg) | Error handling |
+| [Agent Behavior](../diagrams/svg/agent-behavior.svg) | Router classification |
+
+## Related Documentation
+
+- [src/ai/README.md](src/ai/README.md) - LangGraph orchestration details
+- [../ai/README.md](../ai/README.md) - Python tools API
+- [AI_UX_FLOWS.md](../AI_UX_FLOWS.md) - Complete AI architecture specs
+- [CLAUDE.md](../CLAUDE.md) - Coding standards

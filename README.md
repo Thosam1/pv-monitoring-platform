@@ -1,176 +1,198 @@
 # PV Monitoring Platform
 
-High-Throughput Solar Data Ingestion Platform - MVP
+High-throughput solar data ingestion and AI-powered analytics platform for photovoltaic inverters and meteo stations.
 
-## Architecture Overview
+## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     PV Monitoring Platform                      │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────┐        ┌──────────────┐        ┌──────────┐  │
-│  │   Frontend   │  HTTP  │   Backend    │  SQL   │ Postgres │  │
-│  │  (React +    │◄──────►│  (NestJS +   │◄──────►│  (Docker)│  │
-│  │  Tailwind)   │        │  TypeORM)    │        │          │  │
-│  │  Port: 5173  │        │  Port: 3000  │        │Port: 5432│  │
-│  └──────────────┘        └──────────────┘        └──────────┘  │
-│                                                                 │
-│                          ┌──────────────┐                       │
-│                          │   Adminer    │                       │
-│                          │  Port: 8080  │                       │
-│                          └──────────────┘                       │
-└─────────────────────────────────────────────────────────────────┘
-```
+<img src="./diagrams/svg/architecture-overview.svg" alt="Architecture Overview" height="400">
+
+See [diagrams/markdown/architecture-overview.md](./diagrams/markdown/architecture-overview.md) for the Mermaid source.
 
 ## Tech Stack
 
-| Layer      | Technology                          |
-|------------|-------------------------------------|
-| Frontend   | Vite + React + TypeScript           |
-| Styling    | Tailwind CSS                        |
-| Charts     | Recharts                            |
-| HTTP       | Axios                               |
-| Backend    | NestJS                              |
-| ORM        | TypeORM                             |
-| Database   | PostgreSQL 16                       |
-| Containers | Docker Compose                      |
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 19, Vite 7, TypeScript, shadcn/ui, Tailwind CSS 4, Recharts, @assistant-ui/react |
+| Backend | NestJS 11, TypeORM, PostgreSQL 16, LangGraph |
+| AI Tools | Python 3.12, FastMCP, SQLAlchemy |
+| LLM Providers | Gemini, Claude, GPT-4, Ollama (configurable) |
+| Containers | Docker Compose |
 
-## Project Structure
+## Features
 
-```
-pv-monitoring-platform/
-├── backend/                 # NestJS application
-│   ├── src/
-│   │   ├── app.module.ts    # Main module with TypeORM config
-│   │   ├── app.controller.ts
-│   │   ├── app.service.ts
-│   │   └── main.ts
-│   ├── .env                 # Environment variables (DB_HOST=localhost)
-│   └── package.json
-├── frontend/                # Vite + React application
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── main.tsx
-│   │   └── index.css        # Tailwind imports
-│   ├── vite.config.ts       # Vite + Tailwind config
-│   └── package.json
-├── docker-compose.yml       # PostgreSQL + Adminer services
-└── README.md
-```
+- **8 Logger Parsers**: GoodWe, LTI ReEnergy, Integra Sun, MBMET, Meier-NT, MeteoControl, Plexlog, SmartDog
+- **AI-Powered Analytics**: Chat interface with 10 specialized MCP tools
+- **Real-time Streaming**: SSE-based responses for AI chat
+- **Adaptive Dashboard**: Different KPIs for inverters vs. meteo stations
+- **Bulk Upload**: Drag-n-drop support for CSV, XML, and SQLite files
+
+## AI Agent Flows
+
+The AI assistant uses LangGraph for deterministic workflow management with 5 explicit flows:
+
+| Flow | Trigger Phrases | Description |
+|------|-----------------|-------------|
+| **Morning Briefing** | "Morning briefing", "How is the site?" | Fleet overview with critical alerts |
+| **Financial Report** | "How much did I save?", "ROI" | Savings calculation + production forecast |
+| **Performance Audit** | "Compare inverters", "Efficiency check" | Multi-logger comparison with best/worst analysis |
+| **Health Check** | "Check health", "Any problems?" | Anomaly detection (single or all devices) |
+| **Free Chat** | General queries | Classic LLM agent with tool execution |
+
+See [AI_UX_FLOWS.md](./AI_UX_FLOWS.md) for the complete AI architecture documentation.
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20.x
 - Docker & Docker Compose
-- npm
+- (Optional) Python 3.12 + uv for local AI development
 
-### 1. Start Database Services
+### 1. Start Services
 
 ```bash
 docker-compose up -d
 ```
 
-This starts:
-- PostgreSQL on `localhost:5432`
-- Adminer (DB UI) on `localhost:8080`
+Services started:
+- PostgreSQL: `localhost:5432`
+- Adminer: `localhost:8080`
+- AI Service: `localhost:4000`
 
-### 2. Start Backend
-
-```bash
-cd backend
-npm run start:dev
-```
-
-Backend runs on `http://localhost:3000`
-
-### 3. Start Frontend
+### 2. Install & Run
 
 ```bash
-cd frontend
-npm run dev
+# Backend
+cd backend && npm install && npm run start:dev
+
+# Frontend (new terminal)
+cd frontend && npm install && npm run dev
+
+# AI Service (for local development - optional, runs in Docker by default)
+cd ai && uv sync && uv run python server.py
 ```
 
-Frontend runs on `http://localhost:5173`
+### 3. Access
 
-## Database Access
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:3000
+- **Database UI**: http://localhost:8080 (admin/admin)
 
-### Via Adminer (Web UI)
+## Project Structure
 
-1. Open `http://localhost:8080`
-2. Connection details:
-   - System: `PostgreSQL`
-   - Server: `postgres` (use `postgres` as the server name in Adminer since it's in Docker network)
-   - Username: `admin`
-   - Password: `admin`
-   - Database: `pv_db`
+![Folder Structure](./diagrams/svg/folder-structure.svg)
 
-### Via psql (CLI)
-
-```bash
-docker exec -it pv_db psql -U admin -d pv_db
+```
+pv-monitoring-platform/
+├── backend/          # NestJS API server
+├── frontend/         # React dashboard
+├── ai/               # Python FastMCP service
+├── diagrams/         # Architecture diagrams
+└── docker-compose.yml
 ```
 
-## Environment Variables
-
-### Backend (.env)
-
-```env
-DB_HOST=localhost      # Use 'localhost' for local dev, 'postgres' for Docker network
-DB_PORT=5432
-DB_USERNAME=admin
-DB_PASSWORD=admin
-DB_DATABASE=pv_db
-PORT=3000
-```
-
-## Available Scripts
-
-### Backend
-
-```bash
-npm run start:dev     # Development with hot-reload
-npm run start:prod    # Production build
-npm run test          # Run tests
-```
-
-### Frontend
-
-```bash
-npm run dev           # Development server
-npm run build         # Production build
-npm run preview       # Preview production build
-```
+See component READMEs for details:
+- [Backend README](backend/README.md)
+- [Frontend README](frontend/README.md)
+- [AI Service README](ai/README.md)
 
 ## API Endpoints
 
-| Method | Endpoint | Description         |
-|--------|----------|---------------------|
-| GET    | /        | Health check        |
-
-*More endpoints will be added as features are implemented.*
-
-## Development Workflow
-
-1. Make sure Docker services are running
-2. Start backend in one terminal
-3. Start frontend in another terminal
-4. Access the app at `http://localhost:5173`
-
-## Troubleshooting
-
-### Database Connection Failed
-
-1. Ensure Docker is running: `docker-compose ps`
-2. Check PostgreSQL logs: `docker-compose logs postgres`
-3. Verify `.env` has `DB_HOST=localhost`
-
-### Port Already in Use
-
-```bash
-# Find and kill process on port
-lsof -i :3000  # or :5173, :5432
-kill -9 <PID>
+### Data Ingestion
 ```
+POST /ingest/:loggerType    # Upload files (multipart/form-data)
+```
+
+### Data Retrieval
+```
+GET /measurements           # List all loggers
+GET /measurements/:id       # Get logger data
+GET /measurements/:id/date-range
+```
+
+### AI Chat
+```
+POST /ai/chat              # Chat with AI (SSE stream)
+GET /ai/status             # Service health check
+```
+
+## Diagrams
+
+All diagrams are available as pre-rendered SVGs in [`diagrams/svg/`](./diagrams/svg/) and as Mermaid source in [`diagrams/markdown/`](./diagrams/markdown/).
+
+### Core Architecture
+
+| Diagram | SVG | Mermaid Source |
+|---------|-----|----------------|
+| Architecture Overview | [SVG](./diagrams/svg/architecture-overview.svg) | [Mermaid](./diagrams/markdown/architecture-overview.md) |
+| Request Sequence | [SVG](./diagrams/svg/request-sequence.svg) | [Mermaid](./diagrams/markdown/request-sequence.md) |
+| Data Flow | [SVG](./diagrams/svg/data-flow.svg) | [Mermaid](./diagrams/markdown/data-flow.md) |
+| Docker Deployment | [SVG](./diagrams/svg/docker-deployment.svg) | [Mermaid](./diagrams/markdown/docker-deployment.md) |
+| Folder Structure | [SVG](./diagrams/svg/folder-structure.svg) | [Mermaid](./diagrams/markdown/folder-structure.md) |
+| Parser Strategy | [SVG](./diagrams/svg/parser-strategy.svg) | [Mermaid](./diagrams/markdown/parser-strategy.md) |
+| Database Schema | [SVG](./diagrams/svg/database-schema.svg) | [Mermaid](./diagrams/markdown/database-schema.md) |
+| Frontend Components | [SVG](./diagrams/svg/frontend-components.svg) | [Mermaid](./diagrams/markdown/frontend-components.md) |
+
+### AI Agent & LangGraph
+
+| Diagram | Description | Mermaid Source |
+|---------|-------------|----------------|
+| LangGraph Main Graph | Complete StateGraph structure | [Mermaid](./diagrams/markdown/langgraph-main-graph.md) |
+| AI Chat Flow | SSE streaming sequence | [Mermaid](./diagrams/markdown/ai-chat-flow.md) |
+| AI Tools | MCP tools hierarchy | [Mermaid](./diagrams/markdown/ai-tools.md) |
+| Agent Behavior | Router classification logic | [Mermaid](./diagrams/markdown/agent-behavior.md) |
+| **Router Logic** | Selection handling & ToolMessage injection | [Mermaid](./diagrams/markdown/router-logic.md) |
+| **Tool Execution** | Virtual vs real tool handling | [Mermaid](./diagrams/markdown/tool-execution.md) |
+| User Flows | User journey through flows | [Mermaid](./diagrams/markdown/user-flows.md) |
+| SSE Streaming | Event streaming details | [Mermaid](./diagrams/markdown/sse-streaming.md) |
+| Frontend Tool Rendering | Tool UI component hierarchy | [Mermaid](./diagrams/markdown/frontend-tool-rendering.md) |
+
+### Explicit Flow Diagrams
+
+| Flow | Description | Mermaid Source |
+|------|-------------|----------------|
+| Morning Briefing | Fleet overview with alerts | [Mermaid](./diagrams/markdown/flow-morning-briefing.md) |
+| Financial Report | Savings + forecast | [Mermaid](./diagrams/markdown/flow-financial-report.md) |
+| Health Check | Anomaly detection | [Mermaid](./diagrams/markdown/flow-health-check.md) |
+| Performance Audit | Multi-logger comparison | [Mermaid](./diagrams/markdown/flow-performance-audit.md) |
+| Recovery Subgraph | Error handling | [Mermaid](./diagrams/markdown/recovery-subgraph.md) |
+
+## Environment Variables
+
+### Backend
+```env
+AI_PROVIDER=gemini                    # gemini | anthropic | openai | ollama
+MCP_SERVER_URL=http://localhost:4000  # Python tools API
+
+# Provider API Keys (set one based on AI_PROVIDER)
+GOOGLE_GENERATIVE_AI_API_KEY=         # For Gemini
+ANTHROPIC_API_KEY=                    # For Claude
+OPENAI_API_KEY=                       # For GPT-4
+
+# Ollama (local LLM - no API key required)
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=gpt-oss:20b
+```
+
+### AI Service
+```env
+DATABASE_URL=postgresql://admin:admin@localhost:5432/pv_db
+```
+
+## Development
+
+See [CLAUDE.md](./CLAUDE.md) for detailed development guidelines, coding standards, and architecture patterns.
+
+### Testing
+```bash
+# Backend
+cd backend && npm test          # Unit tests
+cd backend && npm run test:e2e  # E2E tests
+
+# Frontend
+cd frontend && npm run build    # Type check + build
+```
+
+## License
+
+MIT

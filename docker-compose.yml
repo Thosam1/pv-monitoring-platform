@@ -33,6 +33,7 @@ services:
       - "4000:4000"
     environment:
       SOLAR_DATABASE_URL: postgresql://admin:admin@postgres:5432/pv_db
+      SOLAR_MCP_TRANSPORT: http
     depends_on:
       postgres:
         condition: service_healthy

@@ -40,6 +40,19 @@ export function formatDateLabel(date: Date): string {
   })
 }
 
+/**
+ * Format a date in UTC timezone for display (e.g., "Nov 5, 2025")
+ * Use this when displaying dates from the backend to avoid timezone shifts
+ */
+export function formatDateUTC(date: Date): string {
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC'
+  })
+}
+
 // Status type aliases
 export type BackendStatus = 'loading' | 'connected' | 'error'
 export type DataStatus = 'loading' | 'loaded' | 'empty' | 'error'

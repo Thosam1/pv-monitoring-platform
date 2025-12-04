@@ -8,6 +8,7 @@ import {
   type ChartStyle,
   type MeasurementDataPoint,
 } from './components/dashboard'
+import { AIChatView } from './views/ai-chat-view'
 import {
   calculateDateBounds,
   formatDateForInput,
@@ -15,7 +16,9 @@ import {
   type BackendStatus,
   type DataStatus,
 } from './lib/date-utils'
+import { cn } from './lib/utils'
 import { type LoggerType } from './types/logger'
+import { type ViewMode } from './types/view-mode'
 
 // API base URL
 const API_BASE = 'http://localhost:3000'
@@ -46,9 +49,6 @@ interface LoggerInfo {
   id: string
   type: LoggerType
 }
-
-// View mode type
-type ViewMode = 'dashboard' | 'upload' | 'analytics' | 'reports'
 
 function App() {
   // View mode state
@@ -310,16 +310,8 @@ function App() {
           </div>
         )
 
-      case 'analytics':
-        return (
-          <div className="flex flex-1 flex-col gap-6 p-4">
-            <div className="flex items-center justify-center h-64 bg-card rounded-lg border">
-              <p className="text-muted-foreground">
-                Analytics view coming soon...
-              </p>
-            </div>
-          </div>
-        )
+      case 'ai-chat':
+        return <AIChatView className="h-full" />
 
       case 'reports':
         return (
@@ -373,7 +365,10 @@ function App() {
           onRefresh={handleRefresh}
           isLoading={dataStatus === 'loading'}
         />
-        <main className="flex-1 overflow-auto">{renderContent()}</main>
+        <main className={cn(
+          "flex-1 flex flex-col",
+          currentView === 'ai-chat' ? 'h-full overflow-hidden' : 'overflow-auto'
+        )}>{renderContent()}</main>
       </SidebarInset>
     </SidebarProvider>
   )

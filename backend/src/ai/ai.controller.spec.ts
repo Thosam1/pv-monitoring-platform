@@ -1,15 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { AiController } from './ai.controller';
-import { AiService } from './ai.service';
+import { LanggraphService } from './langgraph.service';
 import { ChatRequestDto } from './dto/chat-request.dto';
 
 describe('AiController', () => {
   let controller: AiController;
-  let mockAiService: Partial<AiService>;
+  let mockLanggraphService: Partial<LanggraphService>;
 
   beforeEach(async () => {
-    mockAiService = {
+    mockLanggraphService = {
       isReady: jest.fn().mockReturnValue(true),
       getStatus: jest.fn().mockReturnValue({
         provider: 'gemini',
@@ -21,7 +21,9 @@ describe('AiController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AiController],
-      providers: [{ provide: AiService, useValue: mockAiService }],
+      providers: [
+        { provide: LanggraphService, useValue: mockLanggraphService },
+      ],
     }).compile();
 
     controller = module.get<AiController>(AiController);
@@ -45,7 +47,7 @@ describe('AiController', () => {
 
   describe('chat', () => {
     it('should throw SERVICE_UNAVAILABLE when AI service is not ready', async () => {
-      mockAiService.isReady = jest.fn().mockReturnValue(false);
+      mockLanggraphService.isReady = jest.fn().mockReturnValue(false);
 
       const body: ChatRequestDto = {
         messages: [{ role: 'user', content: 'Hello' }],
@@ -73,30 +75,16 @@ describe('AiController', () => {
         messages: [{ role: 'user', content: 'Hello' }],
       };
 
-      // Mock streaming response - mimics Web Streams API Response object
-      const mockReadableStream = {
-        getReader: jest.fn().mockReturnValue({
-          read: jest
-            .fn()
-            .mockResolvedValueOnce({
-              done: false,
-              value: new TextEncoder().encode('chunk1'),
-            })
-            .mockResolvedValueOnce({ done: true }),
-        }),
-      };
-
-      const mockStreamResponse = {
-        body: mockReadableStream,
-      };
+      // Mock generator that yields events
+      function* mockGenerator() {
+        yield { type: 'text-delta', delta: 'Hello' };
+      }
 
       const mockResult = {
-        toUIMessageStreamResponse: jest
-          .fn()
-          .mockReturnValue(mockStreamResponse),
+        [Symbol.asyncIterator]: () => mockGenerator(),
       };
 
-      mockAiService.chat = jest.fn().mockResolvedValue(mockResult);
+      mockLanggraphService.chat = jest.fn().mockReturnValue(mockResult);
 
       const mockResponse = {
         setHeader: jest.fn(),
@@ -126,23 +114,14 @@ describe('AiController', () => {
         messages: [{ role: 'user', content: 'Hello' }],
       };
 
-      const mockReadableStream = {
-        getReader: jest.fn().mockReturnValue({
-          read: jest.fn().mockResolvedValueOnce({ done: true }),
-        }),
-      };
-
-      const mockStreamResponse = {
-        body: mockReadableStream,
-      };
-
+      // Empty iterable that yields nothing
       const mockResult = {
-        toUIMessageStreamResponse: jest
-          .fn()
-          .mockReturnValue(mockStreamResponse),
+        [Symbol.asyncIterator]: function* () {
+          // No yields - empty stream
+        },
       };
 
-      mockAiService.chat = jest.fn().mockResolvedValue(mockResult);
+      mockLanggraphService.chat = jest.fn().mockReturnValue(mockResult);
 
       const mockResponse = {
         setHeader: jest.fn(),
@@ -159,43 +138,23 @@ describe('AiController', () => {
       );
     });
 
-    it('should throw error when stream body is missing', async () => {
-      const body: ChatRequestDto = {
-        messages: [{ role: 'user', content: 'Hello' }],
-      };
-
-      const mockStreamResponse = {
-        body: null, // No body
-      };
-
-      const mockResult = {
-        toUIMessageStreamResponse: jest
-          .fn()
-          .mockReturnValue(mockStreamResponse),
-      };
-
-      mockAiService.chat = jest.fn().mockResolvedValue(mockResult);
-
-      const mockResponse = {
-        setHeader: jest.fn(),
-        write: jest.fn(),
-        end: jest.fn(),
-        headersSent: false,
-      };
-
-      await expect(
-        controller.chat(body, mockResponse as never),
-      ).rejects.toThrow('No stream body in response');
-    });
-
     it('should handle chat service error before headers sent', async () => {
       const body: ChatRequestDto = {
         messages: [{ role: 'user', content: 'Hello' }],
       };
 
-      mockAiService.chat = jest
-        .fn()
-        .mockRejectedValue(new Error('Service error'));
+      // Iterable that throws on first iteration
+      const mockResult = {
+        // eslint-disable-next-line @typescript-eslint/require-await, require-yield
+        async *[Symbol.asyncIterator](): AsyncGenerator<{
+          type: string;
+          delta?: string;
+        }> {
+          throw new Error('Service error');
+        },
+      };
+
+      mockLanggraphService.chat = jest.fn().mockReturnValue(mockResult);
 
       const mockResponse = {
         setHeader: jest.fn(),
@@ -209,70 +168,21 @@ describe('AiController', () => {
       ).rejects.toThrow('Service error');
     });
 
-    it('should end response gracefully when error occurs after headers sent', async () => {
+    it('should write SSE events to response', async () => {
       const body: ChatRequestDto = {
         messages: [{ role: 'user', content: 'Hello' }],
       };
 
-      const mockReadableStream = {
-        getReader: jest.fn().mockReturnValue({
-          read: jest.fn().mockRejectedValue(new Error('Stream error')),
-        }),
-      };
-
-      const mockStreamResponse = {
-        body: mockReadableStream,
-      };
+      function* mockGenerator() {
+        yield { type: 'text-delta', delta: 'Hello' };
+        yield { type: 'text-delta', delta: ' World' };
+      }
 
       const mockResult = {
-        toUIMessageStreamResponse: jest
-          .fn()
-          .mockReturnValue(mockStreamResponse),
+        [Symbol.asyncIterator]: () => mockGenerator(),
       };
 
-      mockAiService.chat = jest.fn().mockResolvedValue(mockResult);
-
-      const mockResponse = {
-        setHeader: jest.fn(),
-        write: jest.fn(),
-        end: jest.fn(),
-        headersSent: true, // Headers already sent
-      };
-
-      // Should not throw, just end the response
-      await controller.chat(body, mockResponse as never);
-      expect(mockResponse.end).toHaveBeenCalled();
-    });
-
-    it('should write chunks to response', async () => {
-      const body: ChatRequestDto = {
-        messages: [{ role: 'user', content: 'Hello' }],
-      };
-
-      const chunk1 = new TextEncoder().encode('Hello');
-      const chunk2 = new TextEncoder().encode(' World');
-
-      const mockReadableStream = {
-        getReader: jest.fn().mockReturnValue({
-          read: jest
-            .fn()
-            .mockResolvedValueOnce({ done: false, value: chunk1 })
-            .mockResolvedValueOnce({ done: false, value: chunk2 })
-            .mockResolvedValueOnce({ done: true }),
-        }),
-      };
-
-      const mockStreamResponse = {
-        body: mockReadableStream,
-      };
-
-      const mockResult = {
-        toUIMessageStreamResponse: jest
-          .fn()
-          .mockReturnValue(mockStreamResponse),
-      };
-
-      mockAiService.chat = jest.fn().mockResolvedValue(mockResult);
+      mockLanggraphService.chat = jest.fn().mockReturnValue(mockResult);
 
       const mockResponse = {
         setHeader: jest.fn(),
@@ -283,8 +193,13 @@ describe('AiController', () => {
 
       await controller.chat(body, mockResponse as never);
 
-      expect(mockResponse.write).toHaveBeenCalledWith(chunk1);
-      expect(mockResponse.write).toHaveBeenCalledWith(chunk2);
+      expect(mockResponse.write).toHaveBeenCalledWith(
+        'data: {"type":"text-delta","delta":"Hello"}\n\n',
+      );
+      expect(mockResponse.write).toHaveBeenCalledWith(
+        'data: {"type":"text-delta","delta":" World"}\n\n',
+      );
+      expect(mockResponse.write).toHaveBeenCalledWith('data: [DONE]\n\n');
       expect(mockResponse.end).toHaveBeenCalled();
     });
 
@@ -297,23 +212,14 @@ describe('AiController', () => {
         ],
       };
 
-      const mockReadableStream = {
-        getReader: jest.fn().mockReturnValue({
-          read: jest.fn().mockResolvedValueOnce({ done: true }),
-        }),
-      };
-
-      const mockStreamResponse = {
-        body: mockReadableStream,
-      };
-
+      // Empty iterable
       const mockResult = {
-        toUIMessageStreamResponse: jest
-          .fn()
-          .mockReturnValue(mockStreamResponse),
+        [Symbol.asyncIterator]: function* () {
+          // No yields
+        },
       };
 
-      mockAiService.chat = jest.fn().mockResolvedValue(mockResult);
+      mockLanggraphService.chat = jest.fn().mockReturnValue(mockResult);
 
       const mockResponse = {
         setHeader: jest.fn(),
@@ -324,11 +230,56 @@ describe('AiController', () => {
 
       await controller.chat(body, mockResponse as never);
 
-      expect(mockAiService.chat).toHaveBeenCalledWith([
-        { role: 'user', content: 'First message' },
-        { role: 'assistant', content: 'Response' },
-        { role: 'user', content: 'Second message' },
-      ]);
+      expect(mockLanggraphService.chat).toHaveBeenCalledWith(
+        [
+          { role: 'user', content: 'First message' },
+          { role: 'assistant', content: 'Response' },
+          { role: 'user', content: 'Second message' },
+        ],
+        undefined, // threadId is optional
+      );
+    });
+
+    it('should handle tool call events', async () => {
+      const body: ChatRequestDto = {
+        messages: [{ role: 'user', content: 'Hello' }],
+      };
+
+      function* mockGenerator() {
+        yield {
+          type: 'tool-input-available',
+          toolCallId: 'call_123',
+          toolName: 'list_loggers',
+          input: {},
+        };
+        yield {
+          type: 'tool-output-available',
+          toolCallId: 'call_123',
+          output: { loggers: [] },
+        };
+      }
+
+      const mockResult = {
+        [Symbol.asyncIterator]: () => mockGenerator(),
+      };
+
+      mockLanggraphService.chat = jest.fn().mockReturnValue(mockResult);
+
+      const mockResponse = {
+        setHeader: jest.fn(),
+        write: jest.fn(),
+        end: jest.fn(),
+        headersSent: false,
+      };
+
+      await controller.chat(body, mockResponse as never);
+
+      expect(mockResponse.write).toHaveBeenCalledWith(
+        expect.stringContaining('tool-input-available'),
+      );
+      expect(mockResponse.write).toHaveBeenCalledWith(
+        expect.stringContaining('tool-output-available'),
+      );
     });
   });
 });

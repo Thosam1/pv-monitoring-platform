@@ -1,84 +1,73 @@
+/**
+ * Unit tests for ai.service.ts
+ *
+ * Tests the AI Service with mocked dependencies.
+ */
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { AiService } from './ai.service';
-import { McpClient } from './mcp.client';
-
-// Mock the AI SDK modules
-jest.mock('ai', () => ({
-  streamText: jest.fn(),
-
-  tool: jest.fn((config: unknown) => config),
-  stepCountIs: jest.fn().mockReturnValue(() => false),
-}));
-
-jest.mock('@ai-sdk/google', () => ({
-  createGoogleGenerativeAI: jest.fn(() => jest.fn(() => 'google-model')),
-}));
-
-jest.mock('@ai-sdk/anthropic', () => ({
-  createAnthropic: jest.fn(() => jest.fn(() => 'anthropic-model')),
-}));
-
-jest.mock('@ai-sdk/openai', () => ({
-  createOpenAI: jest.fn(() => jest.fn(() => 'openai-model')),
-}));
-
-import { streamText } from 'ai';
-
-const mockStreamText = streamText as jest.MockedFunction<typeof streamText>;
+import { ToolsHttpClient } from './tools-http.client';
+import { createMockToolsClient } from './test-utils';
 
 describe('AiService', () => {
   let service: AiService;
-  let mockConfigService: Partial<ConfigService>;
-  let mockMcpClient: Partial<McpClient>;
+  let mockToolsClient: ReturnType<typeof createMockToolsClient>;
+  let configService: Partial<ConfigService>;
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    mockToolsClient = createMockToolsClient();
 
-    mockConfigService = {
+    // Default config: Gemini with test key
+    configService = {
       get: jest.fn((key: string, defaultValue?: string) => {
         const config: Record<string, string> = {
           AI_PROVIDER: 'gemini',
-          GOOGLE_GENERATIVE_AI_API_KEY: 'test-key',
-          GEMINI_MODEL: 'gemini-1.5-flash',
+          GOOGLE_GENERATIVE_AI_API_KEY: 'test-google-key',
         };
         return config[key] ?? defaultValue;
-      }),
-    };
-
-    mockMcpClient = {
-      isConnected: jest.fn().mockReturnValue(true),
-      getTools: jest.fn().mockResolvedValue({
-        list_loggers: { description: 'List loggers' },
       }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AiService,
-        { provide: ConfigService, useValue: mockConfigService },
-        { provide: McpClient, useValue: mockMcpClient },
+        {
+          provide: ConfigService,
+          useValue: configService,
+        },
+        {
+          provide: ToolsHttpClient,
+          useValue: mockToolsClient,
+        },
       ],
     }).compile();
 
     service = module.get<AiService>(AiService);
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+  describe('initialization', () => {
+    it('should be defined', () => {
+      expect(service).toBeDefined();
+    });
+
+    it('should report ready status when API key is configured', () => {
+      expect(service.isReady()).toBe(true);
+    });
   });
 
   describe('getStatus', () => {
-    it('should return status with gemini provider', () => {
+    it('should return provider configuration', () => {
       const status = service.getStatus();
-
       expect(status.provider).toBe('gemini');
+    });
+
+    it('should return MCP connection status', () => {
+      const status = service.getStatus();
       expect(status.mcpConnected).toBe(true);
     });
 
-    it('should indicate ready when API key is configured', () => {
+    it('should return ready status', () => {
       const status = service.getStatus();
-
       expect(status.ready).toBe(true);
     });
   });
@@ -88,178 +77,104 @@ describe('AiService', () => {
       expect(service.isReady()).toBe(true);
     });
 
-    it('should return false when API key is missing', () => {
-      mockConfigService.get = jest.fn((key: string, defaultValue?: string) => {
+    it('should return false when Gemini API key is missing', async () => {
+      configService.get = jest.fn((key: string, defaultValue?: string) => {
         const config: Record<string, string> = {
           AI_PROVIDER: 'gemini',
-          GEMINI_MODEL: 'gemini-1.5-flash',
           // No GOOGLE_GENERATIVE_AI_API_KEY
         };
         return config[key] ?? defaultValue;
       });
 
-      expect(service.isReady()).toBe(false);
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          AiService,
+          { provide: ConfigService, useValue: configService },
+          { provide: ToolsHttpClient, useValue: mockToolsClient },
+        ],
+      }).compile();
+
+      const newService = module.get<AiService>(AiService);
+      expect(newService.isReady()).toBe(false);
     });
   });
 
-  describe('provider selection', () => {
-    it('should select anthropic provider when configured', async () => {
-      mockConfigService.get = jest.fn((key: string, defaultValue?: string) => {
+  describe('provider configuration', () => {
+    it('should use Gemini when AI_PROVIDER=gemini', () => {
+      const status = service.getStatus();
+      expect(status.provider).toBe('gemini');
+    });
+
+    it('should use Anthropic when AI_PROVIDER=anthropic', async () => {
+      configService.get = jest.fn((key: string, defaultValue?: string) => {
         const config: Record<string, string> = {
           AI_PROVIDER: 'anthropic',
           ANTHROPIC_API_KEY: 'test-anthropic-key',
-          ANTHROPIC_MODEL: 'claude-3-5-sonnet-20241022',
         };
         return config[key] ?? defaultValue;
       });
 
-      const newModule = await Test.createTestingModule({
+      const module: TestingModule = await Test.createTestingModule({
         providers: [
           AiService,
-          { provide: ConfigService, useValue: mockConfigService },
-          { provide: McpClient, useValue: mockMcpClient },
+          { provide: ConfigService, useValue: configService },
+          { provide: ToolsHttpClient, useValue: mockToolsClient },
         ],
       }).compile();
 
-      const newService = newModule.get<AiService>(AiService);
+      const newService = module.get<AiService>(AiService);
       const status = newService.getStatus();
-
       expect(status.provider).toBe('anthropic');
+      expect(status.ready).toBe(true);
     });
 
-    it('should select openai provider when configured', async () => {
-      mockConfigService.get = jest.fn((key: string, defaultValue?: string) => {
+    it('should use OpenAI when AI_PROVIDER=openai', async () => {
+      configService.get = jest.fn((key: string, defaultValue?: string) => {
         const config: Record<string, string> = {
           AI_PROVIDER: 'openai',
           OPENAI_API_KEY: 'test-openai-key',
-          OPENAI_MODEL: 'gpt-4o',
         };
         return config[key] ?? defaultValue;
       });
 
-      const newModule = await Test.createTestingModule({
+      const module: TestingModule = await Test.createTestingModule({
         providers: [
           AiService,
-          { provide: ConfigService, useValue: mockConfigService },
-          { provide: McpClient, useValue: mockMcpClient },
+          { provide: ConfigService, useValue: configService },
+          { provide: ToolsHttpClient, useValue: mockToolsClient },
         ],
       }).compile();
 
-      const newService = newModule.get<AiService>(AiService);
+      const newService = module.get<AiService>(AiService);
       const status = newService.getStatus();
-
       expect(status.provider).toBe('openai');
+      expect(status.ready).toBe(true);
     });
 
     it('should fallback to gemini for invalid provider', async () => {
-      mockConfigService.get = jest.fn((key: string, defaultValue?: string) => {
+      configService.get = jest.fn((key: string, defaultValue?: string) => {
         const config: Record<string, string> = {
           AI_PROVIDER: 'invalid-provider',
-          GOOGLE_GENERATIVE_AI_API_KEY: 'test-key',
+          GOOGLE_GENERATIVE_AI_API_KEY: 'test-google-key',
         };
         return config[key] ?? defaultValue;
       });
 
-      const newModule = await Test.createTestingModule({
+      const module: TestingModule = await Test.createTestingModule({
         providers: [
           AiService,
-          { provide: ConfigService, useValue: mockConfigService },
-          { provide: McpClient, useValue: mockMcpClient },
+          { provide: ConfigService, useValue: configService },
+          { provide: ToolsHttpClient, useValue: mockToolsClient },
         ],
       }).compile();
 
-      const newService = newModule.get<AiService>(AiService);
+      const newService = module.get<AiService>(AiService);
       const status = newService.getStatus();
-
       expect(status.provider).toBe('gemini');
     });
-  });
 
-  describe('chat', () => {
-    it('should call streamText with correct parameters', async () => {
-      const mockResult = { text: 'Hello!' };
-
-      mockStreamText.mockReturnValue(mockResult as never);
-
-      const messages = [{ role: 'user' as const, content: 'Hello' }];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const result = await service.chat(messages);
-
-      expect(mockStreamText).toHaveBeenCalled();
-      expect(result).toBe(mockResult);
-    });
-
-    it('should include system prompt in messages', async () => {
-      const mockResult = { text: 'Response' };
-
-      mockStreamText.mockReturnValue(mockResult as never);
-
-      const messages = [{ role: 'user' as const, content: 'Test' }];
-      await service.chat(messages);
-
-      const callArgs = mockStreamText.mock.calls[0][0];
-      expect(callArgs.messages[0].role).toBe('system');
-      expect(callArgs.messages[1]).toEqual(messages[0]);
-    });
-
-    it('should get tools from MCP client', async () => {
-      const mockResult = { text: 'Response' };
-
-      mockStreamText.mockReturnValue(mockResult as never);
-
-      await service.chat([{ role: 'user', content: 'Test' }]);
-
-      expect(mockMcpClient.getTools).toHaveBeenCalled();
-    });
-
-    it('should include render_ui_component tool', async () => {
-      const mockResult = { text: 'Response' };
-
-      mockStreamText.mockReturnValue(mockResult as never);
-
-      await service.chat([{ role: 'user', content: 'Test' }]);
-
-      const callArgs = mockStreamText.mock.calls[0][0];
-      expect(callArgs.tools).toHaveProperty('list_loggers');
-      expect(callArgs.tools).toHaveProperty('render_ui_component');
-    });
-
-    it('should work with empty MCP tools', async () => {
-      mockMcpClient.getTools = jest.fn().mockResolvedValue({});
-      const mockResult = { text: 'Response' };
-
-      mockStreamText.mockReturnValue(mockResult as never);
-
-      await service.chat([{ role: 'user', content: 'Test' }]);
-
-      const callArgs = mockStreamText.mock.calls[0][0];
-      // Should still have render_ui_component
-      expect(callArgs.tools).toHaveProperty('render_ui_component');
-    });
-  });
-
-  describe('MCP connection status', () => {
-    it('should report mcpConnected false when MCP client disconnected', async () => {
-      mockMcpClient.isConnected = jest.fn().mockReturnValue(false);
-
-      const newModule = await Test.createTestingModule({
-        providers: [
-          AiService,
-          { provide: ConfigService, useValue: mockConfigService },
-          { provide: McpClient, useValue: mockMcpClient },
-        ],
-      }).compile();
-
-      const newService = newModule.get<AiService>(AiService);
-      const status = newService.getStatus();
-
-      expect(status.mcpConnected).toBe(false);
-    });
-  });
-
-  describe('provider API key validation', () => {
-    it('should throw when Anthropic API key is missing', async () => {
-      mockConfigService.get = jest.fn((key: string, defaultValue?: string) => {
+    it('should return not ready when Anthropic API key is missing', async () => {
+      configService.get = jest.fn((key: string, defaultValue?: string) => {
         const config: Record<string, string> = {
           AI_PROVIDER: 'anthropic',
           // No ANTHROPIC_API_KEY
@@ -267,20 +182,20 @@ describe('AiService', () => {
         return config[key] ?? defaultValue;
       });
 
-      const newModule = await Test.createTestingModule({
+      const module: TestingModule = await Test.createTestingModule({
         providers: [
           AiService,
-          { provide: ConfigService, useValue: mockConfigService },
-          { provide: McpClient, useValue: mockMcpClient },
+          { provide: ConfigService, useValue: configService },
+          { provide: ToolsHttpClient, useValue: mockToolsClient },
         ],
       }).compile();
 
-      const newService = newModule.get<AiService>(AiService);
+      const newService = module.get<AiService>(AiService);
       expect(newService.isReady()).toBe(false);
     });
 
-    it('should throw when OpenAI API key is missing', async () => {
-      mockConfigService.get = jest.fn((key: string, defaultValue?: string) => {
+    it('should return not ready when OpenAI API key is missing', async () => {
+      configService.get = jest.fn((key: string, defaultValue?: string) => {
         const config: Record<string, string> = {
           AI_PROVIDER: 'openai',
           // No OPENAI_API_KEY
@@ -288,16 +203,86 @@ describe('AiService', () => {
         return config[key] ?? defaultValue;
       });
 
-      const newModule = await Test.createTestingModule({
+      const module: TestingModule = await Test.createTestingModule({
         providers: [
           AiService,
-          { provide: ConfigService, useValue: mockConfigService },
-          { provide: McpClient, useValue: mockMcpClient },
+          { provide: ConfigService, useValue: configService },
+          { provide: ToolsHttpClient, useValue: mockToolsClient },
         ],
       }).compile();
 
-      const newService = newModule.get<AiService>(AiService);
+      const newService = module.get<AiService>(AiService);
       expect(newService.isReady()).toBe(false);
+    });
+  });
+
+  describe('chat method', () => {
+    it('should accept message array and return a stream', () => {
+      const messages = [{ role: 'user' as const, content: 'Hello' }];
+      const result = service.chat(messages);
+
+      // Should return a streaming result object
+      expect(result).toBeDefined();
+    });
+
+    it('should throw when no valid user message after sanitization', () => {
+      const messages = [
+        { role: 'user' as const, content: '' },
+        { role: 'user' as const, content: '   ' },
+      ];
+
+      expect(() => service.chat(messages)).toThrow(
+        'At least one user message with content is required',
+      );
+    });
+
+    it('should filter empty messages before processing', () => {
+      const messages = [
+        { role: 'user' as const, content: '' },
+        { role: 'user' as const, content: 'Valid message' },
+      ];
+
+      // Should not throw because there's one valid message
+      const result = service.chat(messages);
+      expect(result).toBeDefined();
+    });
+
+    it('should filter whitespace-only messages', () => {
+      const messages = [
+        { role: 'user' as const, content: '   ' },
+        { role: 'user' as const, content: '\n\t' },
+        { role: 'user' as const, content: 'Hello' },
+      ];
+
+      const result = service.chat(messages);
+      expect(result).toBeDefined();
+    });
+
+    it('should handle multi-turn conversations', () => {
+      const messages = [
+        { role: 'user' as const, content: 'Hello' },
+        { role: 'assistant' as const, content: 'Hi there!' },
+        { role: 'user' as const, content: 'How are you?' },
+      ];
+
+      const result = service.chat(messages);
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('MCP client integration', () => {
+    it('should report connected when MCP client is connected', () => {
+      mockToolsClient.isConnected.mockReturnValue(true);
+
+      const status = service.getStatus();
+      expect(status.mcpConnected).toBe(true);
+    });
+
+    it('should report disconnected when MCP client is not connected', () => {
+      mockToolsClient.isConnected.mockReturnValue(false);
+
+      const status = service.getStatus();
+      expect(status.mcpConnected).toBe(false);
     });
   });
 });

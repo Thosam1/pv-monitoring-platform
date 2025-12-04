@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   ComposedChart,
   Area,
@@ -57,17 +57,18 @@ function formatDateDisplay(date: Date): string {
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
-    year: 'numeric'
+    year: 'numeric',
+    timeZone: 'UTC'
   })
 }
 
 /**
- * Format a date to yyyy-MM-dd for the date picker
+ * Format a date to yyyy-MM-dd for the date picker (uses UTC to avoid timezone shifts)
  */
 function formatDateForPicker(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
 
@@ -82,6 +83,16 @@ export function PerformanceChart({
   dataDateRange,
   onDateSelect,
 }: Readonly<PerformanceChartProps>) {
+  // Delay chart rendering to avoid Recharts dimension warnings
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const timer = requestAnimationFrame(() => {
+      setIsReady(true);
+    });
+    return () => cancelAnimationFrame(timer);
+  }, []);
+
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return []
 
@@ -106,7 +117,7 @@ export function PerformanceChart({
     return transformed
   }, [data])
 
-  if (isLoading) {
+  if (isLoading || !isReady) {
     return (
       <div className="h-full flex items-center justify-center bg-white dark:bg-gray-800 rounded-lg shadow">
         <div className="text-gray-500 dark:text-gray-400">Loading chart...</div>
@@ -178,7 +189,7 @@ export function PerformanceChart({
         )}
       </div>
       <div className="h-[calc(100%-3rem)]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
           <ComposedChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
             <XAxis

@@ -14,7 +14,8 @@
  * Run: npx ts-node src/database/seeds/seed-test-data.ts
  */
 
-import { DataSource, QueryDeepPartialEntity } from 'typeorm';
+import { DataSource } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { Measurement } from '../entities/measurement.entity';
 
 // Database connection (matches docker-compose.yml)
@@ -415,12 +416,15 @@ async function seedTestData(): Promise<void> {
   console.log('\nDatabase connection closed.');
 }
 
-// Run the seeder with top-level await
-try {
-  await seedTestData();
-  console.log('\nSeed completed successfully!');
-  process.exit(0);
-} catch (error) {
-  console.error('Seed failed:', error);
-  process.exit(1);
-}
+// Run the seeder
+void (async () => {
+  // NOSONAR - CommonJS module, top-level await not supported
+  try {
+    await seedTestData();
+    console.log('\nSeed completed successfully!');
+    process.exit(0);
+  } catch (error) {
+    console.error('Seed failed:', error);
+    process.exit(1);
+  }
+})();
