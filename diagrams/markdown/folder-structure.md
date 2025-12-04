@@ -11,17 +11,47 @@ flowchart TB
     Root --> A[ai/]
     Root --> D[diagrams/]
 
-    B --> BS[src/]
-    BS --> BI[ingestion/]
-    BS --> BM[measurements/]
-    BS --> BA[ai/]
+    subgraph Backend["Backend (NestJS)"]
+        B --> BS[src/]
+        BS --> BI[ingestion/]
+        BI --> BIS[strategies/<br/>8 parsers]
+        BS --> BM[measurements/]
+        BS --> BA[ai/]
+        BA --> BAN[nodes/<br/>router, argument-check]
+        BA --> BAF[flows/<br/>4 explicit flows]
+        BA --> BAS[subgraphs/<br/>recovery]
+        BA --> BAR[response/<br/>UI builders]
+    end
 
-    F --> FS[src/]
-    FS --> FC[components/]
-    FS --> FV[views/]
+    subgraph Frontend["Frontend (React)"]
+        F --> FS[src/]
+        FS --> FC[components/]
+        FC --> FCA[ai/<br/>chat interface]
+        FC --> FCU[assistant-ui/<br/>tools, thread]
+        FC --> FCUI[ui/<br/>shadcn]
+        FS --> FP[providers/<br/>runtime]
+        FS --> FV[views/]
+    end
 
-    A --> AT[tools/]
-    A --> AM[models/]
+    subgraph Python["AI Service (Python)"]
+        A --> AT[tools/<br/>10 MCP tools]
+        A --> AM[models/<br/>Pydantic]
+        A --> AS[server.py]
+    end
+
+    style Backend fill:#e0e7ff,stroke:#6366f1
+    style Frontend fill:#d1fae5,stroke:#10b981
+    style Python fill:#fef3c7,stroke:#f59e0b
 ```
 
-[Edit in Mermaid Chart Playground](https://mermaidchart.com/play?utm_source=mermaid_mcp_server&utm_medium=remote_server&utm_campaign=claude#pako:eNptkDEPgjAQhf8KYSfsDiZWQ-LgIsTlYKilYCO9I22FwfjfxVQQ0Ru_93rvXe-hoFKGq7BqqBcXblyQsRyDYY5EDtou0oTKkVFYR23DXUVGFzl-PEEUrQMGZy6uEsu4WCgJVIbQ_ZM2wNUP3EGpeG24tvEUw3xGCtaI8QFLPdzD0ExapwiX0gG05PZmpJbo7FId0z1NfNmviMQ7ky0I0i3hfMuonaBTsp913fjTMnBEzWR_06HR8N0vHD6e1KNxVQ)
+## Directory Details
+
+| Path | Purpose |
+|------|---------|
+| `backend/src/ai/nodes/` | LangGraph nodes (router, argument-check) |
+| `backend/src/ai/flows/` | 4 explicit flows (morning, financial, health, performance) |
+| `backend/src/ai/subgraphs/` | Recovery subgraph |
+| `backend/src/ai/response/` | Zod-validated UI component builders |
+| `frontend/src/components/assistant-ui/` | Tool renderers (9 tools) |
+| `frontend/src/providers/` | AssistantRuntime provider |
+| `ai/tools/` | 10 MCP tool implementations |

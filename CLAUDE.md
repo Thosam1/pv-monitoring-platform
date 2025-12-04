@@ -318,6 +318,13 @@ ai/                             # Python FastMCP Service
 └── Dockerfile                  # Python 3.12 container
 ```
 
+**AI Documentation:**
+- [AI_UX_FLOWS.md](AI_UX_FLOWS.md) - Complete AI architecture, tool integration, and UX flows
+- [backend/src/ai/README.md](backend/src/ai/README.md) - LangGraph orchestration, explicit flows, state schema
+- [ai/README.md](ai/README.md) - Python tools API, HTTP endpoints, configuration
+- [diagrams/markdown/router-logic.md](diagrams/markdown/router-logic.md) - Router classification and ToolMessage injection
+- [diagrams/markdown/tool-execution.md](diagrams/markdown/tool-execution.md) - Virtual vs real tool handling
+
 ## Logger Types & Categories
 
 The platform organizes 8 logger types into two categories:

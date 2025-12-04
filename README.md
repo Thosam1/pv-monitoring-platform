@@ -67,6 +67,9 @@ cd backend && npm install && npm run start:dev
 
 # Frontend (new terminal)
 cd frontend && npm install && npm run dev
+
+# AI Service (for local development - optional, runs in Docker by default)
+cd ai && uv sync && uv run python server.py
 ```
 
 ### 3. Access
@@ -138,6 +141,8 @@ All diagrams are available as pre-rendered SVGs in [`diagrams/svg/`](./diagrams/
 | AI Chat Flow | SSE streaming sequence | [Mermaid](./diagrams/markdown/ai-chat-flow.md) |
 | AI Tools | MCP tools hierarchy | [Mermaid](./diagrams/markdown/ai-tools.md) |
 | Agent Behavior | Router classification logic | [Mermaid](./diagrams/markdown/agent-behavior.md) |
+| **Router Logic** | Selection handling & ToolMessage injection | [Mermaid](./diagrams/markdown/router-logic.md) |
+| **Tool Execution** | Virtual vs real tool handling | [Mermaid](./diagrams/markdown/tool-execution.md) |
 | User Flows | User journey through flows | [Mermaid](./diagrams/markdown/user-flows.md) |
 | SSE Streaming | Event streaming details | [Mermaid](./diagrams/markdown/sse-streaming.md) |
 | Frontend Tool Rendering | Tool UI component hierarchy | [Mermaid](./diagrams/markdown/frontend-tool-rendering.md) |

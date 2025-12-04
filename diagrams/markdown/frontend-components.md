@@ -1,6 +1,6 @@
 # Frontend Components
 
-React frontend component hierarchy showing App, Layout, Views, Dashboard, Charts, and AI Chat components.
+React frontend component hierarchy showing App, Layout, Views, Dashboard, Charts, and AI Chat components with @assistant-ui integration.
 
 ```mermaid
 flowchart TB
@@ -29,12 +29,80 @@ flowchart TB
         Gen[GeneratorPowerChart]
     end
 
-    AIChat --> ChatUI
-    subgraph ChatUI["Chat Components"]
-        Interface[ChatInterface]
-        Message[ChatMessage]
-        History[ChatHistorySidebar]
+    AIChat --> Runtime
+    subgraph Runtime["AssistantRuntime Provider"]
+        MRP[MyRuntimeProvider]
+        Adapter[SolarAnalystModelAdapter]
     end
+
+    MRP --> Thread
+    subgraph Thread["Thread Components"]
+        ThreadList[ThreadList]
+        ThreadComp[Thread]
+        Composer[ThreadComposer]
+    end
+
+    ThreadComp --> Messages
+    subgraph Messages["Message Parts"]
+        UserMsg[UserMessage]
+        AssistantMsg[AssistantMessage]
+    end
+
+    AssistantMsg --> ToolUIs
+    subgraph ToolUIs["Tool Renderers (9)"]
+        TU1[SelectionTool]
+        TU2[RenderUITool]
+        TU3[HealthTool]
+        TU4[PowerCurveTool]
+        TU5[ForecastTool]
+        TU6[FinancialTool]
+        TU7[PerformanceTool]
+        TU8[FleetOverviewTool]
+        TU9[CompareLoggersTool]
+    end
+
+    style Runtime fill:#e0e7ff,stroke:#6366f1
+    style ToolUIs fill:#d1fae5,stroke:#10b981
 ```
 
-[Edit in Mermaid Chart Playground](https://mermaidchart.com/play?utm_source=mermaid_mcp_server&utm_medium=remote_server&utm_campaign=claude#pako:eNptUtFugyAU_RXDe_cBe1jSuqQz2xKTtntBH65wW8ksGMC4Ztm_D4QanCO5eOWc6z3n4jdhiiN5JOdOjawFbbPjrpKZW9u-py4erPmqKzmfZZvNU_YGNzXY5dmHwNHciWZoLhr6NjJpRWIJqQPBr4Pg2ID2XWKagC8IHDU9CIshjRhKvmoytXY9goS0xTOYtlGgOZ2zXEmL0iakU98p4HQ3dJ8hxVTItshbsDQ8fIe1kPnb0yByP0bzH_JaFtTFXgter0yEMuci1qc2StRn6jelryAZTpQEPyJrqd-kYND9RfcoqQvUYJUu1Yg6ZSQ-gse7CXsq1hLdYZBos1xdeyXdKJdaCzdefQaG1LPmt4TxjsbAJeAxTy9eGCfzNqExX_4dTjD5-QVWg9_H)
+## Tool Renderer Details
+
+| Tool | Component | Renders |
+|------|-----------|---------|
+| `request_user_selection` | SelectionTool | Dropdown, DatePicker |
+| `render_ui_component` | RenderUITool | Dynamic component dispatch |
+| `analyze_inverter_health` | HealthTool | HealthReport card |
+| `get_power_curve` | PowerCurveTool | Composed chart |
+| `forecast_production` | ForecastTool | Bar chart |
+| `calculate_financial_savings` | FinancialTool | Savings card |
+| `calculate_performance_ratio` | PerformanceTool | Metrics card |
+| `get_fleet_overview` | FleetOverviewTool | 4-card grid |
+| `compare_loggers` | CompareLoggersTool | Multi-line chart |
+
+## Runtime Architecture
+
+```mermaid
+flowchart LR
+    subgraph Provider["MyRuntimeProvider"]
+        Adapter[SolarAnalystModelAdapter]
+        Storage[localStorage persistence]
+    end
+
+    subgraph Adapter["Model Adapter"]
+        SSE[SSE Stream Handler]
+        Parse[parseSSEStream()]
+        State[StreamState]
+    end
+
+    subgraph Events["SSE Events"]
+        E1[text-delta]
+        E2[tool-input-available]
+        E3[tool-output-available]
+    end
+
+    Events --> Parse
+    Parse --> State
+    State --> Adapter
+
+    style Provider fill:#e0e7ff,stroke:#6366f1
+```

@@ -80,6 +80,56 @@ Zod-validated context-aware response generation with branching logic.
 - Severity-based messaging (anomaly count, performance spread)
 - UI component hints embedded in responses
 
+### 7. Tool Call Contract Enforcement
+
+![Router Logic](../../../diagrams/svg/router-logic.svg)
+
+LLM providers (OpenAI, Anthropic, Gemini) expect every `tool_call` to have a matching `ToolMessage` response.
+
+**Problem**: When user responds to a selection prompt, we need to satisfy the pending `request_user_selection` tool call.
+
+**Solution** (`router.node.ts:396-488`):
+```typescript
+// STRICT ID MATCHING: Only create ToolMessage if we have a valid tool call ID
+const pendingToolCall = lastAiMessage?.tool_calls?.find(
+  (tc) => tc.name === 'request_user_selection',
+);
+
+if (pendingToolCall?.id) {
+  toolMessage = new ToolMessage({
+    tool_call_id: pendingToolCall.id,
+    content: JSON.stringify({ selection, selectedFor: waitingFor }),
+    name: 'request_user_selection',
+  });
+}
+```
+
+### 8. Virtual Tool Handling
+
+![Tool Execution](../../../diagrams/svg/tool-execution.svg)
+
+`render_ui_component` and `request_user_selection` have **no backend implementation** - they're rendered directly by the frontend.
+
+**Problem**: Routing to ToolNode would cause "tool not found" errors and infinite loops.
+
+**Solution** (`langgraph.service.ts:343-406`):
+
+1. **`shouldContinue()`** - Detects virtual-only tool calls:
+   ```typescript
+   const onlyVirtualTools = toolCalls.every(
+     (tc) => tc.name === 'render_ui_component' || tc.name === 'request_user_selection',
+   );
+   if (onlyVirtualTools) return 'end';  // Skip tools node
+   ```
+
+2. **`shouldRecover()`** - Detects terminal UI tools after execution:
+   ```typescript
+   const hasTerminalUiTool = toolCalls.some(
+     (tc) => tc.name === 'render_ui_component' || tc.name === 'request_user_selection',
+   );
+   if (hasTerminalUiTool) return 'end';  // Break the loop
+   ```
+
 ## Graph Structure
 
 ```
@@ -219,3 +269,5 @@ npm run test:watch          # Watch mode
 - [AI_UX_FLOWS.md](../../../AI_UX_FLOWS.md) - Complete flow specifications
 - [ai/README.md](../../../ai/README.md) - Python tools API
 - [Agent Behavior](../../../diagrams/svg/agent-behavior.svg) - Router classification logic
+- [Router Logic](../../../diagrams/markdown/router-logic.md) - Selection handling and ToolMessage injection
+- [Tool Execution](../../../diagrams/markdown/tool-execution.md) - Virtual vs real tool handling

@@ -6,16 +6,39 @@ This document provides comprehensive documentation for the PV Monitoring Platfor
 
 1. [Architecture Overview](#1-architecture-overview)
 2. [System Components](#2-system-components)
+   - [2.1 Backend: LangGraph Orchestrator](#21-backend-langgraph-orchestrator)
+   - [2.2 Python Tools API](#22-python-tools-api)
+   - [2.3 Frontend: Chat Interface](#23-frontend-chat-interface)
 3. [Request/Response Lifecycle](#3-requestresponse-lifecycle)
+   - [3.1 Complete Flow](#31-complete-flow)
+   - [3.2 SSE Event Types](#32-sse-event-types)
 4. [LLM Configuration](#4-llm-configuration)
 5. [Tool Integration](#5-tool-integration)
+   - [5.2 Available Tools](#52-available-tools)
+   - [5.3 Smart Recovery Status Codes](#53-smart-recovery-status-codes)
+   - [5.5 Tool Visibility Categories](#55-tool-visibility-categories)
 6. [UI Protocol Schema](#6-ui-protocol-schema)
+   - [6.1 render_ui_component](#61-render_ui_component)
+   - [6.2 request_user_selection](#62-request_user_selection)
 7. [LangGraph State Schema](#7-langgraph-state-schema)
+   - [7.2 Router Classification Schema](#72-router-classification-schema)
 8. [Flow Definitions](#8-flow-definitions)
+   - [8.1 Morning Briefing Flow](#81-morning-briefing-flow)
+   - [8.2 Financial Report Flow](#82-financial-report-flow)
+   - [8.3 Performance Audit Flow](#83-performance-audit-flow)
+   - [8.4 Health Check Flow](#84-health-check-flow)
+   - [8.5 Free Chat Mode](#85-free-chat-mode)
 9. [Recovery Subgraph](#9-recovery-subgraph)
+   - [9.3 Date Selection Recovery](#93-date-selection-recovery)
 10. [Frontend UX Patterns](#10-frontend-ux-patterns)
+    - [10.1 Tool Visibility Strategy](#101-tool-visibility-strategy)
+    - [10.6 User Selection Flow](#106-user-selection-flow)
 11. [State Diagrams](#11-state-diagrams)
 12. [Implementation Status](#12-implementation-status)
+
+**New Diagrams:**
+- [Router Logic](diagrams/markdown/router-logic.md) - Selection handling and ToolMessage injection
+- [Tool Execution](diagrams/markdown/tool-execution.md) - Virtual vs real tool handling
 
 ---
 
