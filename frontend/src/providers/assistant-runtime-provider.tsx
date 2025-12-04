@@ -283,7 +283,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
     }
 
     // Update title in storage
-    if (typeof globalThis.window !== 'undefined') {
+    if (globalThis.window !== undefined) {
       try {
         const stored = localStorage.getItem(`${STORAGE_KEY}-metadata`);
         const threads: StoredThread[] = stored ? JSON.parse(stored) : [];

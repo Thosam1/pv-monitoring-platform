@@ -15,7 +15,7 @@ import {
   executeTool,
   generateToolCallId,
   getLastUserMessage,
-  ALL_DEVICES_PATTERN,
+  matchesAllDevicesIntent,
   LoggerInfo,
 } from './flow-utils';
 import { UIResponseBuilder } from '../response';
@@ -85,20 +85,11 @@ export function createHealthCheckFlow(
   const fetchLoggersNode = async (
     state: ExplicitFlowState,
   ): Promise<Partial<ExplicitFlowState>> => {
-    // TODO: DELETE - Debug logging
-    logger.debug('[DEBUG HEALTH_CHECK] === FLOW ENTRY (fetchLoggers) ===');
-    logger.debug('[DEBUG HEALTH_CHECK] Messages count:', state.messages.length);
-    logger.debug(
-      '[DEBUG HEALTH_CHECK] FlowContext:',
-      JSON.stringify(state.flowContext, null, 2),
-    );
-    logger.debug('[DEBUG HEALTH_CHECK] FlowStep:', state.flowStep);
-
     logger.debug('Health Check: Fetching available loggers');
 
     // Check for "all devices" intent in the user message
     const lastUserMessage = getLastUserMessage(state.messages);
-    const wantsAllDevices = ALL_DEVICES_PATTERN.test(lastUserMessage);
+    const wantsAllDevices = matchesAllDevicesIntent(lastUserMessage);
 
     const result = await executeTool<LoggersResult>(
       httpClient,

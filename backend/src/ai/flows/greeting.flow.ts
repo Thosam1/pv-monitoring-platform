@@ -147,15 +147,6 @@ export function createGreetingFlow(httpClient: ToolsHttpClient) {
   const greetingNode = async (
     state: ExplicitFlowState,
   ): Promise<Partial<ExplicitFlowState>> => {
-    // TODO: DELETE - Debug logging
-    logger.debug('[DEBUG GREETING] === FLOW ENTRY ===');
-    logger.debug('[DEBUG GREETING] Messages count:', state.messages.length);
-    logger.debug(
-      '[DEBUG GREETING] FlowContext:',
-      JSON.stringify(state.flowContext, null, 2),
-    );
-    logger.debug('[DEBUG GREETING] FlowStep:', state.flowStep);
-
     logger.debug('Greeting Flow: Generating greeting');
 
     // Determine time of day
@@ -196,14 +187,6 @@ export function createGreetingFlow(httpClient: ToolsHttpClient) {
     const aiMessage = new AIMessage({
       content: greetingMessage,
     });
-
-    // TODO: DELETE - Debug logging
-    logger.debug('[DEBUG GREETING] === FLOW EXIT ===');
-    logger.debug('[DEBUG GREETING] Returning 1 AIMessage');
-    logger.debug(
-      '[DEBUG GREETING] Message content:',
-      greetingMessage.slice(0, 200) + '...',
-    );
 
     return {
       messages: [aiMessage],

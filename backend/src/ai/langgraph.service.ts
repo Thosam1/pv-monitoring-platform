@@ -1234,34 +1234,6 @@ export class LanggraphService {
 
     this.logger.log(`Streaming chat with ${langchainMessages.length} messages`);
 
-    // Debug logging counters
-    const debugCounters = {
-      routerCalls: 0,
-      greetingFlowCalls: 0,
-      freeChatCalls: 0,
-      toolInputEmissions: 0,
-      toolOutputEmissions: 0,
-      textEmissions: 0,
-      flowMessages: 0,
-      dedupSkips: {
-        toolCalls: 0,
-        toolResults: 0,
-        flowMessages: 0,
-      },
-      eventsProcessed: 0,
-    };
-
-    // Debug logging entry point
-    this.logger.debug('[DEBUG ENTRY] === NEW REQUEST ===');
-    this.logger.debug(
-      '[DEBUG ENTRY] Incoming messages count:',
-      messages.length,
-    );
-    this.logger.debug(
-      '[DEBUG ENTRY] Last user message:',
-      messages.at(-1)?.content?.slice(0, 100),
-    );
-
     // Track tool calls and flow messages we've already reported (for deduplication)
     const reportedToolCalls = new Set<string>();
     const reportedToolResults = new Set<string>();
@@ -1327,23 +1299,6 @@ export class LanggraphService {
           yield e;
         }
       }
-
-      // TODO: DELETE - Debug logging summary
-      this.logger.debug('[DEBUG SUMMARY] === REQUEST COMPLETE ===');
-      this.logger.debug(
-        '[DEBUG SUMMARY] Counters:',
-        JSON.stringify(debugCounters, null, 2),
-      );
-      this.logger.debug('[DEBUG SUMMARY] reportedToolCalls:', [
-        ...reportedToolCalls,
-      ]);
-      this.logger.debug('[DEBUG SUMMARY] reportedToolResults:', [
-        ...reportedToolResults,
-      ]);
-      this.logger.debug(
-        '[DEBUG SUMMARY] reportedFlowMessages:',
-        [...reportedFlowMessages].map((m) => m.slice(0, 50)),
-      );
     } catch (error) {
       this.logger.error(`Stream error: ${error}`);
       throw error;

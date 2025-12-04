@@ -193,7 +193,7 @@ export function ChatMessage({ message, isLoading, isLastMessage, onUserSelection
           }
 
           // Use content-based key for stability (avoid index-based keys)
-          const contentKey = `text-${textContent.slice(0, 32).replace(/\W/g, '')}-${textContent.length}`;
+          const contentKey = `text-${textContent.slice(0, 32).replaceAll(/\W/g, '')}-${textContent.length}`;
           return (
             <ErrorBoundary
               key={contentKey}

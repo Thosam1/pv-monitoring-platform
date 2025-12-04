@@ -275,7 +275,7 @@ export function ChatInterface({
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<ChatStatus>('idle');
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_errorType, setErrorType] = useState<ErrorType>('unknown');
+  const [_errorType, _setErrorType] = useState<ErrorType>('unknown');
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [lastUserMessage, setLastUserMessage] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -355,7 +355,7 @@ export function ChatInterface({
     timeoutRef.current = setTimeout(() => {
       abortControllerRef.current?.abort();
       setStatus('error');
-      setErrorType('timeout');
+      _setErrorType('timeout');
       setErrorMessage('The request took too long. Please try again.');
       removeEmptyAssistantMessage();
       timeoutRef.current = null;
@@ -432,7 +432,7 @@ export function ChatInterface({
       console.error('Chat error:', error);
       const { type, message } = classifyError(error as Error & { status?: number });
       setStatus('error');
-      setErrorType(type);
+      _setErrorType(type);
       setErrorMessage(message);
       removeEmptyAssistantMessage();
     }

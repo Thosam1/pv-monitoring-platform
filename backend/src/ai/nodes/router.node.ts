@@ -497,23 +497,7 @@ export async function routerNode(
   state: ExplicitFlowState,
   model: ChatGoogleGenerativeAI | ChatAnthropic | ChatOpenAI | ChatOllama,
 ): Promise<Partial<ExplicitFlowState>> {
-  // TODO: DELETE - Debug logging
-  logger.debug('[DEBUG ROUTER] === NODE ENTRY ===');
-  logger.debug('[DEBUG ROUTER] Input messages count:', state.messages.length);
-  logger.debug(
-    '[DEBUG ROUTER] FlowContext:',
-    JSON.stringify(state.flowContext, null, 2),
-  );
-  logger.debug('[DEBUG ROUTER] ActiveFlow:', state.activeFlow);
-  logger.debug(
-    '[DEBUG ROUTER] WaitingForUserInput:',
-    state.flowContext?.waitingForUserInput,
-  );
-
   const userMessage = getLastUserMessage(state.messages);
-
-  // TODO: DELETE - Debug logging
-  logger.debug('[DEBUG ROUTER] Last user message:', userMessage?.slice(0, 200));
 
   if (!userMessage) {
     logger.warn('No user message found, defaulting to free_chat');
@@ -571,25 +555,6 @@ export async function routerNode(
 
     const classification = parseClassificationResponse(content);
 
-    // TODO: DELETE - Debug logging
-    logger.debug('[DEBUG ROUTER] === CLASSIFICATION RESULT ===');
-    logger.debug('[DEBUG ROUTER] Raw response:', content.slice(0, 500));
-    logger.debug('[DEBUG ROUTER] Flow type:', classification.flow);
-    logger.debug('[DEBUG ROUTER] Confidence:', classification.confidence);
-    logger.debug(
-      '[DEBUG ROUTER] isContinuation:',
-      classification.isContinuation,
-    );
-    logger.debug(
-      '[DEBUG ROUTER] isSelectionResponse:',
-      classification.isSelectionResponse,
-    );
-    logger.debug('[DEBUG ROUTER] selectedValue:', classification.selectedValue);
-    logger.debug(
-      '[DEBUG ROUTER] Extracted params:',
-      JSON.stringify(classification.extractedParams, null, 2),
-    );
-
     logger.log(
       `Classified as: ${classification.flow} (confidence: ${classification.confidence}, selection: ${classification.isSelectionResponse || false})`,
     );
@@ -626,14 +591,6 @@ export async function routerNode(
         logger.debug(`Extracted args: ${JSON.stringify(extractedArgs)}`);
       }
     }
-
-    // TODO: DELETE - Debug logging
-    logger.debug('[DEBUG ROUTER] === NODE EXIT ===');
-    logger.debug('[DEBUG ROUTER] Routing to flow:', classification.flow);
-    logger.debug(
-      '[DEBUG ROUTER] FlowContext being returned:',
-      JSON.stringify(flowContext, null, 2),
-    );
 
     // Fix #4: Generate transition message when switching flows
     // This gives the user immediate feedback about what's happening

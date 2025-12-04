@@ -48,11 +48,14 @@ function ThreadErrorFallback({ error, resetErrorBoundary }: Readonly<FallbackPro
  */
 function AIChatViewInner({ className }: Readonly<{ className?: string }>) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Note: useAssistantRuntime is deprecated in favor of useAssistantApi() in v0.12+
+  // Current version (v0.11.47) does not have the new API yet
   const runtime = useAssistantRuntime();
 
   const handleErrorReset = () => {
     // Switch to a new thread when recovering from an error
     try {
+      // Note: runtime.switchToNewThread() is deprecated but replacement API not available in v0.11.47
       runtime.switchToNewThread();
     } catch {
       // If switching fails, just let the error boundary reset

@@ -96,6 +96,9 @@ export const SelectionTool = makeAssistantToolUI<SelectionToolArgs, string>({
   toolName: 'request_user_selection',
   render: function SelectionToolUI({ args, result, addResult, status }) {
     // Get composer runtime to send messages to backend after selection
+    // Note: useComposerRuntime is deprecated in favor of useAssistantApi() in v0.12+
+    // Current version (v0.11.47) does not have the new API yet
+    // Migration: const api = useAssistantApi(); api.composer().setText(...)
     const composerRuntime = useComposerRuntime();
 
     // Show completed state if we have a result

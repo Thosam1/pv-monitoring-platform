@@ -80,18 +80,6 @@ export function createMorningBriefingFlow(
   const fleetOverviewNode = async (
     state: ExplicitFlowState,
   ): Promise<Partial<ExplicitFlowState>> => {
-    // TODO: DELETE - Debug logging
-    logger.debug('[DEBUG MORNING_BRIEFING] === FLOW ENTRY (fleetOverview) ===');
-    logger.debug(
-      '[DEBUG MORNING_BRIEFING] Messages count:',
-      state.messages.length,
-    );
-    logger.debug(
-      '[DEBUG MORNING_BRIEFING] FlowContext:',
-      JSON.stringify(state.flowContext, null, 2),
-    );
-    logger.debug('[DEBUG MORNING_BRIEFING] FlowStep:', state.flowStep);
-
     logger.debug('Morning Briefing: Fetching fleet overview');
 
     const toolCallId = generateToolCallId();

@@ -16,6 +16,9 @@ import { useCallback } from 'react';
  * </Button>
  */
 export function useSuggestionClick() {
+  // Note: useThreadRuntime is deprecated in favor of useAssistantApi() in v0.12+
+  // Current version (v0.11.47) does not have the new API yet
+  // Migration: const api = useAssistantApi(); api.thread().append(...)
   const runtime = useThreadRuntime();
 
   return useCallback(

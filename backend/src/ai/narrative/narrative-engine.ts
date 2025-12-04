@@ -407,22 +407,23 @@ export class NarrativeEngine {
   private addFinancialReportSuggestions(
     suggestions: EnhancedSuggestion[],
   ): void {
-    suggestions.push({
-      label: 'Monthly trend',
-      action: 'Show me the monthly savings trend',
-      priority: 'suggested',
-      reason: 'Compare with previous months',
-      badge: '>',
-      icon: 'chart',
-    });
-
-    suggestions.push({
-      label: 'Forecast next month',
-      action: 'What are my projected savings for next month?',
-      priority: 'optional',
-      reason: 'Plan ahead with forecasting',
-      icon: 'lightbulb',
-    });
+    suggestions.push(
+      {
+        label: 'Monthly trend',
+        action: 'Show me the monthly savings trend',
+        priority: 'suggested',
+        reason: 'Compare with previous months',
+        badge: '>',
+        icon: 'chart',
+      },
+      {
+        label: 'Forecast next month',
+        action: 'What are my projected savings for next month?',
+        priority: 'optional',
+        reason: 'Plan ahead with forecasting',
+        icon: 'lightbulb',
+      },
+    );
   }
 
   /**
@@ -653,10 +654,10 @@ export class NarrativeEngine {
   ): string {
     const parts: string[] = [];
 
-    parts.push(`ARGUMENT TYPE: ${spec.type}`);
-    parts.push(`FLOW: ${context.flowType}`);
     parts.push(
-      `OPTION COUNT: ${context.optionCount} device${context.optionCount !== 1 ? 's' : ''} available`,
+      `ARGUMENT TYPE: ${spec.type}`,
+      `FLOW: ${context.flowType}`,
+      `OPTION COUNT: ${context.optionCount} device${context.optionCount === 1 ? '' : 's'} available`,
     );
 
     if (context.extractedInfo?.loggerName) {
@@ -702,11 +703,11 @@ export class NarrativeEngine {
         parts.push('PURPOSE: Analyzing solar system data');
     }
 
-    parts.push('');
     parts.push(
+      '',
       'Generate a SHORT (1-2 sentences) prompt asking the user to select.',
+      'If there is a pre-selected value, acknowledge it warmly.',
     );
-    parts.push('If there is a pre-selected value, acknowledge it warmly.');
 
     return parts.join('\n');
   }
@@ -1018,8 +1019,8 @@ export class NarrativeEngine {
   private formatFactsForPrompt(facts: DecomposedFacts): string {
     const lines: string[] = [];
 
-    lines.push(`Subject: ${facts.subject}`);
     lines.push(
+      `Subject: ${facts.subject}`,
       `${facts.primaryMetric.name}: ${facts.primaryMetric.value}${facts.primaryMetric.unit || ''}`,
     );
 

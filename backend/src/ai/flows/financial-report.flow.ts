@@ -91,15 +91,6 @@ export function createFinancialReportFlow(
   const fetchLoggersNode = async (
     state: ExplicitFlowState,
   ): Promise<Partial<ExplicitFlowState>> => {
-    // TODO: DELETE - Debug logging
-    logger.debug('[DEBUG FINANCIAL] === FLOW ENTRY (fetchLoggers) ===');
-    logger.debug('[DEBUG FINANCIAL] Messages count:', state.messages.length);
-    logger.debug(
-      '[DEBUG FINANCIAL] FlowContext:',
-      JSON.stringify(state.flowContext, null, 2),
-    );
-    logger.debug('[DEBUG FINANCIAL] FlowStep:', state.flowStep);
-
     logger.debug('Financial Report: Fetching available loggers');
 
     const result = await executeTool<LoggersResult>(

@@ -275,13 +275,6 @@ export function matchesAllDevicesIntent(text: string): boolean {
 }
 
 /**
- * Pattern to detect "all devices" intent in user messages.
- * @deprecated Use matchesAllDevicesIntent() for better performance
- */
-export const ALL_DEVICES_PATTERN =
-  /\ball\s+(?:devices?|loggers?|inverters?)\b|\b(?:fleet|everything)\b|\bevery\s+(?:device|logger|inverter)\b|\beach\s+(?:device|logger|inverter)\b|\b(?:full|whole)\s+(?:fleet|system)\b|\bthe\s+entire\s+(?:fleet|plant|system)\b|\ball\s+of\s+them\b/i;
-
-/**
  * Common suggestions for different flow outcomes.
  */
 export const COMMON_SUGGESTIONS = {

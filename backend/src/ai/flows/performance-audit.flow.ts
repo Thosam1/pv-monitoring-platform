@@ -85,15 +85,6 @@ export function createPerformanceAuditFlow(
   const fetchLoggersNode = async (
     state: ExplicitFlowState,
   ): Promise<Partial<ExplicitFlowState>> => {
-    // TODO: DELETE - Debug logging
-    logger.debug('[DEBUG PERFORMANCE] === FLOW ENTRY (fetchLoggers) ===');
-    logger.debug('[DEBUG PERFORMANCE] Messages count:', state.messages.length);
-    logger.debug(
-      '[DEBUG PERFORMANCE] FlowContext:',
-      JSON.stringify(state.flowContext, null, 2),
-    );
-    logger.debug('[DEBUG PERFORMANCE] FlowStep:', state.flowStep);
-
     logger.debug('Performance Audit: Fetching available loggers');
 
     const result = await executeTool<LoggersResult>(

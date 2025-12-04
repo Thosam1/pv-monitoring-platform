@@ -18,7 +18,7 @@ import {
   getDateDaysAgo,
   formatLoggerOptions,
   getLastUserMessage,
-  ALL_DEVICES_PATTERN,
+  matchesAllDevicesIntent,
   COMMON_SUGGESTIONS,
   contextToSuggestions,
   extractContextFromResult,
@@ -480,42 +480,42 @@ describe('FlowUtils', () => {
     });
   });
 
-  describe('ALL_DEVICES_PATTERN', () => {
+  describe('matchesAllDevicesIntent', () => {
     it('should match "all devices"', () => {
-      expect(ALL_DEVICES_PATTERN.test('Check all devices')).toBe(true);
+      expect(matchesAllDevicesIntent('Check all devices')).toBe(true);
     });
 
     it('should match "all loggers"', () => {
-      expect(ALL_DEVICES_PATTERN.test('Show all loggers')).toBe(true);
+      expect(matchesAllDevicesIntent('Show all loggers')).toBe(true);
     });
 
     it('should match "all inverters"', () => {
-      expect(ALL_DEVICES_PATTERN.test('Check all inverters')).toBe(true);
+      expect(matchesAllDevicesIntent('Check all inverters')).toBe(true);
     });
 
     it('should match "fleet"', () => {
-      expect(ALL_DEVICES_PATTERN.test('Show fleet status')).toBe(true);
+      expect(matchesAllDevicesIntent('Show fleet status')).toBe(true);
     });
 
     it('should match "every device"', () => {
-      expect(ALL_DEVICES_PATTERN.test('Check every device')).toBe(true);
+      expect(matchesAllDevicesIntent('Check every device')).toBe(true);
     });
 
     it('should match "each logger"', () => {
-      expect(ALL_DEVICES_PATTERN.test('Analyze each logger')).toBe(true);
+      expect(matchesAllDevicesIntent('Analyze each logger')).toBe(true);
     });
 
     it('should not match "one device"', () => {
-      expect(ALL_DEVICES_PATTERN.test('Check one device')).toBe(false);
+      expect(matchesAllDevicesIntent('Check one device')).toBe(false);
     });
 
     it('should not match "logger 925"', () => {
-      expect(ALL_DEVICES_PATTERN.test('Check logger 925')).toBe(false);
+      expect(matchesAllDevicesIntent('Check logger 925')).toBe(false);
     });
 
     it('should be case insensitive', () => {
-      expect(ALL_DEVICES_PATTERN.test('ALL DEVICES')).toBe(true);
-      expect(ALL_DEVICES_PATTERN.test('All Loggers')).toBe(true);
+      expect(matchesAllDevicesIntent('ALL DEVICES')).toBe(true);
+      expect(matchesAllDevicesIntent('All Loggers')).toBe(true);
     });
   });
 

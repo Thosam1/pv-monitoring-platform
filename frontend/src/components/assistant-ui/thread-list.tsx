@@ -26,6 +26,8 @@ function ThreadListItem() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const threadListItem = useThreadListItem();
     const threadListItemRuntime = useThreadListItemRuntime();
+    // Note: useAssistantRuntime is deprecated in favor of useAssistantApi() in v0.12+
+    // Current version (v0.11.47) does not have the new API yet
     const runtime = useAssistantRuntime();
 
     const handleRename = () => {
@@ -56,9 +58,11 @@ function ThreadListItem() {
 
                     if (remainingThreads.length > 0) {
                         // Switch to the next available thread
+                        // Note: runtime.threadList is deprecated but replacement API not available in v0.11.47
                         await runtime.threadList.switchToThread(remainingThreads[0]);
                     } else {
                         // No other threads exist - create a new one first
+                        // Note: runtime.threadList is deprecated but replacement API not available in v0.11.47
                         await runtime.threadList.switchToNewThread();
                     }
 
