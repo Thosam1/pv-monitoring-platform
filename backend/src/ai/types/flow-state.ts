@@ -34,6 +34,75 @@ export interface FleetStatusSnapshot {
 }
 
 /**
+ * Argument type for flow-specific requirements.
+ */
+export type FlowArgumentType =
+  | 'single_logger'
+  | 'multiple_loggers'
+  | 'date'
+  | 'date_range';
+
+/**
+ * Default strategy for optional arguments.
+ */
+export type DefaultStrategy =
+  | 'last_7_days'
+  | 'latest_date'
+  | 'all_loggers'
+  | 'none';
+
+/**
+ * Logger type pattern for filtering.
+ */
+export type LoggerTypePattern = 'inverter' | 'meteo' | 'all';
+
+/**
+ * Flow-specific argument requirements definition.
+ * Used to validate and prompt for missing arguments.
+ */
+export interface FlowArgumentSpec {
+  /** Name of the argument (e.g., 'loggerId', 'dateRange') */
+  name: string;
+  /** Whether this argument is required to proceed */
+  required: boolean;
+  /** Type of argument for validation and UI rendering */
+  type: FlowArgumentType;
+  /** Minimum count for array types (e.g., 2 for comparison) */
+  minCount?: number;
+  /** Maximum count for array types */
+  maxCount?: number;
+  /** Default value strategy for optional arguments */
+  defaultStrategy?: DefaultStrategy;
+  /** Human-readable description for prompts */
+  description?: string;
+}
+
+/**
+ * Result of argument extraction from user message.
+ * Populated by the router node during classification.
+ */
+export interface ExtractedArguments {
+  /** Single logger ID if detected (e.g., "925") */
+  loggerId?: string;
+  /** Multiple logger IDs if detected (e.g., from "compare 925 and 926") */
+  loggerIds?: string[];
+  /** Logger name pattern (e.g., "the GoodWe", "meteo station") */
+  loggerNamePattern?: string;
+  /** Logger type pattern (e.g., "all inverters", "meteo stations") */
+  loggerTypePattern?: LoggerTypePattern;
+  /** Single date if detected (YYYY-MM-DD format) */
+  date?: string;
+  /** Date range if detected (from "last 7 days", "October 1 to 15") */
+  dateRange?: { start: string; end: string };
+  /** Confidence scores for each extraction (0-1) */
+  confidence?: {
+    loggerId?: number;
+    date?: number;
+    dateRange?: number;
+  };
+}
+
+/**
  * Context accumulated during flow execution.
  * This carries user selections and intermediate results between flow steps.
  */
@@ -64,6 +133,18 @@ export interface FlowContext {
   previousFleetStatus?: FleetStatusSnapshot;
   /** User's timezone for time-aware greetings (IANA format, e.g., "America/New_York") */
   userTimezone?: string;
+  /** Extended extracted arguments from router (for proactive prompting) */
+  extractedArgs?: ExtractedArguments;
+  /** Which argument we're currently prompting for */
+  currentPromptArg?: string;
+  /** Flow-specific argument requirements (for validation) */
+  argumentSpec?: FlowArgumentSpec[];
+  /** Flag indicating we're waiting for user input (prevents re-prompting) */
+  waitingForUserInput?: boolean;
+  /** Flag indicating no loggers are available (empty options case) */
+  noLoggersAvailable?: boolean;
+  /** User-configured electricity rate in €/kWh (for financial calculations) */
+  electricityRate?: number;
 }
 
 /**
@@ -243,6 +324,7 @@ export type ExplicitFlowState = typeof ExplicitFlowStateAnnotation.State;
 
 /**
  * Zod schema for LLM-based flow classification.
+ * Extended to support multiple loggers, date ranges, and type patterns.
  */
 export const FlowClassificationSchema = z.object({
   flow: z.enum([
@@ -256,12 +338,45 @@ export const FlowClassificationSchema = z.object({
   confidence: z.number().min(0).max(1),
   /** If true, the user is responding to a selection prompt (not a new question) */
   isContinuation: z.boolean().optional(),
+  /**
+   * If true, the user is providing a valid selection response (e.g., "925", "I selected: 925").
+   * When true, selectedValue contains the selection and the flow should resume.
+   * When false during waitingForUserInput, the user wants to cancel/change intent.
+   */
+  isSelectionResponse: z.boolean().optional().default(false),
+  /**
+   * The selected value(s) when isSelectionResponse is true.
+   * - String for single selection (loggerId, date)
+   * - Array for multiple selection (loggerIds)
+   */
+  selectedValue: z
+    .union([z.string(), z.array(z.string()), z.null()])
+    .optional(),
   extractedParams: z
     .object({
-      loggerId: z.string().optional(),
-      loggerName: z.string().optional(),
-      date: z.string().optional(),
+      /** Single logger ID (e.g., "925") */
+      loggerId: z.string().nullable().optional(),
+      /** Multiple logger IDs for comparison (e.g., ["925", "926"]) */
+      loggerIds: z.array(z.string()).nullable().optional(),
+      /** Logger name pattern (e.g., "GoodWe", "meteo station") */
+      loggerName: z.string().nullable().optional(),
+      /** Logger type pattern for fleet queries */
+      loggerTypePattern: z
+        .enum(['inverter', 'meteo', 'all'])
+        .nullable()
+        .optional(),
+      /** Single date (YYYY-MM-DD format) */
+      date: z.string().nullable().optional(),
+      /** Date range (from "last 7 days", "October 1 to 15") */
+      dateRange: z
+        .object({
+          start: z.string(),
+          end: z.string(),
+        })
+        .nullable()
+        .optional(),
     })
+    .nullable()
     .optional(),
 });
 
