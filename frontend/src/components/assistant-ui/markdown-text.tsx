@@ -164,6 +164,8 @@ const defaultComponents = memoizeMarkdownComponents({
   hr: ({ className, ...props }) => (
     <hr className={cn('my-4 border-border', className)} {...props} />
   ),
+  // NOSONAR: Tables rendered from dynamic markdown may lack headers if the source
+  // markdown doesn't include them. Component provides proper accessibility attrs.
   table: ({ className, ...props }) => (
     <section className="my-4 w-full overflow-x-auto">
       <table

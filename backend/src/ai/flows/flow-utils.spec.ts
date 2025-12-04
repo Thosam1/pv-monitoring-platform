@@ -28,6 +28,17 @@ import {
   computeWorstPerformer,
   computeSpreadPercent,
   computeComparisonSeverity,
+  parseNaturalDateRange,
+  resolveLoggersByPattern,
+  isMeteoLogger,
+  isInverterLogger,
+  createEnhancedSelectionArgs,
+  EnhancedSelectionConfig,
+  getOverallDataRange,
+  LoggerInfo,
+  mapColorSchemeToStyle,
+  mapComponentHint,
+  mapHintToChartType,
 } from './flow-utils';
 import { createMockToolsClient } from '../test-utils';
 
@@ -1346,6 +1357,571 @@ describe('FlowUtils', () => {
       expect(computeComparisonSeverity(10)).toBe('moderate_difference');
       // Exactly at 30% should be large_difference
       expect(computeComparisonSeverity(30)).toBe('large_difference');
+    });
+  });
+
+  // ============================================================
+  // Additional Tests for Uncovered Functions
+  // ============================================================
+
+  describe('parseNaturalDateRange', () => {
+    it('should parse "last N days" pattern', () => {
+      const result = parseNaturalDateRange('last 7 days');
+      expect(result).not.toBeNull();
+      expect(result?.end).toBe(getLatestDateString());
+    });
+
+    it('should parse "last N day" (singular)', () => {
+      const result = parseNaturalDateRange('last 1 day');
+      expect(result).not.toBeNull();
+      expect(result?.end).toBe(getLatestDateString());
+      expect(result?.start).toBe(getDateDaysAgo(1));
+    });
+
+    it('should parse "past N days" pattern', () => {
+      const result = parseNaturalDateRange('past 14 days');
+      expect(result).not.toBeNull();
+      expect(result?.start).toBe(getDateDaysAgo(14));
+    });
+
+    it('should parse "last week" phrase', () => {
+      const result = parseNaturalDateRange('last week');
+      expect(result).not.toBeNull();
+      expect(result?.start).toBe(getDateDaysAgo(7));
+    });
+
+    it('should parse "past week" phrase', () => {
+      const result = parseNaturalDateRange('past week');
+      expect(result).not.toBeNull();
+      expect(result?.start).toBe(getDateDaysAgo(7));
+    });
+
+    it('should parse "last month" phrase', () => {
+      const result = parseNaturalDateRange('last month');
+      expect(result).not.toBeNull();
+      expect(result?.start).toBe(getDateDaysAgo(30));
+    });
+
+    it('should parse "past month" phrase', () => {
+      const result = parseNaturalDateRange('past month');
+      expect(result).not.toBeNull();
+      expect(result?.start).toBe(getDateDaysAgo(30));
+    });
+
+    it('should parse "last 2 weeks" phrase', () => {
+      const result = parseNaturalDateRange('last 2 weeks');
+      expect(result).not.toBeNull();
+      expect(result?.start).toBe(getDateDaysAgo(14));
+    });
+
+    it('should parse "past 2 weeks" phrase', () => {
+      const result = parseNaturalDateRange('past 2 weeks');
+      expect(result).not.toBeNull();
+      expect(result?.start).toBe(getDateDaysAgo(14));
+    });
+
+    it('should return null for unrecognized patterns', () => {
+      expect(parseNaturalDateRange('sometime soon')).toBeNull();
+      expect(parseNaturalDateRange('maybe next week')).toBeNull();
+      expect(parseNaturalDateRange('')).toBeNull();
+    });
+
+    it('should be case insensitive', () => {
+      expect(parseNaturalDateRange('LAST 7 DAYS')).not.toBeNull();
+      expect(parseNaturalDateRange('Last Week')).not.toBeNull();
+    });
+
+    it('should handle extra whitespace', () => {
+      expect(parseNaturalDateRange('  last 7 days  ')).not.toBeNull();
+    });
+  });
+
+  describe('resolveLoggersByPattern', () => {
+    const mockLoggers: LoggerInfo[] = [
+      { loggerId: '925', loggerType: 'goodwe' },
+      { loggerId: '926', loggerType: 'lti' },
+      { loggerId: 'meteo-1', loggerType: 'mbmet' },
+      { loggerId: 'meteo-2', loggerType: 'meteocontrol' },
+    ];
+
+    it('should match by name pattern', () => {
+      const result = resolveLoggersByPattern('goodwe', undefined, mockLoggers);
+      expect(result).toContain('925');
+      expect(result).toHaveLength(1);
+    });
+
+    it('should match by logger ID pattern', () => {
+      const result = resolveLoggersByPattern('meteo', undefined, mockLoggers);
+      expect(result).toContain('meteo-1');
+      expect(result).toContain('meteo-2');
+    });
+
+    it('should match by inverter type pattern', () => {
+      const result = resolveLoggersByPattern(
+        undefined,
+        'inverter',
+        mockLoggers,
+      );
+      expect(result).toContain('925');
+      expect(result).toContain('926');
+      expect(result).not.toContain('meteo-1');
+    });
+
+    it('should match by meteo type pattern', () => {
+      const result = resolveLoggersByPattern(undefined, 'meteo', mockLoggers);
+      expect(result).toContain('meteo-1');
+      expect(result).toContain('meteo-2');
+      expect(result).not.toContain('925');
+    });
+
+    it('should match all with "all" type pattern', () => {
+      const result = resolveLoggersByPattern(undefined, 'all', mockLoggers);
+      expect(result).toHaveLength(4);
+    });
+
+    it('should combine name and type patterns', () => {
+      const result = resolveLoggersByPattern('925', 'inverter', mockLoggers);
+      // Should match '925' by name AND all inverters by type
+      expect(result).toContain('925');
+      expect(result).toContain('926'); // Also an inverter
+    });
+
+    it('should return empty array for no matches', () => {
+      const result = resolveLoggersByPattern(
+        'nonexistent',
+        undefined,
+        mockLoggers,
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array for empty loggers list', () => {
+      const result = resolveLoggersByPattern('anything', undefined, []);
+      expect(result).toEqual([]);
+    });
+
+    it('should be case insensitive for pattern matching', () => {
+      const result = resolveLoggersByPattern('GOODWE', undefined, mockLoggers);
+      expect(result).toContain('925');
+    });
+
+    it('should deduplicate results', () => {
+      // '925' should only appear once even if matched by both pattern and type
+      const result = resolveLoggersByPattern('925', 'inverter', mockLoggers);
+      const count925 = result.filter((id) => id === '925').length;
+      expect(count925).toBe(1);
+    });
+  });
+
+  describe('isMeteoLogger', () => {
+    it('should return true for mbmet', () => {
+      expect(isMeteoLogger('mbmet')).toBe(true);
+    });
+
+    it('should return true for meteocontrol', () => {
+      expect(isMeteoLogger('meteocontrol')).toBe(true);
+    });
+
+    it('should return true for plexlog', () => {
+      expect(isMeteoLogger('plexlog')).toBe(true);
+    });
+
+    it('should return false for inverter types', () => {
+      expect(isMeteoLogger('goodwe')).toBe(false);
+      expect(isMeteoLogger('lti')).toBe(false);
+    });
+
+    it('should be case insensitive', () => {
+      expect(isMeteoLogger('MBMET')).toBe(true);
+      expect(isMeteoLogger('MeteoControl')).toBe(true);
+    });
+  });
+
+  describe('isInverterLogger', () => {
+    it('should return true for goodwe', () => {
+      expect(isInverterLogger('goodwe')).toBe(true);
+    });
+
+    it('should return true for lti', () => {
+      expect(isInverterLogger('lti')).toBe(true);
+    });
+
+    it('should return true for integra', () => {
+      expect(isInverterLogger('integra')).toBe(true);
+    });
+
+    it('should return true for meier', () => {
+      expect(isInverterLogger('meier')).toBe(true);
+    });
+
+    it('should return true for smartdog', () => {
+      expect(isInverterLogger('smartdog')).toBe(true);
+    });
+
+    it('should return false for meteo types', () => {
+      expect(isInverterLogger('mbmet')).toBe(false);
+      expect(isInverterLogger('meteocontrol')).toBe(false);
+    });
+
+    it('should be case insensitive', () => {
+      expect(isInverterLogger('GOODWE')).toBe(true);
+      expect(isInverterLogger('SmartDog')).toBe(true);
+    });
+  });
+
+  describe('createEnhancedSelectionArgs', () => {
+    it('should include all basic fields', () => {
+      const config: EnhancedSelectionConfig = {
+        prompt: 'Select loggers:',
+        options: [{ value: '925', label: 'Logger 925' }],
+        selectionType: 'multiple',
+        inputType: 'dropdown',
+      };
+
+      const result = createEnhancedSelectionArgs(config);
+
+      expect(result.prompt).toBe('Select loggers:');
+      expect(result.options).toHaveLength(1);
+      expect(result.selectionType).toBe('multiple');
+      expect(result.inputType).toBe('dropdown');
+    });
+
+    it('should set requireConfirmation true when preSelectedValues provided', () => {
+      const config: EnhancedSelectionConfig = {
+        prompt: 'Confirm selection:',
+        options: [],
+        selectionType: 'single',
+        inputType: 'dropdown',
+        preSelectedValues: ['925'],
+      };
+
+      const result = createEnhancedSelectionArgs(config);
+
+      expect(result.requireConfirmation).toBe(true);
+    });
+
+    it('should set requireConfirmation false when no preSelectedValues', () => {
+      const config: EnhancedSelectionConfig = {
+        prompt: 'Select:',
+        options: [],
+        selectionType: 'single',
+        inputType: 'dropdown',
+      };
+
+      const result = createEnhancedSelectionArgs(config);
+
+      expect(result.requireConfirmation).toBe(false);
+    });
+
+    it('should respect explicit requireConfirmation setting', () => {
+      const config: EnhancedSelectionConfig = {
+        prompt: 'Select:',
+        options: [],
+        selectionType: 'single',
+        inputType: 'dropdown',
+        preSelectedValues: ['925'],
+        requireConfirmation: false, // Explicitly set to false
+      };
+
+      const result = createEnhancedSelectionArgs(config);
+
+      expect(result.requireConfirmation).toBe(false);
+    });
+
+    it('should include preFilledDateRange', () => {
+      const config: EnhancedSelectionConfig = {
+        prompt: 'Select date range:',
+        options: [],
+        selectionType: 'single',
+        inputType: 'date-range',
+        preFilledDateRange: { start: '2025-01-01', end: '2025-01-15' },
+      };
+
+      const result = createEnhancedSelectionArgs(config);
+
+      expect(result.preFilledDateRange).toEqual({
+        start: '2025-01-01',
+        end: '2025-01-15',
+      });
+    });
+
+    it('should include minCount and maxCount for multiple selection', () => {
+      const config: EnhancedSelectionConfig = {
+        prompt: 'Select 2-5 loggers:',
+        options: [],
+        selectionType: 'multiple',
+        inputType: 'dropdown',
+        minCount: 2,
+        maxCount: 5,
+      };
+
+      const result = createEnhancedSelectionArgs(config);
+
+      expect(result.minCount).toBe(2);
+      expect(result.maxCount).toBe(5);
+    });
+
+    it('should include contextMessage when provided', () => {
+      const config: EnhancedSelectionConfig = {
+        prompt: 'Select:',
+        contextMessage: 'Based on your previous analysis',
+        options: [],
+        selectionType: 'single',
+        inputType: 'dropdown',
+      };
+
+      const result = createEnhancedSelectionArgs(config);
+
+      expect(result.contextMessage).toBe('Based on your previous analysis');
+    });
+  });
+
+  describe('getOverallDataRange', () => {
+    it('should return undefined for empty loggers list', () => {
+      expect(getOverallDataRange([])).toBeUndefined();
+    });
+
+    it('should return undefined when no loggers have data ranges', () => {
+      const loggers: LoggerInfo[] = [
+        { loggerId: '925', loggerType: 'goodwe' },
+        { loggerId: '926', loggerType: 'lti' },
+      ];
+
+      expect(getOverallDataRange(loggers)).toBeUndefined();
+    });
+
+    it('should return range for single logger with data', () => {
+      const loggers: LoggerInfo[] = [
+        {
+          loggerId: '925',
+          loggerType: 'goodwe',
+          earliestData: '2024-06-01T00:00:00Z',
+          latestData: '2025-01-15T23:45:00Z',
+        },
+      ];
+
+      const result = getOverallDataRange(loggers);
+
+      expect(result).toEqual({
+        start: '2024-06-01T00:00:00Z',
+        end: '2025-01-15T23:45:00Z',
+      });
+    });
+
+    it('should return earliest start and latest end across multiple loggers', () => {
+      const loggers: LoggerInfo[] = [
+        {
+          loggerId: '925',
+          loggerType: 'goodwe',
+          earliestData: '2024-08-01T00:00:00Z',
+          latestData: '2025-01-10T23:45:00Z',
+        },
+        {
+          loggerId: '926',
+          loggerType: 'lti',
+          earliestData: '2024-06-01T00:00:00Z', // Earlier
+          latestData: '2025-01-15T23:45:00Z', // Later
+        },
+      ];
+
+      const result = getOverallDataRange(loggers);
+
+      expect(result?.start).toBe('2024-06-01T00:00:00Z');
+      expect(result?.end).toBe('2025-01-15T23:45:00Z');
+    });
+
+    it('should skip loggers without data ranges', () => {
+      const loggers: LoggerInfo[] = [
+        { loggerId: '925', loggerType: 'goodwe' }, // No data range
+        {
+          loggerId: '926',
+          loggerType: 'lti',
+          earliestData: '2024-06-01T00:00:00Z',
+          latestData: '2025-01-15T23:45:00Z',
+        },
+      ];
+
+      const result = getOverallDataRange(loggers);
+
+      expect(result).toEqual({
+        start: '2024-06-01T00:00:00Z',
+        end: '2025-01-15T23:45:00Z',
+      });
+    });
+  });
+
+  describe('mapColorSchemeToStyle', () => {
+    it('should map success to green color', () => {
+      expect(mapColorSchemeToStyle('success')).toBe('#22C55E');
+    });
+
+    it('should map warning to amber color', () => {
+      expect(mapColorSchemeToStyle('warning')).toBe('#F59E0B');
+    });
+
+    it('should map danger to red color', () => {
+      expect(mapColorSchemeToStyle('danger')).toBe('#EF4444');
+    });
+
+    it('should map neutral to gray color', () => {
+      expect(mapColorSchemeToStyle('neutral')).toBe('#6B7280');
+    });
+
+    it('should default to neutral for undefined', () => {
+      expect(mapColorSchemeToStyle(undefined)).toBe('#6B7280');
+    });
+  });
+
+  describe('mapComponentHint', () => {
+    it('should map chart_line to DynamicChart', () => {
+      expect(mapComponentHint('chart_line')).toBe('DynamicChart');
+    });
+
+    it('should map chart_bar to DynamicChart', () => {
+      expect(mapComponentHint('chart_bar')).toBe('DynamicChart');
+    });
+
+    it('should map chart_composed to DynamicChart', () => {
+      expect(mapComponentHint('chart_composed')).toBe('DynamicChart');
+    });
+
+    it('should map metric_card to MetricCard', () => {
+      expect(mapComponentHint('metric_card')).toBe('MetricCard');
+    });
+
+    it('should map data_table to DataTable', () => {
+      expect(mapComponentHint('data_table')).toBe('DataTable');
+    });
+
+    it('should default to DynamicChart for unknown hint', () => {
+      expect(mapComponentHint('unknown')).toBe('DynamicChart');
+    });
+
+    it('should default to DynamicChart for undefined', () => {
+      expect(mapComponentHint(undefined)).toBe('DynamicChart');
+    });
+  });
+
+  describe('mapHintToChartType', () => {
+    it('should map chart_line to line', () => {
+      expect(mapHintToChartType('chart_line')).toBe('line');
+    });
+
+    it('should map chart_bar to bar', () => {
+      expect(mapHintToChartType('chart_bar')).toBe('bar');
+    });
+
+    it('should map chart_composed to composed', () => {
+      expect(mapHintToChartType('chart_composed')).toBe('composed');
+    });
+
+    it('should map chart_pie to pie', () => {
+      expect(mapHintToChartType('chart_pie')).toBe('pie');
+    });
+
+    it('should default to composed for unknown hint', () => {
+      expect(mapHintToChartType('unknown')).toBe('composed');
+    });
+
+    it('should default to composed for undefined', () => {
+      expect(mapHintToChartType(undefined)).toBe('composed');
+    });
+  });
+
+  describe('generateDynamicSuggestions additional cases', () => {
+    it('should not add urgent suggestion for fleet with 100% online', () => {
+      const result = {
+        status: 'ok' as const,
+        result: {
+          status: { percentOnline: 100 },
+          devices: { offline: 0 },
+        },
+      };
+
+      const suggestions = generateDynamicSuggestions(
+        'get_fleet_overview',
+        result,
+      );
+
+      // Should have efficiency suggestion but not urgent diagnose
+      const urgentSuggestions = suggestions.filter(
+        (s) => s.priority === 'urgent',
+      );
+      expect(urgentSuggestions).toHaveLength(0);
+    });
+
+    it('should not add urgent suggestion for high performance ratio', () => {
+      const result = {
+        status: 'ok' as const,
+        result: {
+          performanceRatio: 90,
+          loggerId: '925',
+        },
+      };
+
+      const suggestions = generateDynamicSuggestions(
+        'calculate_performance_ratio',
+        result,
+      );
+
+      // High ratio (>85%) should not trigger any suggestions
+      expect(suggestions).toHaveLength(0);
+    });
+
+    it('should add recommended suggestion for moderate performance ratio', () => {
+      const result = {
+        status: 'ok' as const,
+        result: {
+          performanceRatio: 78,
+          status: 'moderate',
+        },
+      };
+
+      const suggestions = generateDynamicSuggestions(
+        'calculate_performance_ratio',
+        result,
+      );
+
+      expect(suggestions.length).toBeGreaterThan(0);
+      expect(suggestions[0].priority).toBe('recommended');
+    });
+
+    it('should return empty array when context has explicit empty next_steps', () => {
+      const result = {
+        status: 'ok' as const,
+        result: {
+          context: {
+            summary: 'All good',
+            insights: [],
+            next_steps: [], // Explicitly empty
+          },
+        },
+      };
+
+      const suggestions = generateDynamicSuggestions(
+        'analyze_inverter_health',
+        result,
+      );
+
+      expect(suggestions).toEqual([]);
+    });
+
+    it('should generate suggestions for get_power_curve', () => {
+      const result = {
+        status: 'ok' as const,
+        result: {
+          loggerId: '925',
+          date: '2025-01-15',
+          data: [],
+        },
+      };
+
+      const suggestions = generateDynamicSuggestions('get_power_curve', result);
+
+      expect(suggestions.length).toBeGreaterThan(0);
+      expect(suggestions.some((s) => s.toolHint === 'compare_loggers')).toBe(
+        true,
+      );
     });
   });
 });

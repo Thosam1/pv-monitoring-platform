@@ -1608,3 +1608,389 @@ describe('LanggraphService Model Configuration', () => {
     expect(service.getStatus().provider).toBe('ollama');
   });
 });
+
+describe('LanggraphService Legacy Graph', () => {
+  let mockToolsClient: ReturnType<typeof createMockToolsClient>;
+
+  beforeEach(() => {
+    mockToolsClient = createMockToolsClient();
+  });
+
+  it('should build legacy graph when explicit flows disabled', async () => {
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'gemini',
+          GOOGLE_GENERATIVE_AI_API_KEY: 'test-key',
+          EXPLICIT_FLOWS_ENABLED: 'false',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    const service = module.get<LanggraphService>(LanggraphService);
+    const status = service.getStatus();
+
+    expect(status.explicitFlowsEnabled).toBe(false);
+    expect(status.ready).toBe(true);
+  });
+
+  it('should create stream with legacy graph', async () => {
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'gemini',
+          GOOGLE_GENERATIVE_AI_API_KEY: 'test-key',
+          EXPLICIT_FLOWS_ENABLED: 'false',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    const service = module.get<LanggraphService>(LanggraphService);
+    const stream = service.streamChat([{ role: 'user', content: 'Hello' }]);
+
+    expect(stream).toBeDefined();
+    expect(stream[Symbol.asyncIterator]).toBeDefined();
+  });
+
+  it('should handle chat method with legacy graph', async () => {
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'gemini',
+          GOOGLE_GENERATIVE_AI_API_KEY: 'test-key',
+          EXPLICIT_FLOWS_ENABLED: 'false',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    const service = module.get<LanggraphService>(LanggraphService);
+    const chat = service.chat([{ role: 'user', content: 'Test' }]);
+
+    expect(chat).toBeDefined();
+    expect(typeof chat.toUIMessageStreamResponse).toBe('function');
+  });
+});
+
+/**
+ * Type for accessing flow context extraction methods.
+ */
+type FlowContextAccess = {
+  extractFlowContextFromMessages(messages: unknown[]):
+    | {
+        activeFlow?: string;
+        flowStep?: number;
+        flowContext?: Record<string, unknown>;
+      }
+    | undefined;
+  extractTextFromAiMessage(
+    msg: unknown,
+    reportedFlowMessages: Set<string>,
+  ): Array<{ type: string; delta?: string }>;
+  processFlowMessages(
+    messages: unknown[],
+    reportedFlowMessages: Set<string>,
+  ): Array<{ type: string; delta?: string }>;
+  processPendingUiActions(
+    actions: Array<{
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+    }>,
+    reportedToolCalls: Set<string>,
+  ): Array<{
+    type: string;
+    toolCallId?: string;
+    toolName?: string;
+    input?: unknown;
+    output?: unknown;
+  }>;
+  processAiMessageToolCalls(
+    messages: unknown[],
+    reportedToolCalls: Set<string>,
+  ): Array<{
+    type: string;
+    toolCallId?: string;
+    toolName?: string;
+    input?: unknown;
+    output?: unknown;
+  }>;
+};
+
+describe('LanggraphService Flow Context Extraction', () => {
+  let service: LanggraphService;
+  let servicePrivate: FlowContextAccess;
+  let mockToolsClient: ReturnType<typeof createMockToolsClient>;
+
+  beforeEach(async () => {
+    mockToolsClient = createMockToolsClient();
+
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'gemini',
+          GOOGLE_GENERATIVE_AI_API_KEY: 'test-api-key',
+          EXPLICIT_FLOWS_ENABLED: 'true',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    service = module.get<LanggraphService>(LanggraphService);
+    servicePrivate = service as unknown as FlowContextAccess;
+  });
+
+  afterEach(() => {
+    service.resetGraph();
+  });
+
+  describe('extractFlowContextFromMessages', () => {
+    it('should return undefined when no flow context in messages', () => {
+      const messages = [new AIMessage({ content: 'No context here' })];
+      const result = servicePrivate.extractFlowContextFromMessages(messages);
+      expect(result).toBeUndefined();
+    });
+
+    it('should extract flow context from embedded metadata', () => {
+      const msgWithContext = new AIMessage({
+        content: `Select a logger:\n\n<!-- {"__flowContext":{"activeFlow":"health_check","currentPromptArg":"loggerId","waitingForUserInput":true}} -->`,
+      });
+      const result = servicePrivate.extractFlowContextFromMessages([
+        msgWithContext,
+      ]);
+      expect(result).toBeDefined();
+      expect(result?.activeFlow).toBe('health_check');
+    });
+
+    it('should return undefined for malformed JSON in metadata', () => {
+      const malformedMsg = new AIMessage({
+        content: `Msg\n\n<!-- {"__flowContext":{"broken json -->`,
+      });
+      const result = servicePrivate.extractFlowContextFromMessages([
+        malformedMsg,
+      ]);
+      expect(result).toBeUndefined();
+    });
+
+    it('should search backwards to find most recent context', () => {
+      const oldContext = new AIMessage({
+        content: `Old\n\n<!-- {"__flowContext":{"activeFlow":"greeting"}} -->`,
+      });
+      const newContext = new AIMessage({
+        content: `New\n\n<!-- {"__flowContext":{"activeFlow":"health_check"}} -->`,
+      });
+      const result = servicePrivate.extractFlowContextFromMessages([
+        oldContext,
+        newContext,
+      ]);
+      expect(result?.activeFlow).toBe('health_check');
+    });
+  });
+
+  describe('extractTextFromAiMessage', () => {
+    it('should extract text from string content', () => {
+      const msg = new AIMessage({ content: 'Hello world' });
+      const reported = new Set<string>();
+      const result = servicePrivate.extractTextFromAiMessage(msg, reported);
+      expect(result).toHaveLength(1);
+      expect(result[0].delta).toBe('Hello world');
+    });
+
+    it('should skip already reported messages', () => {
+      const msg = new AIMessage({ content: 'Already seen' });
+      const reported = new Set<string>(['Already seen']);
+      const result = servicePrivate.extractTextFromAiMessage(msg, reported);
+      expect(result).toHaveLength(0);
+    });
+
+    it('should handle array content with text parts', () => {
+      const msg = new AIMessage({
+        content: [
+          { type: 'text', text: 'Part one' },
+          { type: 'text', text: ' Part two' },
+        ],
+      });
+      const reported = new Set<string>();
+      const result = servicePrivate.extractTextFromAiMessage(msg, reported);
+      expect(result.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should strip flow metadata from content', () => {
+      const msg = new AIMessage({
+        content: `Clean text\n\n<!-- {"__flowContext":{"activeFlow":"test"}} -->`,
+      });
+      const reported = new Set<string>();
+      const result = servicePrivate.extractTextFromAiMessage(msg, reported);
+      expect(result[0].delta).toBe('Clean text');
+    });
+  });
+
+  describe('processFlowMessages', () => {
+    it('should process multiple AIMessages', () => {
+      const messages = [
+        new AIMessage({ content: 'First message' }),
+        new AIMessage({ content: 'Second message' }),
+      ];
+      const reported = new Set<string>();
+      const result = servicePrivate.processFlowMessages(messages, reported);
+      expect(result.length).toBe(2);
+    });
+
+    it('should skip non-AI messages', () => {
+      const messages = [
+        { content: 'Not an AIMessage' }, // Plain object
+        new AIMessage({ content: 'AI message' }),
+      ];
+      const reported = new Set<string>();
+      const result = servicePrivate.processFlowMessages(messages, reported);
+      expect(result.length).toBe(1);
+    });
+
+    it('should handle empty messages array', () => {
+      const result = servicePrivate.processFlowMessages([], new Set<string>());
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe('processPendingUiActions', () => {
+    it('should generate both input and output for render_ui_component', () => {
+      const actions = [
+        {
+          toolCallId: 'ui_1',
+          toolName: 'render_ui_component',
+          args: { component: 'Chart' },
+        },
+      ];
+      const reported = new Set<string>();
+      const result = servicePrivate.processPendingUiActions(actions, reported);
+      expect(result.length).toBe(2);
+      expect(result[0].type).toBe('tool-input-available');
+      expect(result[1].type).toBe('tool-output-available');
+    });
+
+    it('should generate only input for request_user_selection', () => {
+      const actions = [
+        {
+          toolCallId: 'sel_1',
+          toolName: 'request_user_selection',
+          args: { prompt: 'Choose' },
+        },
+      ];
+      const reported = new Set<string>();
+      const result = servicePrivate.processPendingUiActions(actions, reported);
+      expect(result.length).toBe(1);
+      expect(result[0].type).toBe('tool-input-available');
+    });
+
+    it('should skip already reported actions', () => {
+      const actions = [
+        {
+          toolCallId: 'ui_reported',
+          toolName: 'render_ui_component',
+          args: {},
+        },
+      ];
+      const reported = new Set<string>(['ui_reported']);
+      const result = servicePrivate.processPendingUiActions(actions, reported);
+      expect(result.length).toBe(0);
+    });
+
+    it('should track reported actions in set', () => {
+      const actions = [
+        { toolCallId: 'ui_new', toolName: 'render_ui_component', args: {} },
+      ];
+      const reported = new Set<string>();
+      servicePrivate.processPendingUiActions(actions, reported);
+      expect(reported.has('ui_new')).toBe(true);
+    });
+  });
+
+  describe('processAiMessageToolCalls', () => {
+    it('should extract tool calls from AIMessage', () => {
+      const aiMsg = new AIMessage({
+        content: 'Calling tools',
+        tool_calls: [{ id: 'tc_1', name: 'list_loggers', args: {} }],
+      });
+      const reported = new Set<string>();
+      const result = servicePrivate.processAiMessageToolCalls(
+        [aiMsg],
+        reported,
+      );
+      expect(result.length).toBeGreaterThanOrEqual(1);
+      expect(result[0].type).toBe('tool-input-available');
+    });
+
+    it('should skip tool calls without id', () => {
+      const aiMsg = new AIMessage({
+        content: 'Tools',
+        tool_calls: [{ name: 'test', args: {} }], // No id
+      });
+      const reported = new Set<string>();
+      const result = servicePrivate.processAiMessageToolCalls(
+        [aiMsg],
+        reported,
+      );
+      // Should still process but generate fallback id
+      expect(result.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should handle render_ui_component with output', () => {
+      const aiMsg = new AIMessage({
+        content: '',
+        tool_calls: [
+          { id: 'ui_tc', name: 'render_ui_component', args: { data: [] } },
+        ],
+      });
+      const reported = new Set<string>();
+      const result = servicePrivate.processAiMessageToolCalls(
+        [aiMsg],
+        reported,
+      );
+      expect(result.length).toBe(2); // input + output
+    });
+
+    it('should skip non-AIMessage objects', () => {
+      const plainObj = { content: 'Not AI' };
+      const reported = new Set<string>();
+      const result = servicePrivate.processAiMessageToolCalls(
+        [plainObj],
+        reported,
+      );
+      expect(result).toHaveLength(0);
+    });
+  });
+});

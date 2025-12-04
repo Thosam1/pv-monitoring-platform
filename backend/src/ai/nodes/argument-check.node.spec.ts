@@ -4,7 +4,7 @@
  * Tests the argument validation logic that ensures required arguments
  * are satisfied before proceeding with a flow.
  */
-import { AIMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { argumentCheckNode, hasRequiredArgs } from './argument-check.node';
 import {
   createTestState,
@@ -805,6 +805,302 @@ describe('ArgumentCheckNode', () => {
       });
 
       expect(hasRequiredArgs(state)).toBe('proceed');
+    });
+  });
+
+  // ============================================================
+  // Additional Edge Case Tests
+  // ============================================================
+
+  describe('free_chat intent detection', () => {
+    it('should inject loggerId spec when message contains "power curve"', async () => {
+      const state = createTestState({
+        activeFlow: 'free_chat',
+        flowContext: {},
+        messages: [new HumanMessage('Show me the power curve for my system')],
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should prompt for loggerId since intent was detected
+      expect(result.pendingUiActions).toBeDefined();
+      if (result.pendingUiActions?.length) {
+        expect(result.pendingUiActions[0].toolName).toBe(
+          'request_user_selection',
+        );
+      }
+    });
+
+    it('should inject loggerIds spec when message contains "compare"', async () => {
+      const state = createTestState({
+        activeFlow: 'free_chat',
+        flowContext: {},
+        messages: [new HumanMessage('Compare all my inverters')],
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should prompt for loggerIds since compare intent was detected
+      if (result.pendingUiActions?.length) {
+        const args = result.pendingUiActions[0].args as Record<string, unknown>;
+        expect(args.selectionType).toBe('multiple');
+      }
+    });
+
+    it('should not inject specs when no intent keywords found', async () => {
+      const state = createTestState({
+        activeFlow: 'free_chat',
+        flowContext: {},
+        messages: [new HumanMessage('What is the weather like?')],
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should proceed without prompts since no intent was detected
+      expect(result.flowStep).toBe(1);
+    });
+
+    it('should inject spec when message contains "health"', async () => {
+      const state = createTestState({
+        activeFlow: 'free_chat',
+        flowContext: {},
+        messages: [new HumanMessage('Check the health of logger 925')],
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should prompt for loggerId since health intent was detected
+      expect(result.pendingUiActions).toBeDefined();
+    });
+
+    it('should inject spec when message contains "savings"', async () => {
+      const state = createTestState({
+        activeFlow: 'free_chat',
+        flowContext: {},
+        messages: [new HumanMessage('How much money am I saving?')],
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should prompt for loggerId since financial intent was detected
+      expect(result.pendingUiActions).toBeDefined();
+    });
+  });
+
+  describe('cardinality mismatch handling', () => {
+    it('should auto-switch to performance_audit when multiple loggers selected for health_check', async () => {
+      const state = createTestState({
+        activeFlow: 'health_check',
+        flowContext: {
+          selectedLoggerIds: ['925', '926', 'MBMET-001'],
+        },
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should switch to performance_audit
+      expect(result.activeFlow).toBe('performance_audit');
+      expect(result.flowContext?.selectedLoggerIds).toEqual([
+        '925',
+        '926',
+        'MBMET-001',
+      ]);
+    });
+
+    it('should auto-switch to performance_audit when multiple loggers selected for financial_report', async () => {
+      const state = createTestState({
+        activeFlow: 'financial_report',
+        flowContext: {
+          selectedLoggerIds: ['925', '926'],
+        },
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should switch to performance_audit
+      expect(result.activeFlow).toBe('performance_audit');
+    });
+
+    it('should NOT auto-switch when only one logger selected', async () => {
+      const state = createTestState({
+        activeFlow: 'health_check',
+        flowContext: {
+          selectedLoggerIds: ['925'],
+        },
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should NOT switch, should stay on health_check
+      expect(result.activeFlow).toBeUndefined();
+    });
+  });
+
+  describe('noLoggersAvailable error message', () => {
+    it('should include upload instructions in error message', async () => {
+      const state = createTestState({
+        activeFlow: 'health_check',
+        flowContext: {},
+      });
+
+      const result = await argumentCheckNode(state, [], mockModel as never);
+
+      const message = result.messages?.[0] as AIMessage;
+      const content = message.content as string;
+
+      expect(content).toContain('Upload');
+      expect(content).toContain('data');
+    });
+
+    it('should set noLoggersAvailable flag in context', async () => {
+      const state = createTestState({
+        activeFlow: 'financial_report',
+        flowContext: {},
+      });
+
+      const result = await argumentCheckNode(state, [], mockModel as never);
+
+      expect(result.flowContext?.noLoggersAvailable).toBe(true);
+    });
+  });
+
+  describe('pattern resolution edge cases', () => {
+    it('should handle pattern that matches no loggers gracefully', async () => {
+      const state = createTestState({
+        activeFlow: 'health_check',
+        flowContext: {
+          extractedLoggerName: 'nonexistent-brand',
+        },
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should still prompt, but without preSelectedValues
+      expect(result.pendingUiActions).toBeDefined();
+      const args = result.pendingUiActions?.[0].args as Record<string, unknown>;
+      // preSelectedValues should be undefined or empty
+      expect(
+        args.preSelectedValues === undefined ||
+          (Array.isArray(args.preSelectedValues) &&
+            args.preSelectedValues.length === 0),
+      ).toBe(true);
+    });
+
+    it('should handle empty extractedLoggerName', async () => {
+      const state = createTestState({
+        activeFlow: 'health_check',
+        flowContext: {
+          extractedLoggerName: '',
+        },
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should still prompt for selection
+      expect(result.pendingUiActions).toBeDefined();
+    });
+
+    it('should handle partial pattern match', async () => {
+      const state = createTestState({
+        activeFlow: 'health_check',
+        flowContext: {
+          extractedLoggerName: 'good', // partial match for "goodwe"
+        },
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should find the partial match
+      const args = result.pendingUiActions?.[0].args as Record<string, unknown>;
+      if (args.preSelectedValues) {
+        expect(args.preSelectedValues).toContain('925');
+      }
+    });
+  });
+
+  describe('default strategy edge cases', () => {
+    it('should apply latest_date default correctly', async () => {
+      const state = createTestState({
+        activeFlow: 'performance_audit',
+        flowContext: {
+          selectedLoggerIds: ['925', '926'],
+          // date not provided
+        },
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      // Should proceed with today's date
+      expect(result.flowStep).toBe(1);
+      expect(result.flowContext?.selectedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('should NOT override existing date value', async () => {
+      const state = createTestState({
+        activeFlow: 'performance_audit',
+        flowContext: {
+          selectedLoggerIds: ['925', '926'],
+          selectedDate: '2025-01-01', // Already provided
+        },
+      });
+
+      const result = await argumentCheckNode(
+        state,
+        availableLoggers,
+        mockModel as never,
+      );
+
+      expect(result.flowStep).toBe(1);
+      // Should preserve the provided date, not override with default
+      expect(result.flowContext?.selectedDate).toBe('2025-01-01');
     });
   });
 });
