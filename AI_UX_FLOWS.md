@@ -27,46 +27,54 @@ The AI assistant uses a three-tier architecture: React frontend for user interac
 
 ### System Diagram
 
+```mermaid
+flowchart TB
+    subgraph Frontend["FRONTEND (React + Vite)"]
+        CI["ChatInterface"]
+        SSE["SSE Stream Parser"]
+        TR["Tool Renderer<br/>(Hidden/Visible)"]
+        CI --> SSE --> TR
+    end
+
+    subgraph Backend["BACKEND (NestJS + LangGraph)"]
+        AC["AiController"]
+        LG["LangGraph Service"]
+        TH["ToolsHttpClient"]
+        AC --> LG --> TH
+
+        subgraph Orchestration["Orchestration"]
+            RT["Router Node"]
+            EF["Explicit Flows"]
+            RS["Recovery Subgraph"]
+        end
+
+        LG --> RT
+        LG --> EF
+        LG --> RS
+    end
+
+    subgraph Python["PYTHON TOOLS API (FastMCP)"]
+        HR["HTTP Router<br/>/api/tools"]
+        REG["Tool Registry<br/>(10 tools)"]
+        QB["Query Builders"]
+        HR --> REG --> QB
+    end
+
+    subgraph DB["DATABASE"]
+        PG["PostgreSQL<br/>measurements"]
+    end
+
+    Frontend -->|"POST /ai/chat (SSE)"| Backend
+    TH -->|"HTTP POST"| Python
+    QB -->|"SQL"| DB
+
+    style Frontend fill:#dbeafe,stroke:#3b82f6
+    style Backend fill:#d1fae5,stroke:#10b981
+    style Python fill:#fef3c7,stroke:#f59e0b
+    style DB fill:#e0e7ff,stroke:#6366f1
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         FRONTEND                                 │
-│  ┌─────────────┐   ┌──────────────┐   ┌──────────────────────┐ │
-│  │ ChatInterface│──>│ SSE Stream   │──>│ Tool Renderer        │ │
-│  │             │   │ Parser       │   │ (Hidden/Visible)     │ │
-│  └─────────────┘   └──────────────┘   └──────────────────────┘ │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ POST /ai/chat (SSE response)
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         BACKEND                                  │
-│  ┌─────────────┐   ┌──────────────┐   ┌──────────────────────┐ │
-│  │ AiController │──>│ LangGraph    │──>│ ToolsHttpClient      │ │
-│  │             │   │ Service      │   │                      │ │
-│  └─────────────┘   └──────────────┘   └──────────────────────┘ │
-│                           │                      │              │
-│              ┌────────────┴────────────┐         │              │
-│              ▼            ▼            ▼         │              │
-│         ┌────────┐  ┌──────────┐  ┌────────┐    │              │
-│         │ Router │  │ Explicit │  │Recovery│    │              │
-│         │ Node   │  │ Flows    │  │Subgraph│    │              │
-│         └────────┘  └──────────┘  └────────┘    │              │
-└─────────────────────────────────────────────────┼──────────────┘
-                                                  │ HTTP POST
-                                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    PYTHON TOOLS API                              │
-│  ┌─────────────┐   ┌──────────────┐   ┌──────────────────────┐ │
-│  │ HTTP Router │──>│ Tool Registry│──>│ Query Builders       │ │
-│  │ /api/tools  │   │ (10 tools)   │   │                      │ │
-│  └─────────────┘   └──────────────┘   └──────────────────────┘ │
-└─────────────────────────────────────────────────┬───────────────┘
-                                                  │ SQL
-                                                  ▼
-                                         ┌────────────────┐
-                                         │   PostgreSQL   │
-                                         │  measurements  │
-                                         └────────────────┘
-```
+
+> **Detailed Diagrams:** See [diagrams/markdown/langgraph-main-graph.md](diagrams/markdown/langgraph-main-graph.md) for the complete StateGraph structure.
 
 ### Component Responsibilities
 
@@ -146,43 +154,50 @@ The frontend uses `@assistant-ui/react` for chat primitives (ThreadList, Thread,
 
 ### 3.1 Complete Flow
 
+```mermaid
+flowchart TB
+    MSG["User Message"]
+    POST["POST /ai/chat"]
+    ROUTER["Router<br/>Classify intent"]
+
+    subgraph Flows["Flow Selection"]
+        MB["morning_briefing"]
+        FR["financial_report"]
+        PA["performance_audit"]
+        HC["health_check"]
+        FC["free_chat"]
+    end
+
+    EXEC["Execute Flow Steps"]
+    TOOL["Tool Execution<br/>HTTP POST /api/tools"]
+    CHECK["Check Results"]
+
+    SUCCESS["Success"]
+    ERROR["Error"]
+    REC["Recovery Subgraph"]
+
+    subgraph SSE["SSE Events"]
+        E1["text-delta"]
+        E2["tool-input-available"]
+        E3["tool-output-available"]
+        E4["[DONE]"]
+    end
+
+    MSG --> POST --> ROUTER
+    ROUTER --> MB & FR & PA & HC & FC
+    MB & FR & PA & HC & FC --> EXEC
+    EXEC --> TOOL --> CHECK
+    CHECK -->|"ok"| SUCCESS
+    CHECK -->|"error"| ERROR --> REC
+    SUCCESS --> SSE
+    REC --> SSE
+
+    style ROUTER fill:#3b82f6,stroke:#2563eb,color:#fff
+    style REC fill:#ec4899,stroke:#db2777,color:#fff
+    style SSE fill:#22c55e,stroke:#16a34a
 ```
-User Message
-     │
-     ▼
-POST /ai/chat ─────────────────────────────────────────────────┐
-     │                                                          │
-     ▼                                                          │
-┌─────────────┐                                                 │
-│   Router    │─── Classify intent ──> flow: "health_check"    │
-└─────────────┘                        confidence: 0.95         │
-     │                                                          │
-     ├─── morning_briefing ───┐                                 │
-     ├─── financial_report ───┤                                 │
-     ├─── performance_audit ──┼──> Execute Flow Steps           │
-     ├─── health_check ───────┤                                 │
-     └─── free_chat ──────────┘                                 │
-                │                                               │
-                ▼                                               │
-         Tool Execution ─── HTTP POST /api/tools/{name}        │
-                │                                               │
-                ▼                                               │
-         ┌─────────────┐                                        │
-         │Check Results│                                        │
-         └─────────────┘                                        │
-                │                                               │
-         ┌──────┴──────┐                                        │
-         ▼             ▼                                        │
-      Success       Error ──> Recovery Subgraph                 │
-         │                         │                            │
-         └─────────┬───────────────┘                            │
-                   ▼                                            │
-            SSE Events ─────────────────────────────────────────┘
-            • text-delta: "Analyzing..."
-            • tool-input-available: {toolName, args}
-            • tool-output-available: {toolCallId, output}
-            • [DONE]
-```
+
+> **Detailed Diagrams:** See [diagrams/markdown/ai-chat-flow.md](diagrams/markdown/ai-chat-flow.md) for the complete sequence diagram.
 
 ### 3.2 SSE Event Types
 
@@ -207,23 +222,27 @@ data: [DONE]
 
 ### 3.3 Message Transformation
 
-```
-Frontend (ChatMessage[])
-     │
-     ▼ Convert to LangChain format
-Backend (BaseMessage[])
-     │
-     ▼ Add system prompt + tools
-LLM Request
-     │
-     ▼ Stream response
-LLM Response (AIMessage with tool_calls)
-     │
-     ▼ Execute tools via HTTP
-Tool Results (ToolMessage[])
-     │
-     ▼ Continue LLM loop or return
-SSE Events → Frontend
+```mermaid
+flowchart TB
+    FE["Frontend<br/>(ChatMessage[])"]
+    BE["Backend<br/>(BaseMessage[])"]
+    LLM_REQ["LLM Request<br/>+ system prompt + tools"]
+    LLM_RES["LLM Response<br/>(AIMessage + tool_calls)"]
+    TOOL["Tool Results<br/>(ToolMessage[])"]
+    SSE["SSE Events → Frontend"]
+
+    FE -->|"Convert to LangChain format"| BE
+    BE -->|"Add system prompt + tools"| LLM_REQ
+    LLM_REQ -->|"Stream response"| LLM_RES
+    LLM_RES -->|"Execute tools via HTTP"| TOOL
+    TOOL -->|"Continue LLM loop or return"| SSE
+
+    style FE fill:#dbeafe,stroke:#3b82f6
+    style BE fill:#d1fae5,stroke:#10b981
+    style LLM_REQ fill:#fef3c7,stroke:#f59e0b
+    style LLM_RES fill:#fef3c7,stroke:#f59e0b
+    style TOOL fill:#e0e7ff,stroke:#6366f1
+    style SSE fill:#22c55e,stroke:#16a34a
 ```
 
 ---
@@ -831,114 +850,103 @@ const STORAGE_KEY = 'solar-analyst-chats';
 
 ## 11. State Diagrams
 
+> **Detailed Diagrams:** All state diagrams are available in the [diagrams/markdown/](diagrams/markdown/) folder with full Mermaid source.
+
 ### 11.1 Main Graph Structure
 
+```mermaid
+flowchart TB
+    START((START))
+    ROUTER[/"router"/]
+    END_NODE((END))
+
+    subgraph Flows["Explicit Flows"]
+        MB["morning_briefing"]
+        FR["financial_report"]
+        PA["performance_audit"]
+        HC["health_check"]
+    end
+
+    subgraph FreeChat["Free Chat Loop"]
+        FC["free_chat"]
+        TOOLS["tools"]
+        CHECK["check_results"]
+    end
+
+    REC["recovery"]
+
+    START --> ROUTER
+    ROUTER --> MB --> END_NODE
+    ROUTER --> FR --> END_NODE
+    ROUTER --> PA --> END_NODE
+    ROUTER --> HC --> END_NODE
+    ROUTER --> FC --> TOOLS --> CHECK
+    CHECK -->|"success"| FC
+    CHECK -->|"error"| REC
+    REC --> FC
+    CHECK -->|"done"| END_NODE
+
+    style START fill:#22c55e,stroke:#16a34a,color:#fff
+    style END_NODE fill:#ef4444,stroke:#dc2626,color:#fff
+    style ROUTER fill:#3b82f6,stroke:#2563eb,color:#fff
+    style REC fill:#ec4899,stroke:#db2777,color:#fff
 ```
-                    ┌─────────────────────────────────────────────────────┐
-                    │                                                     │
-                    v                                                     │
-┌───────┐    ┌──────────┐    ┌───────────────────┐                       │
-│ START │───>│  router  │───>│ morning_briefing  │───────────────────────┼──> END
-└───────┘    └──────────┘    └───────────────────┘                       │
-                    │                                                     │
-                    │         ┌───────────────────┐                       │
-                    ├────────>│ financial_report  │───────────────────────┼──> END
-                    │         └───────────────────┘                       │
-                    │                                                     │
-                    │         ┌───────────────────┐                       │
-                    ├────────>│ performance_audit │───────────────────────┼──> END
-                    │         └───────────────────┘                       │
-                    │                                                     │
-                    │         ┌───────────────────┐                       │
-                    ├────────>│   health_check    │───────────────────────┼──> END
-                    │         └───────────────────┘                       │
-                    │                                                     │
-                    │         ┌───────────────────┐     ┌─────────┐       │
-                    └────────>│    free_chat      │────>│  tools  │───────┤
-                              └───────────────────┘     └─────────┘       │
-                                       ^                     │            │
-                                       │              ┌──────v──────┐     │
-                                       │              │check_results│     │
-                                       │              └──────┬──────┘     │
-                                       │                     │            │
-                                       │              ┌──────v──────┐     │
-                                       └──────────────│  recovery   │─────┘
-                                                      └─────────────┘
-```
+
+See [diagrams/markdown/langgraph-main-graph.md](diagrams/markdown/langgraph-main-graph.md) for the complete diagram.
 
 ### 11.2 Morning Briefing Flow
 
+```mermaid
+flowchart TB
+    FO["fleet_overview<br/>get_fleet_overview()"]
+    CC["check_critical<br/>(inspect result)"]
+    DI["diagnose_issues<br/>diagnose_error_codes()"]
+    RB["render_briefing<br/>render_ui_component()"]
+    END_NODE((END))
+
+    FO --> CC
+    CC -->|"percentOnline < 100%"| DI --> RB
+    CC -->|"percentOnline = 100%"| RB
+    RB --> END_NODE
+
+    style FO fill:#3b82f6,stroke:#2563eb,color:#fff
+    style DI fill:#f59e0b,stroke:#d97706,color:#fff
+    style RB fill:#8b5cf6,stroke:#7c3aed,color:#fff
 ```
-┌─────────────────┐
-│  fleet_overview │
-│  get_fleet_...  │
-└────────┬────────┘
-         │
-         v
-┌─────────────────┐
-│  check_critical │
-│  (inspect)      │
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    │         │
-    v         v
-< 100%    = 100%
-    │         │
-    v         │
-┌─────────┐   │
-│diagnose │   │
-│ issues  │   │
-└────┬────┘   │
-     │        │
-     └────┬───┘
-          │
-          v
-┌─────────────────┐
-│ render_briefing │
-│ render_ui_...   │
-└────────┬────────┘
-         │
-         v
-       [END]
-```
+
+See [diagrams/markdown/flow-morning-briefing.md](diagrams/markdown/flow-morning-briefing.md) for the complete diagram.
 
 ### 11.3 Recovery Subgraph
 
+```mermaid
+flowchart TB
+    DET["detect_recovery_type"]
+    NDW["no_data_in_window"]
+    ND["no_data"]
+    ERR["error"]
+
+    EXT["extract_range"]
+    DATE["prompt_date<br/>selection"]
+    RETRY["retry_with_date"]
+
+    ALT["suggest<br/>alternatives"]
+    EXP["explain_error"]
+
+    RET["Return to flow"]
+    END_NODE((END))
+
+    DET --> NDW & ND & ERR
+    NDW --> EXT --> DATE --> RETRY --> RET
+    ND --> ALT --> END_NODE
+    ERR --> EXP --> END_NODE
+
+    style DET fill:#3b82f6,stroke:#2563eb,color:#fff
+    style NDW fill:#f59e0b,stroke:#d97706,color:#fff
+    style ERR fill:#ef4444,stroke:#dc2626,color:#fff
+    style RET fill:#22c55e,stroke:#16a34a,color:#fff
 ```
-┌───────────────────────┐
-│ detect_recovery_type  │
-└───────────┬───────────┘
-            │
-    ┌───────┼───────┐
-    │       │       │
-    v       v       v
-no_data  no_data  error
-in_window   │       │
-    │       │       │
-    v       v       v
-┌───────┐ ┌─────┐ ┌───────┐
-│extract│ │list │ │explain│
-│ range │ │alts │ │ error │
-└───┬───┘ └──┬──┘ └───┬───┘
-    │        │        │
-    v        v        v
-┌────────┐   │      [END]
-│ prompt │   │
-│  date  │   │
-└───┬────┘   │
-    │        │
-    v        │
-┌────────┐   │
-│ retry  │   │
-│ w/date │   │
-└───┬────┘   │
-    │        │
-    └────┬───┘
-         │
-         v
-   [Return to flow]
-```
+
+See [diagrams/markdown/recovery-subgraph.md](diagrams/markdown/recovery-subgraph.md) for the complete diagram.
 
 ---
 

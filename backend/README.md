@@ -71,19 +71,27 @@ The AI module uses LangGraph for deterministic workflow management with LLM-powe
 
 ### LangGraph Orchestration
 
+```mermaid
+flowchart TB
+    AC["AiController<br/>(SSE)"]
+    LG["LangGraph Service"]
+    TH["ToolsHttpClient<br/>(HTTP POST)"]
+
+    subgraph Orchestration["Graph Nodes"]
+        RT["Router Node"]
+        EF["Explicit Flows"]
+        RS["Recovery Subgraph"]
+    end
+
+    AC --> LG --> TH
+    LG --> RT & EF & RS
+
+    style AC fill:#3b82f6,stroke:#2563eb,color:#fff
+    style LG fill:#22c55e,stroke:#16a34a,color:#fff
+    style RS fill:#ec4899,stroke:#db2777,color:#fff
 ```
-┌─────────────┐    ┌──────────────┐    ┌──────────────────┐
-│ AiController │──>│ LangGraph    │──>│ ToolsHttpClient  │
-│ (SSE)       │   │ Service      │   │ (HTTP POST)      │
-└─────────────┘   └──────────────┘   └──────────────────┘
-                         │
-            ┌────────────┴────────────┐
-            ▼            ▼            ▼
-       ┌────────┐  ┌──────────┐  ┌────────┐
-       │ Router │  │ Explicit │  │Recovery│
-       │ Node   │  │ Flows    │  │Subgraph│
-       └────────┘  └──────────┘  └────────┘
-```
+
+> See [diagrams/markdown/langgraph-main-graph.md](../diagrams/markdown/langgraph-main-graph.md) for the complete StateGraph structure.
 
 ### Explicit Flows
 
@@ -179,3 +187,15 @@ OLLAMA_MODEL=gpt-oss:20b      # Any Ollama model
 
 - [AI_UX_FLOWS.md](../AI_UX_FLOWS.md) - Complete AI architecture and flow specifications
 - [CLAUDE.md](../CLAUDE.md) - Coding standards and patterns
+
+### Flow Diagrams
+
+| Flow | Description | Diagram |
+|------|-------------|---------|
+| Main Graph | LangGraph StateGraph structure | [langgraph-main-graph.md](../diagrams/markdown/langgraph-main-graph.md) |
+| Morning Briefing | Fleet overview flow | [flow-morning-briefing.md](../diagrams/markdown/flow-morning-briefing.md) |
+| Financial Report | Savings calculation flow | [flow-financial-report.md](../diagrams/markdown/flow-financial-report.md) |
+| Health Check | Anomaly detection flow | [flow-health-check.md](../diagrams/markdown/flow-health-check.md) |
+| Performance Audit | Comparison flow | [flow-performance-audit.md](../diagrams/markdown/flow-performance-audit.md) |
+| Recovery Subgraph | Error handling | [recovery-subgraph.md](../diagrams/markdown/recovery-subgraph.md) |
+| Agent Behavior | Router classification | [agent-behavior.md](../diagrams/markdown/agent-behavior.md) |

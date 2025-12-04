@@ -82,6 +82,29 @@ The chat interface receives Server-Sent Events from the backend:
 
 Tools are categorized for clean UX - users see results while "plumbing" stays hidden:
 
+```mermaid
+flowchart LR
+    subgraph Hidden["Hidden Tools (Data Fetching)"]
+        H1["list_loggers"]
+        H2["analyze_inverter_health"]
+        H3["calculate_financial_savings"]
+    end
+
+    subgraph Visible["Visible Tools (Inline Render)"]
+        V1["render_ui_component"]
+        V2["request_user_selection"]
+        V3["get_power_curve"]
+    end
+
+    Hidden -->|"'Analyzing...'<br/>indicator"| DEBUG["Debug Panel"]
+    Visible -->|"Component<br/>rendering"| UI["Chat Message"]
+
+    style Hidden fill:#6b7280,stroke:#4b5563,color:#fff
+    style Visible fill:#22c55e,stroke:#16a34a,color:#fff
+```
+
+> See [diagrams/markdown/frontend-tool-rendering.md](../diagrams/markdown/frontend-tool-rendering.md) for the complete component hierarchy.
+
 **Hidden Tools** (shown in debug panel only):
 - `list_loggers` - Logger discovery
 - `analyze_inverter_health` - Anomaly detection
@@ -180,3 +203,12 @@ API proxy configured in `vite.config.ts` for `/api` routes.
 
 - [AI_UX_FLOWS.md](../AI_UX_FLOWS.md) - Complete AI architecture and UX flow specifications
 - [CLAUDE.md](../CLAUDE.md) - Coding standards and patterns
+
+### AI Diagrams
+
+| Diagram | Description |
+|---------|-------------|
+| [SSE Streaming](../diagrams/markdown/sse-streaming.md) | Event streaming details |
+| [Frontend Tool Rendering](../diagrams/markdown/frontend-tool-rendering.md) | Component hierarchy |
+| [User Flows](../diagrams/markdown/user-flows.md) | User journey through flows |
+| [AI Chat Flow](../diagrams/markdown/ai-chat-flow.md) | Complete chat sequence |

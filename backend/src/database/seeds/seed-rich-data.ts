@@ -1,11 +1,21 @@
 /**
  * Rich Demo Data Seeder
  *
- * Generates 30 days of realistic PV monitoring data with 4 distinct logger personalities:
+ * Generates 30 days of realistic PV monitoring data ending on "yesterday" relative
+ * to the demo date (December 5th, 2025). Data includes ~5% missing intervals to
+ * simulate real sensor gaps.
+ *
+ * Logger personalities:
  * - GW-INV-001 (GoodWe): "The Perfect Inverter" - Clean bell curves, no issues
  * - LTI-INV-001 (LTI): "The Problem Child" - Zero power drops with error codes
  * - MEIER-INV-001 (Meier): "The Underperformer" - Capped at 70% capacity
  * - SD-INV-001 (SmartDog): "The Variable One" - High volatility (cloud simulation)
+ *
+ * Date Coverage:
+ * - Demo Date: December 5th, 2025 (Friday)
+ * - Data Range: November 5th - December 4th, 2025 (30 days)
+ * - "Yesterday" = December 4th
+ * - "Last 7 days" = November 28th - December 4th
  *
  * Run: npx ts-node src/database/seeds/seed-rich-data.ts
  */
@@ -26,10 +36,22 @@ const dataSource = new DataSource({
   synchronize: false,
 });
 
-// Fixed demo date range (30 days in January 2025)
-const DEMO_START = new Date('2025-01-01T00:00:00Z');
+// Demo date: Friday, December 5th, 2025
+// Data ends "yesterday" (December 4th) and covers 30 days back
+const DEMO_DATE = new Date('2025-12-05T00:00:00Z');
 const DAYS_OF_DATA = 30;
 const INTERVAL_MINUTES = 5;
+
+// Calculate start date (30 days before "yesterday")
+const DEMO_END = new Date(DEMO_DATE);
+DEMO_END.setUTCDate(DEMO_END.getUTCDate() - 1); // Yesterday = Dec 4th
+
+const DEMO_START = new Date(DEMO_END);
+DEMO_START.setUTCDate(DEMO_START.getUTCDate() - DAYS_OF_DATA + 1); // Nov 5th
+
+// Missing data simulation (~5% of intervals will be missing)
+// Note: Using 0.017 threshold because sine distribution is non-uniform
+const MISSING_DATA_PROBABILITY = 0.017;
 
 // Logger personality types
 type PersonalityType =
@@ -229,6 +251,12 @@ function generateDayData(
       const intervalSeed = daySeed + hour * 100 + minute;
       const seedValue = (Math.sin(intervalSeed) + 1) / 2; // 0-1 pseudo-random
 
+      // Skip this interval randomly to simulate missing data
+      const skipProbability = (Math.sin(intervalSeed * 7) + 1) / 2;
+      if (skipProbability < MISSING_DATA_PROBABILITY) {
+        continue;
+      }
+
       const hourDecimal = hour + minute / 60;
       const solarFactor = getSolarFactor(hourDecimal);
       const irradiance = getIrradiance(hourDecimal, seedValue);
@@ -349,10 +377,11 @@ async function seedRichData(): Promise<void> {
   console.log('='.repeat(50));
   console.log('Rich Demo Data Seeder');
   console.log('='.repeat(50));
+  console.log(`\nDemo Date: ${DEMO_DATE.toISOString().split('T')[0]} (Friday)`);
   console.log(
-    `\nDate Range: ${DEMO_START.toISOString().split('T')[0]} to ${new Date(DEMO_START.getTime() + (DAYS_OF_DATA - 1) * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}`,
+    `Data Range: ${DEMO_START.toISOString().split('T')[0]} to ${DEMO_END.toISOString().split('T')[0]} (yesterday)`,
   );
-  console.log(`Days: ${DAYS_OF_DATA}`);
+  console.log(`Days: ${DAYS_OF_DATA}, Missing Data: ~5%`);
   console.log(`Loggers: ${LOGGERS.length}`);
   console.log('\nConnecting to database...');
 
@@ -390,8 +419,9 @@ async function seedRichData(): Promise<void> {
   console.log(`Total Records: ${totalInserted.toLocaleString()}`);
   console.log(`Loggers: ${LOGGERS.map((l) => l.id).join(', ')}`);
   console.log(
-    `Date Range: ${DEMO_START.toISOString().split('T')[0]} (30 days)`,
+    `Date Range: ${DEMO_START.toISOString().split('T')[0]} to ${DEMO_END.toISOString().split('T')[0]}`,
   );
+  console.log(`Demo Date: ${DEMO_DATE.toISOString().split('T')[0]}`);
   console.log('='.repeat(50));
 
   await dataSource.destroy();

@@ -26,6 +26,20 @@ See [diagrams/markdown/architecture-overview.md](./diagrams/markdown/architectur
 - **Adaptive Dashboard**: Different KPIs for inverters vs. meteo stations
 - **Bulk Upload**: Drag-n-drop support for CSV, XML, and SQLite files
 
+## AI Agent Flows
+
+The AI assistant uses LangGraph for deterministic workflow management with 5 explicit flows:
+
+| Flow | Trigger Phrases | Description |
+|------|-----------------|-------------|
+| **Morning Briefing** | "Morning briefing", "How is the site?" | Fleet overview with critical alerts |
+| **Financial Report** | "How much did I save?", "ROI" | Savings calculation + production forecast |
+| **Performance Audit** | "Compare inverters", "Efficiency check" | Multi-logger comparison with best/worst analysis |
+| **Health Check** | "Check health", "Any problems?" | Anomaly detection (single or all devices) |
+| **Free Chat** | General queries | Classic LLM agent with tool execution |
+
+See [AI_UX_FLOWS.md](./AI_UX_FLOWS.md) for the complete AI architecture documentation.
+
 ## Quick Start
 
 ### Prerequisites
@@ -103,6 +117,8 @@ GET /ai/status             # Service health check
 
 All diagrams are available as pre-rendered SVGs in [`diagrams/svg/`](./diagrams/svg/) and as Mermaid source in [`diagrams/markdown/`](./diagrams/markdown/).
 
+### Core Architecture
+
 | Diagram | SVG | Mermaid Source |
 |---------|-----|----------------|
 | Architecture Overview | [SVG](./diagrams/svg/architecture-overview.svg) | [Mermaid](./diagrams/markdown/architecture-overview.md) |
@@ -111,10 +127,30 @@ All diagrams are available as pre-rendered SVGs in [`diagrams/svg/`](./diagrams/
 | Docker Deployment | [SVG](./diagrams/svg/docker-deployment.svg) | [Mermaid](./diagrams/markdown/docker-deployment.md) |
 | Folder Structure | [SVG](./diagrams/svg/folder-structure.svg) | [Mermaid](./diagrams/markdown/folder-structure.md) |
 | Parser Strategy | [SVG](./diagrams/svg/parser-strategy.svg) | [Mermaid](./diagrams/markdown/parser-strategy.md) |
-| AI Tools | [SVG](./diagrams/svg/ai-tools.svg) | [Mermaid](./diagrams/markdown/ai-tools.md) |
 | Database Schema | [SVG](./diagrams/svg/database-schema.svg) | [Mermaid](./diagrams/markdown/database-schema.md) |
 | Frontend Components | [SVG](./diagrams/svg/frontend-components.svg) | [Mermaid](./diagrams/markdown/frontend-components.md) |
-| AI Chat Flow | [SVG](./diagrams/svg/ai-chat-flow.svg) | [Mermaid](./diagrams/markdown/ai-chat-flow.md) |
+
+### AI Agent & LangGraph
+
+| Diagram | Description | Mermaid Source |
+|---------|-------------|----------------|
+| LangGraph Main Graph | Complete StateGraph structure | [Mermaid](./diagrams/markdown/langgraph-main-graph.md) |
+| AI Chat Flow | SSE streaming sequence | [Mermaid](./diagrams/markdown/ai-chat-flow.md) |
+| AI Tools | MCP tools hierarchy | [Mermaid](./diagrams/markdown/ai-tools.md) |
+| Agent Behavior | Router classification logic | [Mermaid](./diagrams/markdown/agent-behavior.md) |
+| User Flows | User journey through flows | [Mermaid](./diagrams/markdown/user-flows.md) |
+| SSE Streaming | Event streaming details | [Mermaid](./diagrams/markdown/sse-streaming.md) |
+| Frontend Tool Rendering | Tool UI component hierarchy | [Mermaid](./diagrams/markdown/frontend-tool-rendering.md) |
+
+### Explicit Flow Diagrams
+
+| Flow | Description | Mermaid Source |
+|------|-------------|----------------|
+| Morning Briefing | Fleet overview with alerts | [Mermaid](./diagrams/markdown/flow-morning-briefing.md) |
+| Financial Report | Savings + forecast | [Mermaid](./diagrams/markdown/flow-financial-report.md) |
+| Health Check | Anomaly detection | [Mermaid](./diagrams/markdown/flow-health-check.md) |
+| Performance Audit | Multi-logger comparison | [Mermaid](./diagrams/markdown/flow-performance-audit.md) |
+| Recovery Subgraph | Error handling | [Mermaid](./diagrams/markdown/recovery-subgraph.md) |
 
 ## Environment Variables
 
