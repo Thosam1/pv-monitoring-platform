@@ -144,6 +144,173 @@ describe('createLangChainTools', () => {
         { logger_ids: ['925', '926'], metric: 'power', date: '2025-01-15' },
       );
     });
+
+    it('should call HTTP client with args for calculate_financial_savings', async () => {
+      const mockResult = { savings: 150.5, energyGenerated: 500 };
+      mockToolsClient.executeTool.mockResolvedValueOnce(mockResult);
+
+      const tools = createLangChainTools(mockToolsClient as never);
+      const financialTool = tools.find(
+        (t) => t.name === 'calculate_financial_savings',
+      );
+
+      const result = (await financialTool?.invoke({
+        logger_id: '925',
+        start_date: '2025-01-01',
+        end_date: '2025-01-15',
+        electricity_rate: 0.25,
+      })) as string;
+
+      expect(mockToolsClient.executeTool).toHaveBeenCalledWith(
+        'calculate_financial_savings',
+        {
+          logger_id: '925',
+          start_date: '2025-01-01',
+          end_date: '2025-01-15',
+          electricity_rate: 0.25,
+        },
+      );
+      expect(JSON.parse(result)).toEqual(mockResult);
+    });
+
+    it('should call HTTP client with args for calculate_performance_ratio', async () => {
+      const mockResult = { performanceRatio: 0.85 };
+      mockToolsClient.executeTool.mockResolvedValueOnce(mockResult);
+
+      const tools = createLangChainTools(mockToolsClient as never);
+      const performanceTool = tools.find(
+        (t) => t.name === 'calculate_performance_ratio',
+      );
+
+      await performanceTool?.invoke({
+        logger_id: '925',
+        date: '2025-01-15',
+        capacity_kw: 10,
+      });
+
+      expect(mockToolsClient.executeTool).toHaveBeenCalledWith(
+        'calculate_performance_ratio',
+        { logger_id: '925', date: '2025-01-15', capacity_kw: 10 },
+      );
+    });
+
+    it('should call HTTP client with args for forecast_production', async () => {
+      const mockResult = { forecasts: [{ date: '2025-01-16', predicted: 50 }] };
+      mockToolsClient.executeTool.mockResolvedValueOnce(mockResult);
+
+      const tools = createLangChainTools(mockToolsClient as never);
+      const forecastTool = tools.find((t) => t.name === 'forecast_production');
+
+      await forecastTool?.invoke({
+        logger_id: '925',
+        days_ahead: 3,
+      });
+
+      expect(mockToolsClient.executeTool).toHaveBeenCalledWith(
+        'forecast_production',
+        { logger_id: '925', days_ahead: 3 },
+      );
+    });
+
+    it('should call HTTP client with args for diagnose_error_codes', async () => {
+      const mockResult = { errors: [], diagnosis: 'No errors found' };
+      mockToolsClient.executeTool.mockResolvedValueOnce(mockResult);
+
+      const tools = createLangChainTools(mockToolsClient as never);
+      const diagnoseTool = tools.find((t) => t.name === 'diagnose_error_codes');
+
+      await diagnoseTool?.invoke({
+        logger_id: '925',
+        days: 14,
+      });
+
+      expect(mockToolsClient.executeTool).toHaveBeenCalledWith(
+        'diagnose_error_codes',
+        { logger_id: '925', days: 14 },
+      );
+    });
+
+    it('should call HTTP client for get_fleet_overview', async () => {
+      const mockResult = {
+        totalPower: 50000,
+        deviceCount: 5,
+        onlineCount: 4,
+      };
+      mockToolsClient.executeTool.mockResolvedValueOnce(mockResult);
+
+      const tools = createLangChainTools(mockToolsClient as never);
+      const fleetTool = tools.find((t) => t.name === 'get_fleet_overview');
+
+      const result = (await fleetTool?.invoke({})) as string;
+
+      expect(mockToolsClient.executeTool).toHaveBeenCalledWith(
+        'get_fleet_overview',
+        {},
+      );
+      expect(JSON.parse(result)).toEqual(mockResult);
+    });
+
+    it('should call HTTP client for health_check', async () => {
+      const mockResult = { status: 'healthy', timestamp: '2025-01-15' };
+      mockToolsClient.executeTool.mockResolvedValueOnce(mockResult);
+
+      const tools = createLangChainTools(mockToolsClient as never);
+      const healthCheckTool = tools.find((t) => t.name === 'health_check');
+
+      const result = (await healthCheckTool?.invoke({})) as string;
+
+      expect(mockToolsClient.executeTool).toHaveBeenCalledWith(
+        'health_check',
+        {},
+      );
+      expect(JSON.parse(result)).toEqual(mockResult);
+    });
+  });
+
+  describe('error handling', () => {
+    it('should propagate errors from HTTP client', async () => {
+      mockToolsClient.executeTool.mockRejectedValueOnce(
+        new Error('Network error'),
+      );
+
+      const tools = createLangChainTools(mockToolsClient as never);
+      const listLoggersTool = tools.find((t) => t.name === 'list_loggers');
+
+      await expect(listLoggersTool?.invoke({})).rejects.toThrow(
+        'Network error',
+      );
+    });
+
+    it('should handle null response from HTTP client', async () => {
+      mockToolsClient.executeTool.mockResolvedValueOnce(null);
+
+      const tools = createLangChainTools(mockToolsClient as never);
+      const listLoggersTool = tools.find((t) => t.name === 'list_loggers');
+
+      const result = (await listLoggersTool?.invoke({})) as string | undefined;
+      expect(result).toBe('null');
+    });
+
+    it('should handle undefined response from HTTP client', async () => {
+      mockToolsClient.executeTool.mockResolvedValueOnce(undefined);
+
+      const tools = createLangChainTools(mockToolsClient as never);
+      const listLoggersTool = tools.find((t) => t.name === 'list_loggers');
+
+      const result = (await listLoggersTool?.invoke({})) as string | undefined;
+      // JSON.stringify(undefined) returns undefined, not 'undefined'
+      expect(result).toBeUndefined();
+    });
+
+    it('should handle empty object response', async () => {
+      mockToolsClient.executeTool.mockResolvedValueOnce({});
+
+      const tools = createLangChainTools(mockToolsClient as never);
+      const listLoggersTool = tools.find((t) => t.name === 'list_loggers');
+
+      const result = (await listLoggersTool?.invoke({})) as string;
+      expect(JSON.parse(result)).toEqual({});
+    });
   });
 });
 

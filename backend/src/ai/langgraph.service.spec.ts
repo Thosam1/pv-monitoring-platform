@@ -5,6 +5,7 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { AIMessage } from '@langchain/core/messages';
 import { LanggraphService } from './langgraph.service';
 import { ToolsHttpClient } from './tools-http.client';
 import { createMockToolsClient } from './test-utils';
@@ -628,6 +629,875 @@ describe('LanggraphService Message Handling', () => {
       }));
       const stream = service.streamChat(messages);
       expect(stream).toBeDefined();
+    });
+  });
+});
+
+/**
+ * Access private methods for testing.
+ * This pattern is used to test internal logic without changing the public API.
+ */
+type ServicePrivateAccess = {
+  isInternalNode(nodeName: string | undefined): boolean;
+  stripFlowMetadata(text: string): string;
+  extractTextFromContent(content: unknown): string | null;
+  processStreamChunk(
+    nodeName: string | undefined,
+    content: string | unknown[] | undefined,
+  ): Array<{ type: string; delta?: string }>;
+  processToolCalls(
+    toolCalls: Array<{ id?: string; name: string; args: unknown }>,
+    reportedToolCalls: Set<string>,
+  ): Array<{
+    type: string;
+    toolCallId?: string;
+    toolName?: string;
+    input?: unknown;
+    output?: unknown;
+  }>;
+  processToolResult(
+    runId: string | undefined,
+    output: unknown,
+    tags: string[] | undefined,
+    reportedToolResults: Set<string>,
+  ): Array<{ type: string; toolCallId?: string; output?: unknown }>;
+  handleModelStream(
+    event: { data?: unknown },
+    nodeName: string | undefined,
+  ): Array<{ type: string; delta?: string }>;
+  handleModelEnd(
+    event: { data?: unknown },
+    nodeName: string | undefined,
+    reportedToolCalls: Set<string>,
+  ): Array<{
+    type: string;
+    toolCallId?: string;
+    toolName?: string;
+    input?: unknown;
+    output?: unknown;
+  }>;
+  getMessageDeduplicationKey(msg: unknown): string | null;
+  prefillDeduplicationSets(
+    messages: unknown[],
+    reportedFlowMessages: Set<string>,
+    reportedToolCalls: Set<string>,
+  ): void;
+};
+
+describe('LanggraphService Internal Methods', () => {
+  let service: LanggraphService;
+  let servicePrivate: ServicePrivateAccess;
+  let mockToolsClient: ReturnType<typeof createMockToolsClient>;
+
+  beforeEach(async () => {
+    mockToolsClient = createMockToolsClient();
+
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'gemini',
+          GOOGLE_GENERATIVE_AI_API_KEY: 'test-api-key',
+          EXPLICIT_FLOWS_ENABLED: 'true',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    service = module.get<LanggraphService>(LanggraphService);
+    servicePrivate = service as unknown as ServicePrivateAccess;
+  });
+
+  afterEach(() => {
+    service.resetGraph();
+  });
+
+  describe('isInternalNode', () => {
+    it('should return true for router node', () => {
+      expect(servicePrivate.isInternalNode('router')).toBe(true);
+    });
+
+    it('should return true for check_context node', () => {
+      expect(servicePrivate.isInternalNode('check_context')).toBe(true);
+    });
+
+    it('should return true for check_results node', () => {
+      expect(servicePrivate.isInternalNode('check_results')).toBe(true);
+    });
+
+    it('should return false for free_chat node', () => {
+      expect(servicePrivate.isInternalNode('free_chat')).toBe(false);
+    });
+
+    it('should return false for undefined node', () => {
+      expect(servicePrivate.isInternalNode(undefined)).toBe(false);
+    });
+
+    it('should return false for empty string node', () => {
+      expect(servicePrivate.isInternalNode('')).toBe(false);
+    });
+
+    it('should return false for random node name', () => {
+      expect(servicePrivate.isInternalNode('my_custom_node')).toBe(false);
+    });
+  });
+
+  describe('stripFlowMetadata', () => {
+    it('should strip flow context metadata from text', () => {
+      const textWithMetadata =
+        'Some message\n\n<!-- {"__flowContext":{"activeFlow":"health_check"}} -->';
+      const result = servicePrivate.stripFlowMetadata(textWithMetadata);
+      expect(result).toBe('Some message');
+    });
+
+    it('should return text unchanged when no metadata', () => {
+      const plainText = 'Just a regular message';
+      const result = servicePrivate.stripFlowMetadata(plainText);
+      expect(result).toBe('Just a regular message');
+    });
+
+    it('should handle empty string', () => {
+      expect(servicePrivate.stripFlowMetadata('')).toBe('');
+    });
+
+    it('should handle text with only metadata', () => {
+      const onlyMetadata =
+        '<!-- {"__flowContext":{"activeFlow":"greeting"}} -->';
+      const result = servicePrivate.stripFlowMetadata(onlyMetadata);
+      expect(result).toBe('');
+    });
+
+    it('should handle complex flow context', () => {
+      const complexContext = `Response text
+
+<!-- {"__flowContext":{"activeFlow":"financial_report","currentPromptArg":"loggerId","waitingForUserInput":true,"extractedArgs":{"startDate":"2025-01-01"}}} -->`;
+      const result = servicePrivate.stripFlowMetadata(complexContext);
+      expect(result).toBe('Response text');
+    });
+  });
+
+  describe('extractTextFromContent', () => {
+    it('should extract text from string content', () => {
+      const result = servicePrivate.extractTextFromContent('Hello world');
+      expect(result).toBe('Hello world');
+    });
+
+    it('should extract text from array with text block', () => {
+      const content = [{ type: 'text', text: 'Array text content' }];
+      const result = servicePrivate.extractTextFromContent(content);
+      expect(result).toBe('Array text content');
+    });
+
+    it('should return null for empty array', () => {
+      const result = servicePrivate.extractTextFromContent([]);
+      expect(result).toBeNull();
+    });
+
+    it('should return null for null content', () => {
+      const result = servicePrivate.extractTextFromContent(null);
+      expect(result).toBeNull();
+    });
+
+    it('should return null for undefined content', () => {
+      const result = servicePrivate.extractTextFromContent(undefined);
+      expect(result).toBeNull();
+    });
+
+    it('should return null for number content', () => {
+      const result = servicePrivate.extractTextFromContent(42);
+      expect(result).toBeNull();
+    });
+
+    it('should handle multiple text blocks in array', () => {
+      const content = [
+        { type: 'text', text: 'First ' },
+        { type: 'text', text: 'Second' },
+      ];
+      const result = servicePrivate.extractTextFromContent(content);
+      expect(result).toBe('First Second');
+    });
+
+    it('should filter non-text blocks from array', () => {
+      const content = [
+        { type: 'text', text: 'Keep this' },
+        { type: 'image', url: 'http://example.com' },
+        { type: 'text', text: ' and this' },
+      ];
+      const result = servicePrivate.extractTextFromContent(content);
+      expect(result).toBe('Keep this and this');
+    });
+
+    it('should strip flow metadata from string content', () => {
+      const content =
+        'Message text\n\n<!-- {"__flowContext":{"activeFlow":"test"}} -->';
+      const result = servicePrivate.extractTextFromContent(content);
+      expect(result).toBe('Message text');
+    });
+
+    it('should return null for empty string after stripping metadata', () => {
+      const content = '<!-- {"__flowContext":{"activeFlow":"test"}} -->';
+      const result = servicePrivate.extractTextFromContent(content);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('processStreamChunk', () => {
+    it('should return empty array for internal nodes', () => {
+      const result = servicePrivate.processStreamChunk('router', 'Some text');
+      expect(result).toEqual([]);
+    });
+
+    it('should return text-delta for valid content', () => {
+      const result = servicePrivate.processStreamChunk('free_chat', 'Hello');
+      expect(result).toEqual([{ type: 'text-delta', delta: 'Hello' }]);
+    });
+
+    it('should return empty array for empty content', () => {
+      const result = servicePrivate.processStreamChunk('free_chat', '');
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array for undefined content', () => {
+      const result = servicePrivate.processStreamChunk('free_chat', undefined);
+      expect(result).toEqual([]);
+    });
+
+    it('should handle array content with text blocks', () => {
+      const content = [{ type: 'text', text: 'Array content' }];
+      const result = servicePrivate.processStreamChunk('free_chat', content);
+      expect(result).toEqual([{ type: 'text-delta', delta: 'Array content' }]);
+    });
+  });
+
+  describe('processToolCalls', () => {
+    it('should return tool-input-available for standard tool', () => {
+      const reportedToolCalls = new Set<string>();
+      const toolCalls = [{ id: 'tool_123', name: 'list_loggers', args: {} }];
+      const result = servicePrivate.processToolCalls(
+        toolCalls,
+        reportedToolCalls,
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        type: 'tool-input-available',
+        toolCallId: 'tool_123',
+        toolName: 'list_loggers',
+        input: {},
+      });
+    });
+
+    it('should return both input and output for render_ui_component', () => {
+      const reportedToolCalls = new Set<string>();
+      const toolCalls = [
+        {
+          id: 'tool_456',
+          name: 'render_ui_component',
+          args: { component: 'Chart', props: {} },
+        },
+      ];
+      const result = servicePrivate.processToolCalls(
+        toolCalls,
+        reportedToolCalls,
+      );
+      expect(result).toHaveLength(2);
+      expect(result[0].type).toBe('tool-input-available');
+      expect(result[1].type).toBe('tool-output-available');
+    });
+
+    it('should skip already reported tool calls', () => {
+      const reportedToolCalls = new Set<string>(['tool_789']);
+      const toolCalls = [{ id: 'tool_789', name: 'list_loggers', args: {} }];
+      const result = servicePrivate.processToolCalls(
+        toolCalls,
+        reportedToolCalls,
+      );
+      expect(result).toHaveLength(0);
+    });
+
+    it('should generate fallback ID when id is undefined', () => {
+      const reportedToolCalls = new Set<string>();
+      const toolCalls = [{ name: 'list_loggers', args: {} }];
+      const result = servicePrivate.processToolCalls(
+        toolCalls,
+        reportedToolCalls,
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].toolCallId).toMatch(/^tool_\d+$/);
+    });
+
+    it('should add tool call to reported set', () => {
+      const reportedToolCalls = new Set<string>();
+      const toolCalls = [{ id: 'track_me', name: 'test', args: {} }];
+      servicePrivate.processToolCalls(toolCalls, reportedToolCalls);
+      expect(reportedToolCalls.has('track_me')).toBe(true);
+    });
+  });
+
+  describe('processToolResult', () => {
+    it('should return tool-output-available for valid result', () => {
+      const reportedToolResults = new Set<string>();
+      const result = servicePrivate.processToolResult(
+        'run_123',
+        { status: 'ok', data: [] },
+        ['tag1'],
+        reportedToolResults,
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe('tool-output-available');
+      expect(result[0].output).toEqual({ status: 'ok', data: [] });
+    });
+
+    it('should skip already reported results', () => {
+      const reportedToolResults = new Set<string>(['run_123']);
+      const result = servicePrivate.processToolResult(
+        'run_123',
+        { data: [] },
+        [],
+        reportedToolResults,
+      );
+      expect(result).toHaveLength(0);
+    });
+
+    it('should parse JSON string output', () => {
+      const reportedToolResults = new Set<string>();
+      const result = servicePrivate.processToolResult(
+        'run_456',
+        '{"parsed":true}',
+        [],
+        reportedToolResults,
+      );
+      expect(result[0].output).toEqual({ parsed: true });
+    });
+
+    it('should keep string if JSON parse fails', () => {
+      const reportedToolResults = new Set<string>();
+      const result = servicePrivate.processToolResult(
+        'run_789',
+        'not json',
+        [],
+        reportedToolResults,
+      );
+      expect(result[0].output).toBe('not json');
+    });
+
+    it('should use tag as toolCallId when available', () => {
+      const reportedToolResults = new Set<string>();
+      const result = servicePrivate.processToolResult(
+        'run_abc',
+        {},
+        ['original_tool_id'],
+        reportedToolResults,
+      );
+      expect(result[0].toolCallId).toBe('original_tool_id');
+    });
+
+    it('should generate fallback toolCallId when run_id is undefined', () => {
+      const reportedToolResults = new Set<string>();
+      const result = servicePrivate.processToolResult(
+        undefined,
+        {},
+        [],
+        reportedToolResults,
+      );
+      expect(result[0].toolCallId).toMatch(/^tool_result_\d+$/);
+    });
+  });
+
+  describe('handleModelStream', () => {
+    it('should return empty array for internal nodes', () => {
+      const event = {
+        data: { chunk: { content: 'Ignored' } },
+      };
+      const result = servicePrivate.handleModelStream(event, 'router');
+      expect(result).toEqual([]);
+    });
+
+    it('should return text-delta for valid stream event', () => {
+      const event = {
+        data: { chunk: { content: 'Stream text' } },
+      };
+      const result = servicePrivate.handleModelStream(event, 'free_chat');
+      expect(result).toEqual([{ type: 'text-delta', delta: 'Stream text' }]);
+    });
+
+    it('should handle undefined data', () => {
+      const event = {};
+      const result = servicePrivate.handleModelStream(event, 'free_chat');
+      expect(result).toEqual([]);
+    });
+
+    it('should handle undefined chunk', () => {
+      const event = { data: {} };
+      const result = servicePrivate.handleModelStream(event, 'free_chat');
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('handleModelEnd', () => {
+    it('should return empty array for internal nodes', () => {
+      const event = {
+        data: {
+          output: { tool_calls: [{ id: 't1', name: 'test', args: {} }] },
+        },
+      };
+      const result = servicePrivate.handleModelEnd(
+        event,
+        'router',
+        new Set<string>(),
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('should process tool calls for non-internal nodes', () => {
+      const event = {
+        data: {
+          output: { tool_calls: [{ id: 't1', name: 'test', args: {} }] },
+        },
+      };
+      const result = servicePrivate.handleModelEnd(
+        event,
+        'free_chat',
+        new Set<string>(),
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe('tool-input-available');
+    });
+
+    it('should return empty array when no tool calls', () => {
+      const event = { data: { output: {} } };
+      const result = servicePrivate.handleModelEnd(
+        event,
+        'free_chat',
+        new Set<string>(),
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array for empty tool_calls array', () => {
+      const event = { data: { output: { tool_calls: [] } } };
+      const result = servicePrivate.handleModelEnd(
+        event,
+        'free_chat',
+        new Set<string>(),
+      );
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('getMessageDeduplicationKey', () => {
+    it('should use message id when available', () => {
+      const msg = { id: 'msg_123', content: 'Some content' };
+      const result = servicePrivate.getMessageDeduplicationKey(msg);
+      expect(result).toBe('msg_123');
+    });
+
+    it('should use string content when id is missing', () => {
+      const msg = { content: 'Fallback content' };
+      const result = servicePrivate.getMessageDeduplicationKey(msg);
+      expect(result).toBe('Fallback content');
+    });
+
+    it('should stringify non-string content', () => {
+      const msg = { content: ['array', 'content'] };
+      const result = servicePrivate.getMessageDeduplicationKey(msg);
+      expect(result).toBe('["array","content"]');
+    });
+
+    it('should return null for message with no id or content', () => {
+      const msg = {};
+      const result = servicePrivate.getMessageDeduplicationKey(msg);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('prefillDeduplicationSets', () => {
+    it('should add message keys to reportedFlowMessages', () => {
+      const messages = [{ id: 'msg1', content: 'Test' }];
+      const reportedFlowMessages = new Set<string>();
+      const reportedToolCalls = new Set<string>();
+
+      servicePrivate.prefillDeduplicationSets(
+        messages,
+        reportedFlowMessages,
+        reportedToolCalls,
+      );
+
+      expect(reportedFlowMessages.has('msg1')).toBe(true);
+    });
+
+    it('should add tool call ids from AIMessages', () => {
+      // Create a real AIMessage with tool_calls
+      const aiMsg = new AIMessage({
+        content: 'Response with tool calls',
+        tool_calls: [{ id: 'tc1', name: 'test_tool', args: {} }],
+      });
+      const messages = [aiMsg];
+      const reportedFlowMessages = new Set<string>();
+      const reportedToolCalls = new Set<string>();
+
+      servicePrivate.prefillDeduplicationSets(
+        messages,
+        reportedFlowMessages,
+        reportedToolCalls,
+      );
+
+      expect(reportedToolCalls.has('tc1')).toBe(true);
+    });
+
+    it('should handle empty messages array', () => {
+      const reportedFlowMessages = new Set<string>();
+      const reportedToolCalls = new Set<string>();
+
+      servicePrivate.prefillDeduplicationSets(
+        [],
+        reportedFlowMessages,
+        reportedToolCalls,
+      );
+
+      expect(reportedFlowMessages.size).toBe(0);
+      expect(reportedToolCalls.size).toBe(0);
+    });
+
+    it('should skip tool calls without id', () => {
+      const aiMsg = new AIMessage({
+        content: 'Response',
+        tool_calls: [{ name: 'test_tool', args: {} }], // No id
+      });
+      const reportedToolCalls = new Set<string>();
+
+      servicePrivate.prefillDeduplicationSets(
+        [aiMsg],
+        new Set<string>(),
+        reportedToolCalls,
+      );
+
+      expect(reportedToolCalls.size).toBe(0);
+    });
+  });
+});
+
+/**
+ * Additional test types for processStreamEvent dispatcher.
+ */
+type ProcessStreamEventAccess = {
+  processStreamEvent(
+    event: {
+      event: string;
+      data?: unknown;
+      metadata?: unknown;
+      run_id?: string;
+      tags?: string[];
+    },
+    reportedToolCalls: Set<string>,
+    reportedToolResults: Set<string>,
+    reportedFlowMessages: Set<string>,
+  ): Array<{
+    type: string;
+    delta?: string;
+    toolCallId?: string;
+    toolName?: string;
+    input?: unknown;
+    output?: unknown;
+  }>;
+  handleChainEnd(
+    event: { data?: unknown },
+    reportedToolCalls: Set<string>,
+    reportedFlowMessages: Set<string>,
+  ): Array<{
+    type: string;
+    delta?: string;
+    toolCallId?: string;
+    toolName?: string;
+    input?: unknown;
+    output?: unknown;
+  }>;
+};
+
+describe('LanggraphService Stream Event Processing', () => {
+  let service: LanggraphService;
+  let servicePrivate: ProcessStreamEventAccess;
+  let mockToolsClient: ReturnType<typeof createMockToolsClient>;
+
+  beforeEach(async () => {
+    mockToolsClient = createMockToolsClient();
+
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'gemini',
+          GOOGLE_GENERATIVE_AI_API_KEY: 'test-api-key',
+          EXPLICIT_FLOWS_ENABLED: 'true',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    service = module.get<LanggraphService>(LanggraphService);
+    servicePrivate = service as unknown as ProcessStreamEventAccess;
+  });
+
+  afterEach(() => {
+    service.resetGraph();
+  });
+
+  describe('processStreamEvent dispatcher', () => {
+    it('should dispatch on_chat_model_stream events', () => {
+      const event = {
+        event: 'on_chat_model_stream',
+        data: { chunk: { content: 'Hello' } },
+        metadata: { langgraph_node: 'free_chat' },
+      };
+      const result = servicePrivate.processStreamEvent(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+        new Set<string>(),
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe('text-delta');
+    });
+
+    it('should dispatch on_chat_model_end events', () => {
+      const event = {
+        event: 'on_chat_model_end',
+        data: {
+          output: { tool_calls: [{ id: 't1', name: 'test', args: {} }] },
+        },
+        metadata: { langgraph_node: 'free_chat' },
+      };
+      const result = servicePrivate.processStreamEvent(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+        new Set<string>(),
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe('tool-input-available');
+    });
+
+    it('should dispatch on_tool_end events', () => {
+      const event = {
+        event: 'on_tool_end',
+        run_id: 'run_123',
+        data: { output: { result: 'success' } },
+        tags: ['tool_123'],
+      };
+      const result = servicePrivate.processStreamEvent(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+        new Set<string>(),
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe('tool-output-available');
+    });
+
+    it('should dispatch on_chain_end events', () => {
+      const event = {
+        event: 'on_chain_end',
+        data: {
+          output: {
+            pendingUiActions: [
+              { toolCallId: 'ui_1', toolName: 'render_ui_component', args: {} },
+            ],
+          },
+        },
+      };
+      const result = servicePrivate.processStreamEvent(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+        new Set<string>(),
+      );
+      expect(result).toHaveLength(2); // input + output for render_ui_component
+    });
+
+    it('should return empty array for unknown events', () => {
+      const event = {
+        event: 'unknown_event_type',
+        data: {},
+      };
+      const result = servicePrivate.processStreamEvent(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+        new Set<string>(),
+      );
+      expect(result).toHaveLength(0);
+    });
+
+    it('should filter internal nodes for model stream events', () => {
+      const event = {
+        event: 'on_chat_model_stream',
+        data: { chunk: { content: 'Router output' } },
+        metadata: { langgraph_node: 'router' },
+      };
+      const result = servicePrivate.processStreamEvent(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+        new Set<string>(),
+      );
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe('handleChainEnd', () => {
+    it('should process pending UI actions', () => {
+      const event = {
+        data: {
+          output: {
+            pendingUiActions: [
+              {
+                toolCallId: 'ui_123',
+                toolName: 'render_ui_component',
+                args: { component: 'Chart' },
+              },
+            ],
+          },
+        },
+      };
+      const result = servicePrivate.handleChainEnd(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+      );
+      expect(result).toHaveLength(2);
+      expect(result[0].type).toBe('tool-input-available');
+      expect(result[1].type).toBe('tool-output-available');
+    });
+
+    it('should process request_user_selection actions', () => {
+      const event = {
+        data: {
+          output: {
+            pendingUiActions: [
+              {
+                toolCallId: 'sel_456',
+                toolName: 'request_user_selection',
+                args: { prompt: 'Select a logger' },
+              },
+            ],
+          },
+        },
+      };
+      const result = servicePrivate.handleChainEnd(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe('tool-input-available');
+    });
+
+    it('should process AIMessage tool calls from chain output', () => {
+      const aiMsg = new AIMessage({
+        content: 'Processing',
+        tool_calls: [{ id: 'tc_789', name: 'list_loggers', args: {} }],
+      });
+      const event = {
+        data: {
+          output: {
+            messages: [aiMsg],
+          },
+        },
+      };
+      const result = servicePrivate.handleChainEnd(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+      );
+      expect(result.some((r) => r.type === 'tool-input-available')).toBe(true);
+    });
+
+    it('should return empty array when output is undefined', () => {
+      const event = { data: {} };
+      const result = servicePrivate.handleChainEnd(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+      );
+      expect(result).toHaveLength(0);
+    });
+
+    it('should skip already reported pending actions', () => {
+      const reportedToolCalls = new Set<string>(['ui_already_reported']);
+      const event = {
+        data: {
+          output: {
+            pendingUiActions: [
+              {
+                toolCallId: 'ui_already_reported',
+                toolName: 'render_ui_component',
+                args: {},
+              },
+            ],
+          },
+        },
+      };
+      const result = servicePrivate.handleChainEnd(
+        event,
+        reportedToolCalls,
+        new Set<string>(),
+      );
+      expect(result).toHaveLength(0);
+    });
+
+    it('should process text content from AIMessages', () => {
+      const aiMsg = new AIMessage({
+        content: 'Some text response',
+      });
+      const event = {
+        data: {
+          output: {
+            messages: [aiMsg],
+          },
+        },
+      };
+      const result = servicePrivate.handleChainEnd(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+      );
+      expect(result.some((r) => r.type === 'text-delta')).toBe(true);
+    });
+
+    it('should skip text processing when pendingUiActions present', () => {
+      const aiMsg = new AIMessage({
+        content: 'Text that should be skipped',
+      });
+      const event = {
+        data: {
+          output: {
+            messages: [aiMsg],
+            pendingUiActions: [
+              { toolCallId: 'ui_1', toolName: 'test_tool', args: {} },
+            ],
+          },
+        },
+      };
+      const result = servicePrivate.handleChainEnd(
+        event,
+        new Set<string>(),
+        new Set<string>(),
+      );
+      // Should have tool input but no text-delta
+      expect(result.some((r) => r.type === 'text-delta')).toBe(false);
     });
   });
 });
