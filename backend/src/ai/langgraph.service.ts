@@ -589,7 +589,9 @@ export class LanggraphService {
         );
 
         if (onlyVirtualTools) {
-          this.logger.debug('Legacy graph: Skipping tools node for virtual UI tools');
+          this.logger.debug(
+            'Legacy graph: Skipping tools node for virtual UI tools',
+          );
           return 'end';
         }
 

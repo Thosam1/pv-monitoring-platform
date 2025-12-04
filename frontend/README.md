@@ -2,213 +2,148 @@
 
 React 19 + Vite 7 frontend with shadcn/ui components and AI chat interface.
 
+![Frontend Components](../diagrams/svg/frontend-components.svg)
+
 ## Tech Stack
 
-- **Framework**: React 19, TypeScript
-- **Build**: Vite 7
-- **Styling**: Tailwind CSS 4, shadcn/ui
-- **Chat Primitives**: @assistant-ui/react
-- **Charts**: Recharts 3.x
-- **Animation**: Framer Motion 12.x
-- **Icons**: Lucide React
-- **Date Handling**: date-fns + react-day-picker
+| Category | Technology |
+|----------|------------|
+| Framework | React 19, TypeScript, Vite 7 |
+| Styling | Tailwind CSS 4, shadcn/ui (Radix UI) |
+| Chat | @assistant-ui/react, assistant-stream |
+| Charts | Recharts 3.x |
+| Animation | Framer Motion 12.x |
+| Icons | Lucide React |
+| Dates | date-fns, react-day-picker |
+
+## Key Architectural Decisions
+
+### 1. Multi-Thread Chat with assistant-ui
+
+Uses `@assistant-ui/react` runtime with custom adapters for:
+- **SolarAnalystModelAdapter**: Converts messages to backend format, streams SSE responses
+- **LocalStorageThreadListAdapter**: Persists conversation list with rename/archive/delete
+- **ThreadHistoryAdapter**: Per-thread message persistence with parent chain validation
+
+```
+src/providers/assistant-runtime-provider.tsx  # Runtime configuration
+src/components/assistant-ui/thread.tsx        # Main chat interface
+src/components/assistant-ui/thread-list.tsx   # Conversation sidebar
+```
+
+### 2. SSE Streaming Adapter Pattern
+
+Custom adapter in `lib/assistant-stream-adapter.ts` parses backend SSE events:
+- Accumulates `text-delta` events into single message parts
+- Tracks tool calls by ID, appends outputs when available
+- Sanitizes LLM artifacts (JSON objects, Ollama markers, placeholder text)
+
+### 3. Tool Visibility Strategy
+
+Tools categorized for clean UX - data fetching hidden, results visible:
+
+![Tool Rendering](../diagrams/svg/frontend-tool-rendering.svg)
+
+**Hidden** (debug panel): `list_loggers`, `analyze_inverter_health`, `get_power_curve`, `compare_loggers`, `calculate_financial_savings`, `calculate_performance_ratio`, `forecast_production`, `diagnose_error_codes`, `get_fleet_overview`
+
+**Visible** (inline): `render_ui_component` (charts, cards), `request_user_selection` (dropdowns, pickers)
+
+### 4. localStorage Persistence
+
+Conversations persist across sessions:
+- `solar-analyst-threads-metadata`: Thread list (titles, archived status)
+- `solar-analyst-threads-{id}`: Message history per thread
+- Auto-generated titles from first message (50 chars max)
+
+### 5. Stable Callback References
+
+`App.tsx` uses `useRef` + `useCallback` pattern to prevent child re-renders during uploads. `BulkUploader` receives stable `onUploadComplete` callback.
 
 ## Component Structure
-
-![Frontend Components](../diagrams/svg/frontend-components.svg)
 
 ```
 src/
 ├── components/
-│   ├── layout/           # AppSidebar, SiteHeader, NavMain
-│   ├── dashboard/        # Charts, KPIGrid, DashboardControls
-│   ├── ai/               # ChatInterface, ChatMessage, ToolRenderer
-│   │   ├── chat-interface.tsx    # Main chat UI with SSE streaming
-│   │   ├── chat-message.tsx      # Message rendering with tool visibility
-│   │   ├── tool-renderer.tsx     # Tool result visualization
-│   │   ├── selection-prompt.tsx  # Dropdowns and date pickers
-│   │   ├── metric-card.tsx       # KPI display cards
-│   │   ├── status-badge.tsx      # Health/status indicators
-│   │   ├── typing-indicator.tsx  # Loading states
-│   │   ├── chat-error.tsx        # Error display and retry
-│   │   └── workflow-card.tsx     # Quick-start workflow buttons
-│   ├── assistant-ui/     # @assistant-ui/react primitives
-│   │   ├── thread.tsx            # Chat thread with auto-scroll
-│   │   ├── thread-list.tsx       # Conversation sidebar
-│   │   └── markdown.tsx          # Markdown rendering
-│   └── ui/               # shadcn/ui components
-├── views/                # Page views (ai-chat-view.tsx)
-├── hooks/                # Custom hooks (use-ai-chat.ts)
-├── lib/                  # Utilities (date-utils, cn)
-└── types/                # TypeScript types
+│   ├── layout/              # AppSidebar, SiteHeader, NavMain, NavLoggers
+│   ├── dashboard/           # KPIGrid, PerformanceChart, TechnicalChart, DashboardControls
+│   ├── assistant-ui/        # Chat primitives and tool renderers
+│   │   ├── thread.tsx              # Main chat with auto-scroll
+│   │   ├── thread-list.tsx         # Conversation sidebar
+│   │   ├── assistant-message.tsx   # Message with tool handling
+│   │   ├── markdown-text.tsx       # Markdown + math + code blocks
+│   │   └── tools/                  # 9 tool-specific renderers
+│   │       ├── render-ui-tool.tsx      # Dynamic charts/cards
+│   │       ├── selection-tool.tsx      # Dropdowns, date pickers
+│   │       ├── power-curve-tool.tsx    # Time-series visualization
+│   │       └── ...                     # health, financial, forecast, etc.
+│   └── ui/                  # shadcn/ui base components
+├── views/                   # Page views (ai-chat-view.tsx)
+├── providers/               # assistant-runtime-provider.tsx
+├── hooks/                   # use-ai-chat.ts, use-mobile.ts
+├── lib/                     # assistant-stream-adapter.ts, date-utils.ts, text-sanitizer.ts
+└── types/                   # logger.ts (8 types + config), view-mode.ts
 ```
 
 ## Views
 
 | View | Description |
 |------|-------------|
-| Dashboard | Logger data visualization with adaptive KPIs |
-| Upload | Bulk file uploader with drag-n-drop |
-| AI Chat | Chat interface with tool visualization |
+| Dashboard | Logger data visualization with adaptive KPIs (inverter vs meteo) |
+| Upload | Bulk file uploader with drag-n-drop folder support |
+| AI Chat | Multi-thread chat with tool visualization |
 | Reports | Data export and reporting |
 
-## AI Chat Features
+## AI Chat Integration
 
 ![AI Chat Flow](../diagrams/svg/ai-chat-flow.svg)
 
-### Assistant-UI Integration
+### SSE Protocol
 
-The chat interface uses `@assistant-ui/react` for robust chat primitives:
-
-- **ThreadList**: Conversation history sidebar with rename/delete
-- **Thread**: Main chat viewport with auto-scroll
-- **Composer**: Message input with submit handling
-- **Runtime Provider**: Connects to backend SSE streaming via custom adapter
-
-Components in `src/components/assistant-ui/` wrap the library primitives with custom styling and integrate with the backend's LangGraph-powered responses.
-
-### SSE Streaming Protocol
-
-The chat interface receives Server-Sent Events from the backend:
-
-| Event Type | Payload | Description |
-|------------|---------|-------------|
+| Event | Payload | Description |
+|-------|---------|-------------|
 | `text-delta` | `{ delta: string }` | Incremental text from LLM |
 | `tool-input-available` | `{ toolCallId, toolName, input }` | Tool call initiated |
 | `tool-output-available` | `{ toolCallId, output }` | Tool execution result |
-| `[DONE]` | - | Stream complete signal |
-
-### Tool Visibility Strategy
-
-Tools are categorized for clean UX - users see results while "plumbing" stays hidden:
-
-```mermaid
-flowchart LR
-    subgraph Hidden["Hidden Tools (Data Fetching)"]
-        H1["list_loggers"]
-        H2["analyze_inverter_health"]
-        H3["calculate_financial_savings"]
-    end
-
-    subgraph Visible["Visible Tools (Inline Render)"]
-        V1["render_ui_component"]
-        V2["request_user_selection"]
-        V3["get_power_curve"]
-    end
-
-    Hidden -->|"'Analyzing...'<br/>indicator"| DEBUG["Debug Panel"]
-    Visible -->|"Component<br/>rendering"| UI["Chat Message"]
-
-    style Hidden fill:#6b7280,stroke:#4b5563,color:#fff
-    style Visible fill:#22c55e,stroke:#16a34a,color:#fff
-```
-
-> See [diagrams/markdown/frontend-tool-rendering.md](../diagrams/markdown/frontend-tool-rendering.md) for the complete component hierarchy.
-
-**Hidden Tools** (shown in debug panel only):
-- `list_loggers` - Logger discovery
-- `analyze_inverter_health` - Anomaly detection
-- `get_power_curve` - Timeseries extraction
-- `compare_loggers` - Multi-logger comparison
-- `calculate_financial_savings` - ROI calculation
-- `calculate_performance_ratio` - Efficiency metrics
-- `forecast_production` - Production prediction
-- `diagnose_error_codes` - Error interpretation
-- `get_fleet_overview` - Site-wide status
-
-**Visible Tools** (rendered inline):
-- `render_ui_component` - Charts, cards, reports
-- `request_user_selection` - Dropdowns, date pickers
+| `[DONE]` | - | Stream complete |
 
 ### Loading States
 
 | State | Indicator | When |
 |-------|-----------|------|
-| Thinking | Amber sparkles + bouncing dots | No content yet |
-| Analyzing | Blue wrench + bouncing dots | Hidden tools executing |
+| Thinking | Amber sparkles | No content yet |
+| Analyzing | Blue wrench | Hidden tools executing |
 | Streaming | Text appearing | Text deltas arriving |
-
-### Follow-up Suggestions
-
-Context-aware suggestions appear after tool completion:
-
-```typescript
-// Example: After analyze_inverter_health completes
-[
-  { label: "Show power curve", priority: "primary" },
-  { label: "Diagnose errors", priority: "secondary" }  // Only if anomalies found
-]
-```
-
-### Chat History Persistence
-
-Conversations persist in localStorage (`solar-analyst-chats`):
-- Auto-generated titles from first message (50 chars)
-- Grouped by date (Today, Yesterday, Last 7 Days, Older)
-- Delete with confirmation
 
 ### Quick-Start Workflows
 
-4 workflow cards for common tasks:
-- Morning Briefing - Fleet overview
-- Financial Report - Savings analysis
-- Performance Audit - Logger comparison
-- Health Check - Anomaly detection
-
-### Error Recovery
-
-| Error Type | Display | Recovery |
-|------------|---------|----------|
-| Network | Red alert | Retry button |
-| Timeout (60s) | Clock icon | Retry button |
-| API error | Warning icon | Retry button |
-
-## Charts
-
-- **PerformanceChart**: Power and irradiance over time
-- **TechnicalChart**: Secondary metrics (temperature, etc.)
-- **GeneratorPowerChart**: Power generation visualization
-- **DynamicChart**: AI-generated charts via tool results
+4 workflow cards: Morning Briefing, Financial Report, Performance Audit, Health Check
 
 ## Development
 
 ```bash
 npm install
-npm run dev       # Development server (HMR)
+npm run dev       # Dev server with HMR (port 5173)
 npm run build     # Production build
-npm run preview   # Preview production build
 npm run lint      # ESLint check
 ```
 
-## Key Dependencies
-
-- `react` 19.x - UI framework
-- `vite` 7.x - Build tool
-- `@assistant-ui/react` - Chat primitives and thread management
-- `recharts` - Charting library
-- `framer-motion` - Animations
-- `date-fns` - Date utilities
-- `react-day-picker` - Calendar component
-- `lucide-react` - Icons
-
 ## Environment
 
-Frontend connects to:
 - Backend API: `http://localhost:3000`
-- Vite dev server: `http://localhost:5173`
+- Dev server: `http://localhost:5173`
+- API proxy: `/api` routes proxied in `vite.config.ts`
 
-API proxy configured in `vite.config.ts` for `/api` routes.
-
-## Related Documentation
-
-- [AI_UX_FLOWS.md](../AI_UX_FLOWS.md) - Complete AI architecture and UX flow specifications
-- [CLAUDE.md](../CLAUDE.md) - Coding standards and patterns
-
-### AI Diagrams
+## Diagrams
 
 | Diagram | Description |
 |---------|-------------|
-| [SSE Streaming](../diagrams/markdown/sse-streaming.md) | Event streaming details |
-| [Frontend Tool Rendering](../diagrams/markdown/frontend-tool-rendering.md) | Component hierarchy |
-| [User Flows](../diagrams/markdown/user-flows.md) | User journey through flows |
-| [AI Chat Flow](../diagrams/markdown/ai-chat-flow.md) | Complete chat sequence |
+| [Frontend Components](../diagrams/svg/frontend-components.svg) | Component hierarchy |
+| [AI Chat Flow](../diagrams/svg/ai-chat-flow.svg) | Chat sequence |
+| [Tool Rendering](../diagrams/svg/frontend-tool-rendering.svg) | Tool UI components |
+| [SSE Streaming](../diagrams/svg/sse-streaming.svg) | Event streaming |
+| [User Flows](../diagrams/svg/user-flows.svg) | User journeys |
+
+## Related Documentation
+
+- [AI_UX_FLOWS.md](../AI_UX_FLOWS.md) - Complete AI architecture specs
+- [CLAUDE.md](../CLAUDE.md) - Coding standards
