@@ -162,9 +162,9 @@ function buildClassificationPrompt(
   if (!waitingFor) return CLASSIFICATION_PROMPT;
 
   const contextBlock = WAITING_FOR_CONTEXT.replaceAll(
-    /\{\{WAITING_FOR\}\}/g,
+    '{{WAITING_FOR}}',
     waitingFor,
-  ).replaceAll(/\{\{ACTIVE_FLOW\}\}/g, activeFlow || 'free_chat');
+  ).replaceAll('{{ACTIVE_FLOW}}', activeFlow || 'free_chat');
 
   // Inject the context block before RESPONSE FORMAT
   return CLASSIFICATION_PROMPT.replace(

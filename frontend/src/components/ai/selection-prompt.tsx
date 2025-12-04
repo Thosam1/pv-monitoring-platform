@@ -31,6 +31,19 @@ export interface SelectionOption {
 }
 
 /**
+ * Get the button class name based on selection state.
+ */
+function getButtonStateClass(isSelected: boolean, isDisabled: boolean): string {
+  if (isSelected) {
+    return 'bg-accent text-accent-foreground';
+  }
+  if (isDisabled) {
+    return 'text-muted-foreground cursor-not-allowed opacity-50';
+  }
+  return 'text-foreground hover:bg-accent/50';
+}
+
+/**
  * Multi-select option button - extracted to reduce nesting depth.
  */
 interface MultiSelectOptionProps {
@@ -59,11 +72,7 @@ const MultiSelectOption = memo(function MultiSelectOption({
       disabled={isOptionDisabled}
       className={cn(
         'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
-        isSelected
-          ? 'bg-accent text-accent-foreground'
-          : isOptionDisabled
-            ? 'text-muted-foreground cursor-not-allowed opacity-50'
-            : 'text-foreground hover:bg-accent/50'
+        getButtonStateClass(isSelected, isOptionDisabled)
       )}
     >
       <Checkbox

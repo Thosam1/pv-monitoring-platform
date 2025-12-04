@@ -120,7 +120,7 @@ const SolarAnalystModelAdapter: ChatModelAdapter = {
  */
 const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   async list() {
-    if (typeof globalThis.window === 'undefined') {
+    if (globalThis.window === undefined) {
       return { threads: [] };
     }
 
@@ -141,7 +141,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async initialize(threadId: string) {
-    if (typeof globalThis.window === 'undefined') {
+    if (globalThis.window === undefined) {
       return { remoteId: threadId, externalId: threadId };
     }
 
@@ -166,7 +166,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async rename(remoteId: string, newTitle: string) {
-    if (typeof globalThis.window === 'undefined') return;
+    if (globalThis.window === undefined) return;
 
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY}-metadata`);
@@ -183,7 +183,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async archive(remoteId: string) {
-    if (typeof globalThis.window === 'undefined') return;
+    if (globalThis.window === undefined) return;
 
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY}-metadata`);
@@ -200,7 +200,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async unarchive(remoteId: string) {
-    if (typeof globalThis.window === 'undefined') return;
+    if (globalThis.window === undefined) return;
 
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY}-metadata`);
@@ -217,7 +217,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async delete(remoteId: string) {
-    if (typeof globalThis.window === 'undefined') return;
+    if (globalThis.window === undefined) return;
 
     try {
       // Delete thread metadata
@@ -234,7 +234,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async fetch(threadId: string) {
-    if (typeof globalThis.window === 'undefined') {
+    if (globalThis.window === undefined) {
       return {
         status: 'regular' as const,
         remoteId: threadId,
@@ -324,7 +324,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
     // Flush pending messages when remoteId becomes available
     // eslint-disable-next-line react-hooks/rules-of-hooks
     useEffect(() => {
-      if (!remoteId || typeof globalThis.window === 'undefined' || pendingMessagesRef.current.length === 0) {
+      if (!remoteId || globalThis.window === undefined || pendingMessagesRef.current.length === 0) {
         return;
       }
 
@@ -362,7 +362,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
     const history = useMemo<ThreadHistoryAdapter>(
       () => ({
         async load() {
-          if (!remoteId || typeof globalThis.window === 'undefined') {
+          if (!remoteId || globalThis.window === undefined) {
             return { messages: [] };
           }
 
@@ -379,7 +379,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
         },
 
         async append(item) {
-          if (typeof globalThis.window === 'undefined') {
+          if (globalThis.window === undefined) {
             return;
           }
 
@@ -408,7 +408,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
               );
               if (!parentExists) {
                 // If parent doesn't exist, use the last message's id or null
-                const lastMessage = repository.messages[repository.messages.length - 1];
+                const lastMessage = repository.messages.at(-1);
                 validatedParentId = lastMessage?.message.id ?? null;
               }
             }

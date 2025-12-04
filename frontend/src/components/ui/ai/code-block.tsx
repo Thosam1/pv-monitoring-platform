@@ -122,7 +122,7 @@ export const CodeBlockCopyButton = ({
   const { code } = useContext(CodeBlockContext);
 
   const copyToClipboard = async () => {
-    if (typeof globalThis.window === 'undefined' || !navigator.clipboard.writeText) {
+    if (globalThis.window === undefined || !navigator.clipboard.writeText) {
       onError?.(new Error('Clipboard API not available'));
       return;
     }

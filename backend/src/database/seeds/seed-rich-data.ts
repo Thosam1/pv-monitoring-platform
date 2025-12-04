@@ -239,6 +239,16 @@ function shouldSkipInterval(intervalSeed: number): boolean {
 }
 
 /**
+ * Accumulate energy production if power is positive.
+ */
+function accumulateEnergy(currentEnergy: number, power: number | null): number {
+  if (power && power > 0) {
+    return currentEnergy + (power * INTERVAL_MINUTES) / 60 / 1000;
+  }
+  return currentEnergy;
+}
+
+/**
  * Generate measurements for a single day.
  */
 function generateDayData(
@@ -280,9 +290,7 @@ function generateDayData(
       );
 
       // Accumulate energy
-      if (power && power > 0) {
-        dailyEnergy += (power * INTERVAL_MINUTES) / 60 / 1000;
-      }
+      dailyEnergy = accumulateEnergy(dailyEnergy, power);
 
       const measurement = new Measurement();
       measurement.timestamp = timestamp;

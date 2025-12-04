@@ -135,7 +135,7 @@ export interface ThreadListProps {
  * This helps users recover from corrupted state or the "Parent message not found" error.
  */
 function clearAllChatHistory() {
-    if (typeof globalThis.window === 'undefined') return;
+    if (globalThis.window === undefined) return;
 
     const confirmed = globalThis.window.confirm(
         'This will delete all conversations and chat history. This action cannot be undone. Continue?'

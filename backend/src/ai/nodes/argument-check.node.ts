@@ -243,7 +243,7 @@ const FREE_CHAT_INTENT_SPECS: Array<{
 ];
 
 /** Single-logger flows that cannot handle multi-select */
-const SINGLE_LOGGER_FLOWS = ['health_check', 'financial_report'];
+const SINGLE_LOGGER_FLOWS = new Set(['health_check', 'financial_report']);
 
 /**
  * Detect intent from message and return appropriate specs for free_chat.
@@ -274,7 +274,7 @@ function handleCardinalityMismatch(
   flowType: string,
   model: ModelType,
 ): Partial<ExplicitFlowState> | null {
-  if (selectedCount <= 1 || !SINGLE_LOGGER_FLOWS.includes(flowType)) {
+  if (selectedCount <= 1 || !SINGLE_LOGGER_FLOWS.has(flowType)) {
     return null;
   }
 

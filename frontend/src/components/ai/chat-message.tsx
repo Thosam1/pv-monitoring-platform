@@ -166,7 +166,7 @@ export function ChatMessage({ message, isLoading, isLastMessage, onUserSelection
       {/* Message Content */}
       <MessageContent className={isUser ? '' : 'max-w-none w-full'}>
         {/* Text content - filtered to exclude empty text and non-string values */}
-        {textParts.map((part, index) => {
+        {textParts.map((part) => {
           const rawText = (part as { text?: unknown }).text;
 
           // Type guard: Skip non-string text parts (prevents React child errors)
@@ -192,9 +192,11 @@ export function ChatMessage({ message, isLoading, isLastMessage, onUserSelection
             return null;
           }
 
+          // Use content-based key for stability (avoid index-based keys)
+          const contentKey = `text-${textContent.slice(0, 32).replace(/\W/g, '')}-${textContent.length}`;
           return (
             <ErrorBoundary
-              key={`text-${index}`}
+              key={contentKey}
               fallback={<span className="text-muted-foreground italic text-sm">Content could not be displayed</span>}
               onError={(error) => console.error('[ChatMessage] Response render error:', error)}
             >

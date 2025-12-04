@@ -526,7 +526,7 @@ export class NarrativeEngine {
       suggested: 2,
       optional: 3,
     };
-    const sortedSuggestions = suggestions.sort(
+    const sortedSuggestions = [...suggestions].sort(
       (a, b) => priorityOrder[a.priority] - priorityOrder[b.priority],
     );
     const uniqueSuggestions = sortedSuggestions.filter(

@@ -38,7 +38,7 @@ function extractTitle(messages: Message[]): string {
  * Load conversations from localStorage.
  */
 function loadConversations(): ChatConversation[] {
-  if (typeof globalThis.window === 'undefined') return [];
+  if (globalThis.window === undefined) return [];
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored) : [];
@@ -51,7 +51,7 @@ function loadConversations(): ChatConversation[] {
  * Save conversations to localStorage.
  */
 function saveConversations(conversations: ChatConversation[]): void {
-  if (typeof globalThis.window === 'undefined') return;
+  if (globalThis.window === undefined) return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
   } catch (error) {

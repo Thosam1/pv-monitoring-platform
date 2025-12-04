@@ -959,13 +959,6 @@ export class LanggraphService {
   }
 
   /**
-   * Strip hidden flow metadata from message content.
-   */
-  private stripFlowMetadata(text: string): string {
-    return text.replace(/\n?\n?<!-- \{"__flowContext":.+?\} -->/s, '');
-  }
-
-  /**
    * Process flow messages (text content from AIMessages).
    * Returns event array to emit, modifies reportedFlowMessages set.
    */
@@ -1180,6 +1173,44 @@ export class LanggraphService {
   }
 
   /**
+   * Prefill deduplication sets with historical messages.
+   * Prevents re-emitting messages that were already in the conversation.
+   */
+  private prefillDeduplicationSets(
+    langchainMessages: BaseMessage[],
+    reportedFlowMessages: Set<string>,
+    reportedToolCalls: Set<string>,
+  ): void {
+    for (const msg of langchainMessages) {
+      const msgKey = this.getMessageDeduplicationKey(msg);
+      if (msgKey) {
+        reportedFlowMessages.add(msgKey);
+      }
+
+      // Also pre-fill tool calls from historical AIMessages
+      if (isAiMessage(msg) && msg.tool_calls?.length) {
+        for (const tc of msg.tool_calls) {
+          if (tc.id) {
+            reportedToolCalls.add(tc.id);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Get a deduplication key for a message.
+   */
+  private getMessageDeduplicationKey(msg: BaseMessage): string | null {
+    const msgId = msg.id;
+    const msgContent =
+      typeof msg.content === 'string'
+        ? msg.content
+        : JSON.stringify(msg.content);
+    return msgId || msgContent || null;
+  }
+
+  /**
    * Stream chat responses using an async generator.
    *
    * Yields events in a format compatible with the frontend SSE handler:
@@ -1238,32 +1269,11 @@ export class LanggraphService {
 
     // PRE-FILL: Mark all incoming messages as "already reported"
     // This prevents re-emitting historical messages from checkpointed state
-    for (const msg of langchainMessages) {
-      // Generate consistent key for message deduplication
-      const msgId = msg.id;
-      const msgContent =
-        typeof msg.content === 'string'
-          ? msg.content
-          : JSON.stringify(msg.content);
-
-      // Use ID if available, otherwise use content hash
-      const msgKey = msgId || msgContent;
-      if (msgKey) {
-        reportedFlowMessages.add(msgKey);
-      }
-
-      // Also pre-fill tool calls from historical AIMessages
-      if (isAiMessage(msg)) {
-        const aiMsg = msg;
-        if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
-          for (const tc of aiMsg.tool_calls) {
-            if (tc.id) {
-              reportedToolCalls.add(tc.id);
-            }
-          }
-        }
-      }
-    }
+    this.prefillDeduplicationSets(
+      langchainMessages,
+      reportedFlowMessages,
+      reportedToolCalls,
+    );
 
     this.logger.debug(
       `[DEDUP PREFILL] Pre-filled ${reportedFlowMessages.size} messages, ${reportedToolCalls.size} tool calls`,
@@ -1294,10 +1304,9 @@ export class LanggraphService {
 
       // Stream events from the graph
       // Generate fallback thread_id if not provided - MemorySaver ALWAYS requires one
-      let effectiveThreadId = threadId;
-      if (effectiveThreadId === undefined) {
-        effectiveThreadId = `thread_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      }
+      const effectiveThreadId =
+        threadId ??
+        `thread_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       this.logger.debug(
         `[CHECKPOINTING] Using thread_id: ${effectiveThreadId}${threadId ? '' : ' (auto-generated)'}`,
       );

@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { AIMessage, BaseMessage, ToolMessage } from '@langchain/core/messages';
 import { isHumanMessage } from '../utils/message-utils';
@@ -940,17 +940,14 @@ export function resolveLoggersByPattern(
     }
 
     // Match by type pattern
-    if (typePattern === 'all') {
-      matched = true;
-    } else if (
-      typePattern === 'meteo' &&
-      METEO_LOGGER_TYPES.includes(logger.loggerType)
-    ) {
-      matched = true;
-    } else if (
-      typePattern === 'inverter' &&
-      INVERTER_LOGGER_TYPES.includes(logger.loggerType)
-    ) {
+    const matchesTypePattern =
+      typePattern === 'all' ||
+      (typePattern === 'meteo' &&
+        METEO_LOGGER_TYPES.includes(logger.loggerType)) ||
+      (typePattern === 'inverter' &&
+        INVERTER_LOGGER_TYPES.includes(logger.loggerType));
+
+    if (matchesTypePattern) {
       matched = true;
     }
 
