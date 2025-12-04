@@ -6,30 +6,71 @@ Python 3.12 service providing 10 solar analytics tools via HTTP REST API.
 
 ![AI Tools](../diagrams/svg/ai-tools.svg)
 
+![AI Chat Flow](../diagrams/svg/ai-chat-flow.svg)
+
 ```
 ai/
 ├── server.py           # ASGI server entry point (Uvicorn)
 ├── http_api.py         # HTTP REST endpoints and tool registry
 ├── config.py           # Pydantic settings configuration
 ├── database.py         # SQLAlchemy connection with pooling
-├── tools/              # Tool implementations
-│   ├── discovery.py    # list_loggers
-│   ├── monitoring.py   # analyze_inverter_health, get_power_curve
-│   ├── comparison.py   # compare_loggers
-│   ├── financial.py    # calculate_financial_savings
-│   ├── performance.py  # calculate_performance_ratio
-│   ├── forecasting.py  # forecast_production
-│   ├── diagnostics.py  # diagnose_error_codes
-│   ├── fleet.py        # get_fleet_overview
-│   └── health.py       # health_check
+├── tools/              # Tool implementations by domain
 ├── models/             # Pydantic request/response models
 ├── queries/            # SQL query builders
 └── Dockerfile          # Python 3.12 container
 ```
 
+## Architectural Decisions
+
+### 1. Stateless HTTP REST
+Tools exposed via simple HTTP POST (not SSE/WebSocket).
+- Lower complexity than streaming protocols
+- Stateless = horizontally scalable
+- NestJS backend calls tools via `ToolsHttpClient`
+
+### 2. Time-Agnostic Design
+Uses **anchor date** pattern instead of `NOW()` for all date range queries:
+```python
+anchor_date = get_anchor_date()  # MAX(timestamp) from measurements
+```
+- Historical demo data works without modification
+- "Last 7 days" computes from latest data, not current time
+
+### 3. Smart Recovery Status Codes
+All tools return a `status` field enabling intelligent error recovery:
+
+| Status | Meaning | Response Includes |
+|--------|---------|-------------------|
+| `ok` | Success | Full result data |
+| `no_data_in_window` | Data exists, but not in range | `availableRange: { start, end }` |
+| `no_data` | Logger has no data | `availableRange: { start: null, end: null }` |
+| `error` | Execution failed | `message` with details |
+
+The AI agent uses `availableRange` to constrain date pickers to valid dates.
+
+### 4. SummaryStats for Narrative Insights
+Tools return pre-computed statistics for LLM-generated narratives:
+```json
+{
+  "summaryStats": {
+    "peakValue": 5200,
+    "peakTime": "2025-01-10T12:30:00Z",
+    "avgValue": 3150,
+    "trend": "increasing"
+  }
+}
+```
+LLM generates: "Production peaked at 5.2 kW around 12:30 PM, with an upward trend."
+
+### 5. Context Envelope
+Responses include UX guidance for frontend rendering:
+- `uiHints`: Suggested component types (line_chart, kpi_card)
+- `insights`: Domain-specific observations with severity
+- `nextSteps`: Recommended follow-up actions with priorities
+
 ## HTTP API
 
-The service exposes tools via stateless HTTP REST (not SSE/WebSocket).
+Tools exposed via stateless HTTP REST.
 
 ### Endpoints
 
@@ -70,52 +111,6 @@ curl -X POST http://localhost:4000/api/tools/get_power_curve \
 | `forecast_production` | Forecasting | 1-7 day production prediction |
 | `diagnose_error_codes` | Diagnostics | Error code interpretation by logger type |
 | `health_check` | Service | Database connectivity and pool stats |
-
-## Smart Recovery
-
-All tools return a `status` field enabling intelligent error recovery in the AI agent:
-
-| Status | Meaning | Response Includes |
-|--------|---------|-------------------|
-| `ok` | Success | Full result data |
-| `no_data_in_window` | Data exists, but not in requested range | `availableRange: { start, end }` |
-| `no_data` | Logger has no data at all | `availableRange: { start: null, end: null }` |
-| `error` | Tool execution failed | `message` with error details |
-
-### Example Recovery Response
-
-```json
-{
-  "status": "no_data_in_window",
-  "message": "No data available for 2025-01-15",
-  "availableRange": {
-    "start": "2024-12-01",
-    "end": "2025-01-10"
-  }
-}
-```
-
-The AI agent uses `availableRange` to prompt users with a date picker constrained to valid dates.
-
-## SummaryStats for Narrative Insights
-
-Power curve and other tools return `summaryStats` to enable LLM-generated consultant-quality insights:
-
-```json
-{
-  "status": "ok",
-  "data": [...],
-  "summaryStats": {
-    "peakValue": 5200,
-    "peakTime": "2025-01-10T12:30:00Z",
-    "avgValue": 3150,
-    "totalEnergy": 42.5,
-    "trend": "increasing"
-  }
-}
-```
-
-The LLM uses these stats to write narratives like: "Production peaked at 5.2 kW around 12:30 PM, with an upward trend throughout the day."
 
 ## Development
 
@@ -188,17 +183,6 @@ uv run pytest                 # Run tests
 uv run pytest --cov           # Coverage report
 ```
 
-## Time-Agnostic Design
-
-The service uses an "anchor date" pattern for all date range queries:
-
-```python
-# Instead of NOW(), queries use MAX(timestamp) from measurements
-anchor_date = get_anchor_date()  # Latest data timestamp in DB
-```
-
-This allows historical demo data from any time period to work correctly without modification.
-
 ## Backend Integration
 
 The NestJS backend connects via `ToolsHttpClient`:
@@ -212,6 +196,9 @@ const response = await fetch(`${MCP_SERVER_URL}/api/tools/${toolName}`, {
 });
 ```
 
-See [AI_UX_FLOWS.md](../AI_UX_FLOWS.md) for complete architecture documentation.
+## Related Documentation
 
-See [CLAUDE.md](../CLAUDE.md) for coding standards and patterns.
+- [Backend AI Orchestration](../backend/src/ai/README.md) - LangGraph flow orchestration
+- [Recovery Subgraph](../diagrams/svg/recovery-subgraph.svg) - Error handling flow
+- [AI_UX_FLOWS.md](../AI_UX_FLOWS.md) - Complete architecture documentation
+- [CLAUDE.md](../CLAUDE.md) - Coding standards and patterns

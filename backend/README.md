@@ -2,43 +2,100 @@
 
 NestJS 11 backend for data ingestion, measurements API, and AI chat with LangGraph orchestration.
 
-## Data Flow
-
 ![Data Flow](../diagrams/svg/data-flow.svg)
+
+## Key Architectural Decisions
+
+### 1. Parser Strategy Pattern (Specificity-First)
+
+8 parsers registered in specificity order - most specific formats first, GoodWe fallback last:
+
+```
+Plexlog → LTI → Integra → MeteoControl → MBMET → Meier → SmartDog → GoodWe
+```
+
+Each parser implements `IParser` with `canHandle(filename, snippet)` for auto-detection.
+
+```
+src/ingestion/interfaces/parser.interface.ts  # Contract
+src/ingestion/strategies/                      # 8 implementations
+```
+
+### 2. AsyncGenerator for Memory-Efficient Streaming
+
+Parsers yield records via `AsyncGenerator<UnifiedMeasurementDto>` - files of any size processed without loading into memory:
+
+```typescript
+async *parse(buffer: Buffer): AsyncGenerator<UnifiedMeasurementDto>
+```
+
+Supports CSV, TXT (sectioned), XML, and SQLite formats.
+
+### 3. Batch Insertion (1000 Records)
+
+`IngestionService` batches records in groups of 1000 for optimal database performance. Upsert on composite key (loggerId + timestamp) ensures idempotent ingestion.
+
+### 4. Hybrid Database Schema
+
+Golden metrics as columns for fast queries + JSONB for flexibility:
+
+```typescript
+- activePowerWatts: float   // 10-100x faster than JSONB queries
+- energyDailyKwh: float     // Billing calculations
+- irradiance: float         // PR calculations
+- metadata: jsonb           // All other sensors (GIN indexed)
+```
+
+### 5. LangGraph Explicit Flows + Free Chat Fallback
+
+Deterministic workflows for common queries, LLM agent loop for exploratory questions:
+
+![LangGraph Main Graph](../diagrams/svg/langgraph-main-graph.svg)
+
+```
+src/ai/nodes/router.node.ts   # Intent classification
+src/ai/flows/                  # 5 explicit workflows
+```
+
+### 6. Stateless Tool Execution via HTTP
+
+Tools executed via HTTP POST to Python FastMCP (not SSE session). Each call independent - retry-friendly, no session state to manage.
+
+```
+src/ai/tools-http.client.ts   # HTTP POST client
+```
 
 ## Modules
 
 ```
 src/
 ├── ingestion/        # Data ingestion with 8 parser strategies
-├── measurements/     # Data query and retrieval API
-├── ai/               # AI chat with LangGraph orchestration
+├── measurements/     # Data query API (smart date resolution)
+├── ai/               # LangGraph orchestration
 │   ├── ai.controller.ts      # SSE streaming endpoint
-│   ├── langgraph.service.ts  # StateGraph orchestrator
-│   ├── langchain-tools.ts    # Tool definitions
-│   ├── tools-http.client.ts  # HTTP client for Python API
-│   ├── nodes/                # Router and flow nodes
-│   ├── flows/                # Explicit workflow implementations
+│   ├── langgraph.service.ts  # StateGraph + provider initialization
+│   ├── tools-http.client.ts  # HTTP client for Python tools
+│   ├── nodes/                # Router node
+│   ├── flows/                # morning-briefing, financial-report, etc.
 │   ├── subgraphs/            # Recovery subgraph
-│   └── types/                # Flow state types
-└── database/         # TypeORM entities and configuration
+│   ├── narrative/            # Template-based text generation
+│   └── response/             # UIResponseBuilder with Zod validation
+└── database/         # TypeORM entities
 ```
 
 ## Parser Strategies
 
-![Parser Strategy Pattern](../diagrams/svg/parser-strategy.svg)
+![Parser Strategy](../diagrams/svg/parser-strategy.svg)
 
-8 parsers auto-detect file format via `canHandle()` method:
-
-| Parser | Detection | File Format | Golden Metrics |
-|--------|-----------|-------------|----------------|
-| Plexlog | `.s3db` or SQLite magic | SQLite | acproduction → Power |
+| Parser | Detection | Format | Golden Metrics |
+|--------|-----------|--------|----------------|
+| Plexlog | SQLite magic bytes | .s3db | acproduction → Power |
 | LTI | `[header]/[data]` markers | Text | P_AC → Power |
 | Integra | `.xml` + root tag | XML | P_AC → Power |
 | MeteoControl | `[info]` + `Datum=` | INI-style | Pac → Power |
 | MBMET | `Zeitstempel` header | CSV (German) | Einstrahlung → Irradiance |
 | Meier | `serial;` prefix | CSV | Feed-In_Power → Power |
-| SmartDog | `B{}_A{}_S{}` pattern | CSV | pac → Power |
+| SmartDog | `B{}_A{}_S{}` filename | CSV | pac → Power |
 | GoodWe | Fallback | CSV (EAV) | Power, Energy |
 
 ## API Endpoints
@@ -47,105 +104,72 @@ src/
 
 ### Ingestion
 ```
-POST /ingest/:loggerType
-  - Body: multipart/form-data (field: "files")
-  - Supported: CSV, TXT, XML, SQLite (.s3db)
+POST /ingest/:loggerType    # multipart/form-data (field: "files")
 ```
 
 ### Measurements
 ```
 GET /measurements                      # List loggers
 GET /measurements/:loggerId            # Get data (?start=&end=)
-GET /measurements/:loggerId/date-range # Get date bounds
+GET /measurements/:loggerId/date-range # Date bounds
 ```
 
 ### AI Chat
 ```
-POST /ai/chat                          # SSE streaming chat
-GET /ai/status                         # Service readiness
+POST /ai/chat    # SSE streaming (body: { messages, threadId })
+GET /ai/status   # Service readiness
 ```
 
 ## AI Architecture
 
-The AI module uses LangGraph for deterministic workflow management with LLM-powered intent classification.
+> **Full documentation**: [src/ai/README.md](src/ai/README.md)
 
-### LangGraph Orchestration
+| Flow | Triggers | Primary Tool |
+|------|----------|--------------|
+| `morning_briefing` | "Fleet overview", "How is the site?" | get_fleet_overview |
+| `financial_report` | "How much saved?", "ROI" | calculate_financial_savings |
+| `performance_audit` | "Compare inverters" | compare_loggers |
+| `health_check` | "Any problems?" | analyze_inverter_health |
+| `free_chat` | Fallback | LLM agent loop |
 
-```mermaid
-flowchart TB
-    AC["AiController<br/>(SSE)"]
-    LG["LangGraph Service"]
-    TH["ToolsHttpClient<br/>(HTTP POST)"]
-
-    subgraph Orchestration["Graph Nodes"]
-        RT["Router Node"]
-        EF["Explicit Flows"]
-        RS["Recovery Subgraph"]
-    end
-
-    AC --> LG --> TH
-    LG --> RT & EF & RS
-
-    style AC fill:#3b82f6,stroke:#2563eb,color:#fff
-    style LG fill:#22c55e,stroke:#16a34a,color:#fff
-    style RS fill:#ec4899,stroke:#db2777,color:#fff
-```
-
-> See [diagrams/markdown/langgraph-main-graph.md](../diagrams/markdown/langgraph-main-graph.md) for the complete StateGraph structure.
-
-### Explicit Flows
-
-| Flow | Trigger Phrases | Goal |
-|------|-----------------|------|
-| `morning_briefing` | "Fleet overview", "How is the site?" | Site-wide status |
-| `financial_report` | "How much did I save?", "ROI" | Savings + forecast |
-| `performance_audit` | "Compare inverters", "Efficiency" | Multi-logger comparison |
-| `health_check` | "Check anomalies", "Any problems?" | Anomaly detection |
-| `free_chat` | Fallback for other queries | LLM agent loop |
-
-### Multi-Provider LLM Support
-
-| Provider | Model | Environment Variable |
-|----------|-------|---------------------|
-| **Gemini** (default) | gemini-2.0-flash | `GOOGLE_GENERATIVE_AI_API_KEY` |
-| **Anthropic** | claude-3-5-sonnet | `ANTHROPIC_API_KEY` |
-| **OpenAI** | gpt-4o | `OPENAI_API_KEY` |
-| **Ollama** (local) | gpt-oss:20b | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` |
+**Providers**: Gemini (default), Anthropic, OpenAI, Ollama. Set `AI_PROVIDER` env var.
 
 ## Database Schema
 
-<img src="../diagrams/svg/database-schema.svg" alt="Database Schema" height="350">
+![Database Schema](../diagrams/svg/database-schema.svg)
 
 ```typescript
 @Entity('measurements')
-- timestamp: Date (PK)
-- loggerId: string (PK)
-- loggerType: varchar(20)
-- activePowerWatts: float
-- energyDailyKwh: float
-- irradiance: float
-- metadata: jsonb
-- createdAt: timestamptz
+- timestamp: Date (PK)       // UTC
+- loggerId: string (PK)      // Serial number
+- loggerType: varchar(20)    // Parser identifier
+- activePowerWatts: float    // Golden metric
+- energyDailyKwh: float      // Golden metric
+- irradiance: float          // Golden metric
+- metadata: jsonb            // Flexible storage
+- createdAt: timestamptz     // Audit
 ```
+
+Composite PK + BRIN index on timestamp for time-series performance.
 
 ## Development
 
 ```bash
 npm install
-npm run start:dev     # Development with hot-reload
-npm run start:prod    # Production build
+npm run start:dev     # Hot-reload (port 3000)
+npm run start:prod    # Production
 ```
 
 ## Testing
 
 ```bash
 npm test              # Unit tests
-npm run test:cov      # Coverage report
+npm run test:cov      # Coverage
 npm run test:e2e      # E2E tests
-npm run test:watch    # Watch mode
+npm run test:ai       # AI module tests
 ```
 
-## Environment Variables
+## Environment
 
 ```env
 # Database
@@ -155,47 +179,30 @@ DB_USERNAME=admin
 DB_PASSWORD=admin
 DB_DATABASE=pv_db
 
-# AI Configuration
-AI_PROVIDER=gemini                           # gemini | anthropic | openai | ollama
-MCP_SERVER_URL=http://localhost:4000         # Python tools API
-
-# Provider API Keys (set one based on AI_PROVIDER)
-GOOGLE_GENERATIVE_AI_API_KEY=               # For Gemini
-ANTHROPIC_API_KEY=                          # For Claude
-OPENAI_API_KEY=                             # For GPT-4
-
-# Ollama (local LLM - no API key required)
-OLLAMA_BASE_URL=http://127.0.0.1:11434      # Local Ollama server
-OLLAMA_MODEL=gpt-oss:20b      # Any Ollama model
+# AI
+AI_PROVIDER=gemini
+MCP_SERVER_URL=http://localhost:4000
 ```
 
-## Key Dependencies
+## Diagrams
 
-- `@nestjs/core` - NestJS framework
-- `typeorm` + `pg` - PostgreSQL ORM
-- `@langchain/langgraph` - StateGraph workflow orchestration
-- `@langchain/google-genai` - Gemini LLM provider
-- `@langchain/anthropic` - Claude LLM provider
-- `@langchain/openai` - GPT-4 LLM provider
-- `@langchain/ollama` - Ollama local LLM provider
-- `@langchain/core` - LangChain base types and tools
-- `zod` - Schema validation for tool definitions
-- `multer` - File uploads
-- `class-validator` - DTO validation
+| Diagram | Description |
+|---------|-------------|
+| [Data Flow](../diagrams/svg/data-flow.svg) | System data flow |
+| [Parser Strategy](../diagrams/svg/parser-strategy.svg) | Strategy pattern |
+| [Request Sequence](../diagrams/svg/request-sequence.svg) | API sequence |
+| [Database Schema](../diagrams/svg/database-schema.svg) | Entity relationships |
+| [LangGraph Main](../diagrams/svg/langgraph-main-graph.svg) | StateGraph structure |
+| [Morning Briefing](../diagrams/svg/flow-morning-briefing.svg) | Fleet overview flow |
+| [Financial Report](../diagrams/svg/flow-financial-report.svg) | Savings flow |
+| [Health Check](../diagrams/svg/flow-health-check.svg) | Anomaly detection |
+| [Performance Audit](../diagrams/svg/flow-performance-audit.svg) | Comparison flow |
+| [Recovery Subgraph](../diagrams/svg/recovery-subgraph.svg) | Error handling |
+| [Agent Behavior](../diagrams/svg/agent-behavior.svg) | Router classification |
 
 ## Related Documentation
 
-- [AI_UX_FLOWS.md](../AI_UX_FLOWS.md) - Complete AI architecture and flow specifications
-- [CLAUDE.md](../CLAUDE.md) - Coding standards and patterns
-
-### Flow Diagrams
-
-| Flow | Description | Diagram |
-|------|-------------|---------|
-| Main Graph | LangGraph StateGraph structure | [langgraph-main-graph.md](../diagrams/markdown/langgraph-main-graph.md) |
-| Morning Briefing | Fleet overview flow | [flow-morning-briefing.md](../diagrams/markdown/flow-morning-briefing.md) |
-| Financial Report | Savings calculation flow | [flow-financial-report.md](../diagrams/markdown/flow-financial-report.md) |
-| Health Check | Anomaly detection flow | [flow-health-check.md](../diagrams/markdown/flow-health-check.md) |
-| Performance Audit | Comparison flow | [flow-performance-audit.md](../diagrams/markdown/flow-performance-audit.md) |
-| Recovery Subgraph | Error handling | [recovery-subgraph.md](../diagrams/markdown/recovery-subgraph.md) |
-| Agent Behavior | Router classification | [agent-behavior.md](../diagrams/markdown/agent-behavior.md) |
+- [src/ai/README.md](src/ai/README.md) - LangGraph orchestration details
+- [../ai/README.md](../ai/README.md) - Python tools API
+- [AI_UX_FLOWS.md](../AI_UX_FLOWS.md) - Complete AI architecture specs
+- [CLAUDE.md](../CLAUDE.md) - Coding standards
