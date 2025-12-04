@@ -10,6 +10,23 @@ import {
 } from './langchain-tools';
 import { createMockToolsClient, MOCK_LIST_LOGGERS } from './test-utils';
 
+/**
+ * Type for parsed passthrough tool responses.
+ */
+interface PassthroughResponse {
+  _passthrough: boolean;
+  component?: string;
+  props?: Record<string, unknown>;
+  suggestions?: unknown[];
+  prompt?: string;
+  options?: unknown[];
+  selectionType?: string;
+  inputType?: string;
+  minDate?: string;
+  maxDate?: string;
+  flowHint?: unknown;
+}
+
 describe('createLangChainTools', () => {
   let mockToolsClient: ReturnType<typeof createMockToolsClient>;
 
@@ -75,14 +92,15 @@ describe('createLangChainTools', () => {
       const tools = createLangChainTools(mockToolsClient as never);
       const listLoggersTool = tools.find((t) => t.name === 'list_loggers');
 
-      const result = await listLoggersTool?.invoke({});
+      expect(listLoggersTool).toBeDefined();
+      const result = (await listLoggersTool!.invoke({})) as string;
 
       expect(mockToolsClient.executeTool).toHaveBeenCalledWith(
         'list_loggers',
         {},
       );
       expect(typeof result).toBe('string');
-      expect(JSON.parse(result as string)).toEqual(MOCK_LIST_LOGGERS);
+      expect(JSON.parse(result)).toEqual(MOCK_LIST_LOGGERS);
     });
 
     it('should call HTTP client with args for analyze_inverter_health', async () => {
@@ -162,12 +180,13 @@ describe('createUiTools', () => {
       const tools = createUiTools();
       const renderTool = tools.find((t) => t.name === 'render_ui_component');
 
-      const result = await renderTool?.invoke({
+      expect(renderTool).toBeDefined();
+      const result = (await renderTool!.invoke({
         component: 'DynamicChart',
         props: { chartType: 'line', data: [] },
-      });
+      })) as string;
 
-      const parsed = JSON.parse(result as string);
+      const parsed = JSON.parse(result) as PassthroughResponse;
       expect(parsed._passthrough).toBe(true);
       expect(parsed.component).toBe('DynamicChart');
     });
@@ -179,13 +198,14 @@ describe('createUiTools', () => {
       const suggestions = [
         { label: 'Test', action: 'Do test', priority: 'primary' },
       ];
-      const result = await renderTool?.invoke({
+      expect(renderTool).toBeDefined();
+      const result = (await renderTool!.invoke({
         component: 'FleetOverview',
         props: {},
         suggestions,
-      });
+      })) as string;
 
-      const parsed = JSON.parse(result as string);
+      const parsed = JSON.parse(result) as PassthroughResponse;
       expect(parsed.suggestions).toEqual(suggestions);
     });
   });
@@ -206,14 +226,15 @@ describe('createUiTools', () => {
         (t) => t.name === 'request_user_selection',
       );
 
-      const result = await selectionTool?.invoke({
+      expect(selectionTool).toBeDefined();
+      const result = (await selectionTool!.invoke({
         prompt: 'Select a logger:',
         options: [{ value: '925', label: 'Logger 925' }],
         selectionType: 'single',
         inputType: 'dropdown',
-      });
+      })) as string;
 
-      const parsed = JSON.parse(result as string);
+      const parsed = JSON.parse(result) as PassthroughResponse;
       expect(parsed._passthrough).toBe(true);
       expect(parsed.prompt).toBe('Select a logger:');
     });
@@ -228,15 +249,16 @@ describe('createUiTools', () => {
         expectedNext: 'Will analyze health',
         skipOption: { label: 'Skip', action: 'Use default' },
       };
-      const result = await selectionTool?.invoke({
+      expect(selectionTool).toBeDefined();
+      const result = (await selectionTool!.invoke({
         prompt: 'Select:',
         options: [],
         selectionType: 'single',
         inputType: 'dropdown',
         flowHint,
-      });
+      })) as string;
 
-      const parsed = JSON.parse(result as string);
+      const parsed = JSON.parse(result) as PassthroughResponse;
       expect(parsed.flowHint).toEqual(flowHint);
     });
 
@@ -246,16 +268,17 @@ describe('createUiTools', () => {
         (t) => t.name === 'request_user_selection',
       );
 
-      const result = await selectionTool?.invoke({
+      expect(selectionTool).toBeDefined();
+      const result = (await selectionTool!.invoke({
         prompt: 'Select date:',
         options: [],
         selectionType: 'single',
         inputType: 'date',
         minDate: '2024-01-01',
         maxDate: '2025-01-15',
-      });
+      })) as string;
 
-      const parsed = JSON.parse(result as string);
+      const parsed = JSON.parse(result) as PassthroughResponse;
       expect(parsed.minDate).toBe('2024-01-01');
       expect(parsed.maxDate).toBe('2025-01-15');
       expect(parsed.inputType).toBe('date');
