@@ -13,8 +13,12 @@ import {
   HumanMessage,
   AIMessage,
   SystemMessage,
-  ToolMessage,
 } from '@langchain/core/messages';
+import {
+  isAiMessage,
+  isSystemMessage,
+  isToolMessage,
+} from './utils/message-utils';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
@@ -236,7 +240,7 @@ export class LanggraphService {
       );
 
       const messages = state.messages;
-      const hasSystemMessage = messages.some((m) => m._getType() === 'system');
+      const hasSystemMessage = messages.some((m) => isSystemMessage(m));
 
       const messagesWithSystem = hasSystemMessage
         ? messages
@@ -278,11 +282,11 @@ export class LanggraphService {
       const messages = state.messages;
       const lastMessage = messages[messages.length - 1];
 
-      if (lastMessage._getType() !== 'tool') {
+      if (!isToolMessage(lastMessage)) {
         return {};
       }
 
-      const toolMessage = lastMessage as ToolMessage;
+      const toolMessage = lastMessage;
       let content: unknown = toolMessage.content;
 
       if (typeof content === 'string') {
@@ -332,13 +336,13 @@ export class LanggraphService {
       const lastMessage = state.messages[state.messages.length - 1];
 
       if (
-        lastMessage._getType() === 'ai' &&
-        (lastMessage as AIMessage).tool_calls &&
-        (lastMessage as AIMessage).tool_calls!.length > 0
+        isAiMessage(lastMessage) &&
+        lastMessage.tool_calls &&
+        lastMessage.tool_calls.length > 0
       ) {
         // SAFETY CHECK: If the ONLY tool calls are virtual UI tools, do NOT go to 'tools' node
         // (because they are handled via pendingUiActions and have no backend implementation)
-        const toolCalls = (lastMessage as AIMessage).tool_calls!;
+        const toolCalls = lastMessage.tool_calls;
         const onlyVirtualTools = toolCalls.every(
           (tc) =>
             tc.name === 'render_ui_component' ||
@@ -371,9 +375,7 @@ export class LanggraphService {
 
       // Check if last AIMessage called a terminal UI tool
       // We need to look at the most recent AIMessage (before the ToolMessage)
-      const lastAiMessageIndex = messages.findLastIndex(
-        (m) => m._getType() === 'ai',
-      );
+      const lastAiMessageIndex = messages.findLastIndex((m) => isAiMessage(m));
       if (lastAiMessageIndex >= 0) {
         const lastAiMessage = messages[lastAiMessageIndex] as AIMessage;
         const toolCalls = lastAiMessage.tool_calls || [];
@@ -498,7 +500,7 @@ export class LanggraphService {
       );
 
       const messages = state.messages;
-      const hasSystemMessage = messages.some((m) => m._getType() === 'system');
+      const hasSystemMessage = messages.some((m) => isSystemMessage(m));
 
       const messagesWithSystem = hasSystemMessage
         ? messages
@@ -537,11 +539,11 @@ export class LanggraphService {
       const messages = state.messages;
       const lastMessage = messages[messages.length - 1];
 
-      if (lastMessage._getType() !== 'tool') {
+      if (!isToolMessage(lastMessage)) {
         return {};
       }
 
-      const toolMessage = lastMessage as ToolMessage;
+      const toolMessage = lastMessage;
       let content: unknown = toolMessage.content;
 
       if (typeof content === 'string') {
@@ -575,13 +577,13 @@ export class LanggraphService {
       const lastMessage = state.messages[state.messages.length - 1];
 
       if (
-        lastMessage._getType() === 'ai' &&
-        (lastMessage as AIMessage).tool_calls &&
-        (lastMessage as AIMessage).tool_calls!.length > 0
+        isAiMessage(lastMessage) &&
+        lastMessage.tool_calls &&
+        lastMessage.tool_calls.length > 0
       ) {
         // SAFETY CHECK: If the ONLY tool calls are virtual UI tools, do NOT go to 'tools' node
         // (because they are handled via pendingUiActions and have no backend implementation)
-        const toolCalls = (lastMessage as AIMessage).tool_calls!;
+        const toolCalls = lastMessage.tool_calls;
         const onlyVirtualTools = toolCalls.every(
           (tc) =>
             tc.name === 'render_ui_component' ||
@@ -611,9 +613,7 @@ export class LanggraphService {
       const messages = state.messages;
 
       // Check if last AIMessage called a terminal UI tool
-      const lastAiMessageIndex = messages.findLastIndex(
-        (m) => m._getType() === 'ai',
-      );
+      const lastAiMessageIndex = messages.findLastIndex((m) => isAiMessage(m));
       if (lastAiMessageIndex >= 0) {
         const lastAiMessage = messages[lastAiMessageIndex] as AIMessage;
         const toolCalls = lastAiMessage.tool_calls || [];
@@ -708,7 +708,7 @@ export class LanggraphService {
     // Look for flow metadata in recent assistant messages (search backwards)
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
-      if (msg._getType() === 'ai') {
+      if (isAiMessage(msg)) {
         const content = typeof msg.content === 'string' ? msg.content : '';
         const match = content.match(/<!-- (\{"__flowContext":.+?\}) -->/s);
         if (match) {
@@ -741,6 +741,61 @@ export class LanggraphService {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Strip hidden flow metadata from message content.
+   * Flow context is embedded as HTML comments for persistence across invocations.
+   */
+  private stripFlowMetadata(text: string): string {
+    return text.replace(/\n?\n?<!-- \{"__flowContext":.+?\} -->/s, '');
+  }
+
+  /**
+   * Extract text content from various LangChain content formats.
+   * Handles string content, array content with text blocks, and nested objects.
+   */
+  private extractTextFromContent(content: unknown): string | null {
+    if (typeof content === 'string') {
+      return this.stripFlowMetadata(content) || null;
+    }
+
+    if (Array.isArray(content)) {
+      const textParts: string[] = [];
+      for (const part of content) {
+        if (
+          part &&
+          typeof part === 'object' &&
+          'type' in part &&
+          (part as { type: string }).type === 'text' &&
+          'text' in part &&
+          typeof (part as { text: unknown }).text === 'string'
+        ) {
+          const cleaned = this.stripFlowMetadata(
+            (part as { text: string }).text,
+          );
+          if (cleaned) {
+            textParts.push(cleaned);
+          }
+        }
+      }
+      return textParts.length > 0 ? textParts.join('') : null;
+    }
+
+    return null;
+  }
+
+  /**
+   * Check if a node is internal and should not emit text to the frontend.
+   * Internal nodes produce JSON classification or internal state, not user-facing content.
+   */
+  private isInternalNode(nodeName: string | undefined): boolean {
+    const INTERNAL_NODES = new Set([
+      'router', // Produces classification JSON like {"flow":"health_check"...}
+      'check_context', // Internal state check
+      'check_results', // Internal recovery check
+    ]);
+    return nodeName ? INTERNAL_NODES.has(nodeName) : false;
   }
 
   /**
@@ -817,8 +872,8 @@ export class LanggraphService {
       }
 
       // Also pre-fill tool calls from historical AIMessages
-      if (msg._getType() === 'ai') {
-        const aiMsg = msg as AIMessage;
+      if (isAiMessage(msg)) {
+        const aiMsg = msg;
         if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
           for (const tc of aiMsg.tool_calls) {
             if (tc.id) {
@@ -870,76 +925,37 @@ export class LanggraphService {
         configurable: { thread_id: effectiveThreadId },
       });
 
-      // Internal nodes that should NOT emit text to the frontend
-      // These produce JSON classification or internal state, not user-facing content
-      const INTERNAL_NODES = new Set([
-        'router', // Produces classification JSON like {"flow":"health_check"...}
-        'check_context', // Internal state check
-        'check_results', // Internal recovery check
-      ]);
-
       for await (const event of stream) {
         // Handle different event types from LangGraph
         if (event.event === 'on_chat_model_stream') {
           // Filter out internal node output (e.g., router classification JSON)
           const nodeName = (event.metadata as { langgraph_node?: string })
             ?.langgraph_node;
-          if (nodeName && INTERNAL_NODES.has(nodeName)) {
+          if (this.isInternalNode(nodeName)) {
             continue; // Skip internal node output
           }
 
-          // Streaming text from the model
-          // LangChain content can be string OR array of content blocks
+          // Streaming text from the model using helper method
           const chunk = event.data?.chunk as
             | { content?: string | unknown[] }
             | null
             | undefined;
 
           if (chunk?.content) {
-            // Helper to strip hidden flow metadata from content
-            const stripFlowMetadata = (text: string): string =>
-              text.replace(/\n?\n?<!-- \{"__flowContext":.+?\} -->/s, '');
-
-            // Handle string content directly
-            if (typeof chunk.content === 'string') {
-              const cleanContent = stripFlowMetadata(chunk.content);
-              if (cleanContent) {
-                debugCounters.textEmissions++;
-                this.logger.debug(
-                  `[DEBUG EMIT] text-delta from node: ${nodeName}, length: ${cleanContent.length}`,
-                );
-                yield { type: 'text-delta', delta: cleanContent };
-              }
+            const cleanContent = this.extractTextFromContent(chunk.content);
+            if (cleanContent) {
+              debugCounters.textEmissions++;
+              this.logger.debug(
+                `[DEBUG EMIT] text-delta from node: ${nodeName}, length: ${cleanContent.length}`,
+              );
+              yield { type: 'text-delta', delta: cleanContent };
             }
-            // Handle array content (e.g., [{ type: 'text', text: '...' }])
-            else if (Array.isArray(chunk.content)) {
-              for (const part of chunk.content) {
-                if (
-                  part &&
-                  typeof part === 'object' &&
-                  'type' in part &&
-                  part.type === 'text' &&
-                  'text' in part &&
-                  typeof part.text === 'string'
-                ) {
-                  const cleanContent = stripFlowMetadata(part.text);
-                  if (cleanContent) {
-                    debugCounters.textEmissions++;
-                    this.logger.debug(
-                      `[DEBUG EMIT] text-delta (array) from node: ${nodeName}, length: ${cleanContent.length}`,
-                    );
-                    yield { type: 'text-delta', delta: cleanContent };
-                  }
-                }
-              }
-            }
-            // Skip non-string, non-array content (e.g., objects)
           }
         } else if (event.event === 'on_chat_model_end') {
           // Filter out internal node output (e.g., router classification JSON)
           const nodeName = (event.metadata as { langgraph_node?: string })
             ?.langgraph_node;
-          if (nodeName && INTERNAL_NODES.has(nodeName)) {
+          if (this.isInternalNode(nodeName)) {
             continue; // Skip internal node output
           }
 
@@ -1101,8 +1117,8 @@ export class LanggraphService {
           if (output?.messages && output.messages.length > 0) {
             for (const msg of output.messages) {
               // Check if this is an AIMessage with tool_calls
-              if (msg._getType() === 'ai') {
-                const aiMsg = msg as AIMessage;
+              if (isAiMessage(msg)) {
+                const aiMsg = msg;
                 if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
                   for (const toolCall of aiMsg.tool_calls) {
                     const toolCallId = toolCall.id ?? `tool_${Date.now()}`;
@@ -1161,7 +1177,7 @@ export class LanggraphService {
               text.replace(/\n?\n?<!-- \{"__flowContext":.+?\} -->/s, '');
 
             for (const msg of output.messages) {
-              if (msg._getType() !== 'ai') continue;
+              if (!isAiMessage(msg)) continue;
 
               // Handle plain string content
               if (typeof msg.content === 'string' && msg.content.trim()) {

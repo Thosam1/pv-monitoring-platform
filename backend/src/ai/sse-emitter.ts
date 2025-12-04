@@ -10,6 +10,7 @@
  */
 
 import { BaseMessage } from '@langchain/core/messages';
+import { isAiMessage } from './utils/message-utils';
 
 export interface SSEEvent {
   type:
@@ -75,7 +76,7 @@ export class SSEEmitter {
    */
   emitFromMessages(messages: BaseMessage[]): void {
     for (const msg of messages) {
-      if (msg._getType() !== 'ai') continue;
+      if (!isAiMessage(msg)) continue;
 
       // Handle plain string content
       if (typeof msg.content === 'string') {

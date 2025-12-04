@@ -6,6 +6,7 @@ import {
   SystemMessage,
   ToolMessage,
 } from '@langchain/core/messages';
+import { isAiMessage, isHumanMessage } from '../utils/message-utils';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
@@ -16,7 +17,6 @@ import {
   FlowClassificationSchema,
   FlowContext,
   ExtractedArguments,
-  LoggerTypePattern,
   FlowType,
   createCleanFlowContext,
 } from '../types/flow-state';
@@ -179,7 +179,7 @@ function buildClassificationPrompt(
 function getLastUserMessage(messages: BaseMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg instanceof HumanMessage || msg._getType() === 'human') {
+    if (isHumanMessage(msg)) {
       return typeof msg.content === 'string' ? msg.content : '';
     }
   }
@@ -259,7 +259,7 @@ function getConversationContext(messages: BaseMessage[]): string {
   const context: string[] = [];
 
   for (const msg of lastMessages) {
-    const role = msg._getType() === 'human' ? 'User' : 'Assistant';
+    const role = isHumanMessage(msg) ? 'User' : 'Assistant';
     const content =
       typeof msg.content === 'string'
         ? msg.content.substring(0, 200)
@@ -268,6 +268,118 @@ function getConversationContext(messages: BaseMessage[]): string {
   }
 
   return context.join('\n');
+}
+
+/**
+ * Map selection value to the appropriate flowContext field.
+ * Reduces cognitive complexity by centralizing the selection mapping logic.
+ */
+function mapSelectionToFlowContext(
+  context: FlowContext,
+  selectedValue: string | string[],
+  waitingFor: string,
+): void {
+  switch (waitingFor) {
+    case 'loggerId':
+      context.selectedLoggerId = Array.isArray(selectedValue)
+        ? selectedValue[0]
+        : selectedValue;
+      break;
+    case 'loggerIds':
+      if (Array.isArray(selectedValue)) {
+        context.selectedLoggerIds = selectedValue;
+      } else {
+        context.selectedLoggerIds = selectedValue
+          .split(',')
+          .map((v) => v.trim())
+          .filter((v) => v.length > 0);
+      }
+      break;
+    case 'date':
+      context.selectedDate = Array.isArray(selectedValue)
+        ? selectedValue[0]
+        : selectedValue;
+      break;
+    case 'dateRange':
+      if (Array.isArray(selectedValue) && selectedValue.length === 2) {
+        context.dateRange = { start: selectedValue[0], end: selectedValue[1] };
+      } else if (typeof selectedValue === 'string') {
+        const parts = selectedValue.split(':');
+        if (parts.length === 2) {
+          context.dateRange = { start: parts[0], end: parts[1] };
+        }
+      }
+      break;
+  }
+}
+
+/**
+ * Type for classification extracted parameters.
+ * Matches the Zod schema in flow-state.ts.
+ */
+interface ClassificationExtractedParams {
+  loggerId?: string | null;
+  loggerIds?: string[] | null;
+  loggerName?: string | null;
+  loggerTypePattern?: 'inverter' | 'meteo' | 'all' | null;
+  date?: string | null;
+  dateRange?: { start: string; end: string } | null;
+}
+
+/**
+ * Build extracted arguments from classification parameters.
+ * Reduces cognitive complexity by centralizing argument extraction logic.
+ */
+function buildExtractedArgsFromParams(
+  params: ClassificationExtractedParams,
+): ExtractedArguments {
+  const extractedArgs: ExtractedArguments = {};
+
+  if (params.loggerId) {
+    extractedArgs.loggerId = params.loggerId;
+  }
+  if (params.loggerIds && params.loggerIds.length > 0) {
+    extractedArgs.loggerIds = params.loggerIds;
+  }
+  if (params.loggerName) {
+    extractedArgs.loggerNamePattern = params.loggerName;
+  }
+  if (params.loggerTypePattern) {
+    extractedArgs.loggerTypePattern = params.loggerTypePattern;
+  }
+  if (params.date) {
+    extractedArgs.date = params.date;
+  }
+  if (params.dateRange) {
+    extractedArgs.dateRange = params.dateRange;
+  }
+
+  return extractedArgs;
+}
+
+/**
+ * Apply extracted parameters to flow context.
+ * Reduces cognitive complexity by centralizing context updates.
+ */
+function applyExtractedParamsToFlowContext(
+  flowContext: FlowContext,
+  params: ClassificationExtractedParams,
+): void {
+  if (params.loggerId) {
+    flowContext.selectedLoggerId = params.loggerId;
+  }
+  if (params.loggerIds && params.loggerIds.length > 0) {
+    flowContext.selectedLoggerIds = params.loggerIds;
+  }
+  if (params.loggerName) {
+    flowContext.extractedLoggerName = params.loggerName;
+  }
+  if (params.date) {
+    flowContext.selectedDate = params.date;
+  }
+  if (params.dateRange) {
+    flowContext.dateRange = params.dateRange;
+  }
 }
 
 /**
@@ -299,7 +411,7 @@ function handleSelectionResponse(
   // Find the pending tool call to satisfy the LLM's tool call contract
   // Must look for AI messages WITH tool_calls, not just any AI message
   const lastAiMessage = state.messages.findLast(
-    (m) => m._getType() === 'ai' && (m as AIMessage).tool_calls?.length,
+    (m) => isAiMessage(m) && m.tool_calls?.length,
   ) as AIMessage | undefined;
   const pendingToolCall = lastAiMessage?.tool_calls?.find(
     (tc) => tc.name === 'request_user_selection',
@@ -335,40 +447,8 @@ function handleSelectionResponse(
     waitingForUserInput: false, // Clear waiting flag
   };
 
-  // Map selection to appropriate flowContext field
-  if (waitingFor === 'loggerId') {
-    // For single logger, use first value if array
-    updatedContext.selectedLoggerId = Array.isArray(selectedValue)
-      ? selectedValue[0]
-      : selectedValue;
-  } else if (waitingFor === 'loggerIds') {
-    // Parse comma-separated values for multi-select
-    if (Array.isArray(selectedValue)) {
-      updatedContext.selectedLoggerIds = selectedValue;
-    } else {
-      updatedContext.selectedLoggerIds = selectedValue
-        .split(',')
-        .map((v) => v.trim())
-        .filter((v) => v.length > 0);
-    }
-  } else if (waitingFor === 'date') {
-    updatedContext.selectedDate = Array.isArray(selectedValue)
-      ? selectedValue[0]
-      : selectedValue;
-  } else if (waitingFor === 'dateRange') {
-    // Parse date range format "YYYY-MM-DD:YYYY-MM-DD" or array [start, end]
-    if (Array.isArray(selectedValue) && selectedValue.length === 2) {
-      updatedContext.dateRange = {
-        start: selectedValue[0],
-        end: selectedValue[1],
-      };
-    } else if (typeof selectedValue === 'string') {
-      const parts = selectedValue.split(':');
-      if (parts.length === 2) {
-        updatedContext.dateRange = { start: parts[0], end: parts[1] };
-      }
-    }
-  }
+  // Map selection to appropriate flowContext field using helper
+  mapSelectionToFlowContext(updatedContext, selectedValue, waitingFor);
 
   logger.log(
     `User selection processed: ${waitingFor} = ${valueStr}, resuming flow: ${state.activeFlow}`,
@@ -534,52 +614,11 @@ export async function routerNode(
     if (classification.extractedParams) {
       const params = classification.extractedParams;
 
-      // Single logger ID
-      if (params.loggerId) {
-        flowContext.selectedLoggerId = params.loggerId;
-      }
+      // Apply extracted params to flowContext using helper
+      applyExtractedParamsToFlowContext(flowContext, params);
 
-      // Multiple logger IDs (for comparison flows)
-      if (params.loggerIds && params.loggerIds.length > 0) {
-        flowContext.selectedLoggerIds = params.loggerIds;
-      }
-
-      // Logger name pattern (e.g., "the GoodWe")
-      if (params.loggerName) {
-        flowContext.extractedLoggerName = params.loggerName;
-      }
-
-      // Single date
-      if (params.date) {
-        flowContext.selectedDate = params.date;
-      }
-
-      // Date range
-      if (params.dateRange) {
-        flowContext.dateRange = params.dateRange;
-      }
-
-      // Build extractedArgs for the argument check node
-      const extractedArgs: ExtractedArguments = {};
-      if (params.loggerId) {
-        extractedArgs.loggerId = params.loggerId;
-      }
-      if (params.loggerIds && params.loggerIds.length > 0) {
-        extractedArgs.loggerIds = params.loggerIds;
-      }
-      if (params.loggerName) {
-        extractedArgs.loggerNamePattern = params.loggerName;
-      }
-      if (params.loggerTypePattern) {
-        extractedArgs.loggerTypePattern =
-          params.loggerTypePattern as LoggerTypePattern;
-      }
-      if (params.date) {
-        extractedArgs.date = params.date;
-      }
-      if (params.dateRange) {
-        extractedArgs.dateRange = params.dateRange;
-      }
+      // Build extractedArgs using helper
+      const extractedArgs = buildExtractedArgsFromParams(params);
 
       // Only set extractedArgs if we have any extractions
       if (Object.keys(extractedArgs).length > 0) {

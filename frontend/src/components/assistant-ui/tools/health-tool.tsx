@@ -116,8 +116,8 @@ export const HealthTool = makeAssistantToolUI<HealthArgs, HealthResult>({
                   </tr>
                 </thead>
                 <tbody>
-                  {data.points.slice(0, 10).map((point, i) => (
-                    <tr key={i} className="border-t border-border">
+                  {data.points.slice(0, 10).map((point) => (
+                    <tr key={point.timestamp} className="border-t border-border">
                       <td className="px-2 py-1.5 text-muted-foreground">
                         {new Date(point.timestamp).toLocaleString()}
                       </td>

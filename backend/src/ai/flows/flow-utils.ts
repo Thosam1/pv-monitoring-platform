@@ -1,11 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Logger } from '@nestjs/common';
-import {
-  AIMessage,
-  BaseMessage,
-  HumanMessage,
-  ToolMessage,
-} from '@langchain/core/messages';
+import { AIMessage, BaseMessage, ToolMessage } from '@langchain/core/messages';
+import { isHumanMessage } from '../utils/message-utils';
 import {
   AnySuggestion,
   EnhancedPriority,
@@ -237,7 +233,7 @@ export function formatLoggerOptions(loggersResult: {
 export function getLastUserMessage(messages: BaseMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg instanceof HumanMessage || msg._getType() === 'human') {
+    if (isHumanMessage(msg)) {
       const content = msg.content;
       if (typeof content === 'string') {
         return content;
@@ -1036,7 +1032,7 @@ export function getOverallDataRange(
 
   if (dates.length === 0) return undefined;
 
-  const sorted = dates.sort();
+  const sorted = dates.sort((a, b) => a.localeCompare(b));
   return {
     start: sorted[0],
     end: sorted[sorted.length - 1],

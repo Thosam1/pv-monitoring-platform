@@ -230,6 +230,15 @@ function buildMetadata(
 }
 
 /**
+ * Check if this interval should be skipped to simulate missing data.
+ * Uses a deterministic pseudo-random check based on the interval seed.
+ */
+function shouldSkipInterval(intervalSeed: number): boolean {
+  const skipProbability = (Math.sin(intervalSeed * 7) + 1) / 2;
+  return skipProbability < MISSING_DATA_PROBABILITY;
+}
+
+/**
  * Generate measurements for a single day.
  */
 function generateDayData(
@@ -249,13 +258,13 @@ function generateDayData(
       timestamp.setUTCHours(hour, minute, 0, 0);
 
       const intervalSeed = daySeed + hour * 100 + minute;
-      const seedValue = (Math.sin(intervalSeed) + 1) / 2; // 0-1 pseudo-random
 
       // Skip this interval randomly to simulate missing data
-      const skipProbability = (Math.sin(intervalSeed * 7) + 1) / 2;
-      if (skipProbability < MISSING_DATA_PROBABILITY) {
+      if (shouldSkipInterval(intervalSeed)) {
         continue;
       }
+
+      const seedValue = (Math.sin(intervalSeed) + 1) / 2; // 0-1 pseudo-random
 
       const hourDecimal = hour + minute / 60;
       const solarFactor = getSolarFactor(hourDecimal);

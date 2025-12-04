@@ -132,20 +132,10 @@ function SingleSelectDropdown({
     return option?.label || selectedValue;
   }, [selectedValue, options]);
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className="my-3 rounded-lg border border-border bg-card p-4 shadow-sm"
-    >
-      {/* Context message (shows detected value info) */}
-      {contextMessage && !hasSubmitted && (
-        <p className="mb-2 text-sm text-muted-foreground">{contextMessage}</p>
-      )}
-      <p className="mb-3 text-sm font-medium text-foreground">{prompt}</p>
-
-      {hasSubmitted ? (
+  // Extract form state rendering to avoid nested ternary
+  const renderFormState = () => {
+    if (hasSubmitted) {
+      return (
         <div
           className={cn(
             'flex w-full items-center rounded-md border px-3 py-2.5 text-sm',
@@ -162,7 +152,11 @@ function SingleSelectDropdown({
           </motion.span>
           <span className="text-green-700 dark:text-green-300">{getDisplayValue()}</span>
         </div>
-      ) : isSubmitting ? (
+      );
+    }
+
+    if (isSubmitting) {
+      return (
         <div
           className={cn(
             'flex w-full items-center rounded-md border px-3 py-2.5 text-sm',
@@ -172,53 +166,71 @@ function SingleSelectDropdown({
           <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-700 dark:text-blue-300" />
           <span className="text-blue-700 dark:text-blue-300">{getDisplayValue()}</span>
         </div>
-      ) : (
-        <div className="space-y-3">
-          <Select
-            onValueChange={handleValueChange}
-            disabled={disabled}
-            defaultValue={preSelectedValues?.[0]}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select an option..." />
-            </SelectTrigger>
-            <SelectContent>
-              {Array.from(groupedOptions.entries()).map(([groupName, groupOptions]) => (
-                <SelectGroup key={groupName}>
-                  <SelectLabel>{groupName}</SelectLabel>
-                  {groupOptions.map((option) => {
-                    const colorClass = getLoggerColor(option.group);
-                    return (
-                      <SelectItem key={option.value} value={option.value}>
-                        <div className="flex items-center gap-2">
-                          {colorClass && (
-                            <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', colorClass)} />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <span className="font-medium">{option.label}</span>
-                            {option.subtitle && (
-                              <span className="ml-2 text-xs text-muted-foreground">
-                                {option.subtitle}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectGroup>
-              ))}
-            </SelectContent>
-          </Select>
+      );
+    }
 
-          {/* Confirm button for pre-selected values */}
-          {needsConfirmation && selectedValue && (
-            <Button onClick={handleConfirm} className="w-full" size="sm">
-              Confirm Selection
-            </Button>
-          )}
-        </div>
+    return (
+      <div className="space-y-3">
+        <Select
+          onValueChange={handleValueChange}
+          disabled={disabled}
+          defaultValue={preSelectedValues?.[0]}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select an option..." />
+          </SelectTrigger>
+          <SelectContent>
+            {Array.from(groupedOptions.entries()).map(([groupName, groupOptions]) => (
+              <SelectGroup key={groupName}>
+                <SelectLabel>{groupName}</SelectLabel>
+                {groupOptions.map((option) => {
+                  const colorClass = getLoggerColor(option.group);
+                  return (
+                    <SelectItem key={option.value} value={option.value}>
+                      <div className="flex items-center gap-2">
+                        {colorClass && (
+                          <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', colorClass)} />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium">{option.label}</span>
+                          {option.subtitle && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {option.subtitle}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectGroup>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {needsConfirmation && selectedValue && (
+          <Button onClick={handleConfirm} className="w-full" size="sm">
+            Confirm Selection
+          </Button>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className="my-3 rounded-lg border border-border bg-card p-4 shadow-sm"
+    >
+      {/* Context message (shows detected value info) */}
+      {contextMessage && !hasSubmitted && (
+        <p className="mb-2 text-sm text-muted-foreground">{contextMessage}</p>
       )}
+      <p className="mb-3 text-sm font-medium text-foreground">{prompt}</p>
+
+      {renderFormState()}
     </motion.div>
   );
 }
@@ -313,20 +325,10 @@ function MultiSelectDropdown({
     return `${selectedValues.length} selected`;
   }, [hasSubmitted, options, selectedValues]);
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className="my-3 rounded-lg border border-border bg-card p-4 shadow-sm"
-    >
-      {/* Context message (shows detected value info) */}
-      {contextMessage && !hasSubmitted && (
-        <p className="mb-2 text-sm text-muted-foreground">{contextMessage}</p>
-      )}
-      <p className="mb-3 text-sm font-medium text-foreground">{prompt}</p>
-
-      {hasSubmitted ? (
+  // Extract form state rendering to avoid nested ternary
+  const renderFormState = () => {
+    if (hasSubmitted) {
+      return (
         <div
           className={cn(
             'flex w-full items-center rounded-md border px-3 py-2.5 text-sm',
@@ -343,7 +345,11 @@ function MultiSelectDropdown({
           </motion.span>
           <span className="text-green-700 dark:text-green-300">{getDisplayText()}</span>
         </div>
-      ) : isSubmitting ? (
+      );
+    }
+
+    if (isSubmitting) {
+      return (
         <div
           className={cn(
             'flex w-full items-center rounded-md border px-3 py-2.5 text-sm',
@@ -353,99 +359,116 @@ function MultiSelectDropdown({
           <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-700 dark:text-blue-300" />
           <span className="text-blue-700 dark:text-blue-300">{getDisplayText()}</span>
         </div>
-      ) : (
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className="w-full justify-between"
-              disabled={disabled}
-            >
-              <span>{getDisplayText()}</span>
-              <span className="ml-2 text-xs text-muted-foreground">
-                {selectedValues.length > 0 && `(${selectedValues.length})`}
-              </span>
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80 p-0" align="start">
-            <div className="max-h-60 overflow-auto">
-              {Array.from(groupedOptions.entries()).map(([groupName, groupOptions], groupIndex) => (
-                <div key={groupName}>
-                  {groupIndex > 0 && <div className="border-t border-border" />}
-                  <div className="sticky top-0 bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-                    {groupName}
-                  </div>
-                  {groupOptions.map((option) => {
-                    const isSelected = selectedValues.includes(option.value);
-                    const colorClass = getLoggerColor(option.group);
-                    // Disable unselected items when max is reached
-                    const isMaxReached = maxCount !== undefined && selectedValues.length >= maxCount;
-                    const isOptionDisabled = !isSelected && isMaxReached;
+      );
+    }
 
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => handleOptionToggle(option.value)}
-                        disabled={isOptionDisabled}
-                        className={cn(
-                          'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
-                          isSelected
-                            ? 'bg-accent text-accent-foreground'
-                            : isOptionDisabled
-                              ? 'text-muted-foreground cursor-not-allowed opacity-50'
-                              : 'text-foreground hover:bg-accent/50'
-                        )}
-                      >
-                        <Checkbox
-                          checked={isSelected}
-                          disabled={isOptionDisabled}
-                          className="pointer-events-none"
-                        />
-                        {colorClass && (
-                          <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', colorClass)} />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="truncate font-medium">{option.label}</div>
-                          {option.subtitle && (
-                            <div className="truncate text-xs text-muted-foreground">
-                              {option.subtitle}
-                            </div>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
+    return (
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className="w-full justify-between"
+            disabled={disabled}
+          >
+            <span>{getDisplayText()}</span>
+            <span className="ml-2 text-xs text-muted-foreground">
+              {selectedValues.length > 0 && `(${selectedValues.length})`}
+            </span>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-80 p-0" align="start">
+          <div className="max-h-60 overflow-auto">
+            {Array.from(groupedOptions.entries()).map(([groupName, groupOptions], groupIndex) => (
+              <div key={groupName}>
+                {groupIndex > 0 && <div className="border-t border-border" />}
+                <div className="sticky top-0 bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+                  {groupName}
                 </div>
-              ))}
-            </div>
+                {groupOptions.map((option) => {
+                  const isSelected = selectedValues.includes(option.value);
+                  const colorClass = getLoggerColor(option.group);
+                  const isMaxReached = maxCount !== undefined && selectedValues.length >= maxCount;
+                  const isOptionDisabled = !isSelected && isMaxReached;
 
-            <div className="border-t border-border p-2 space-y-2">
-              {/* Validation feedback */}
-              {selectedValues.length > 0 && !hasMinSelections && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
-                  Select at least {minCount} logger{minCount > 1 ? 's' : ''}
-                </p>
-              )}
-              {maxCount !== undefined && selectedValues.length >= maxCount && (
-                <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
-                  Maximum of {maxCount} selected
-                </p>
-              )}
-              <Button
-                onClick={handleSubmit}
-                className="w-full"
-                size="sm"
-                disabled={!hasMinSelections}
-              >
-                {hasMinSelections
-                  ? `Confirm Selection (${selectedValues.length})`
-                  : `Select ${minCount - selectedValues.length} more`}
-              </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => handleOptionToggle(option.value)}
+                      disabled={isOptionDisabled}
+                      className={cn(
+                        'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
+                        isSelected
+                          ? 'bg-accent text-accent-foreground'
+                          : isOptionDisabled
+                            ? 'text-muted-foreground cursor-not-allowed opacity-50'
+                            : 'text-foreground hover:bg-accent/50'
+                      )}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        disabled={isOptionDisabled}
+                        className="pointer-events-none"
+                      />
+                      {colorClass && (
+                        <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', colorClass)} />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate font-medium">{option.label}</div>
+                        {option.subtitle && (
+                          <div className="truncate text-xs text-muted-foreground">
+                            {option.subtitle}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-border p-2 space-y-2">
+            {selectedValues.length > 0 && !hasMinSelections && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
+                Select at least {minCount} logger{minCount > 1 ? 's' : ''}
+              </p>
+            )}
+            {maxCount !== undefined && selectedValues.length >= maxCount && (
+              <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
+                Maximum of {maxCount} selected
+              </p>
+            )}
+            <Button
+              onClick={handleSubmit}
+              className="w-full"
+              size="sm"
+              disabled={!hasMinSelections}
+            >
+              {hasMinSelections
+                ? `Confirm Selection (${selectedValues.length})`
+                : `Select ${minCount - selectedValues.length} more`}
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className="my-3 rounded-lg border border-border bg-card p-4 shadow-sm"
+    >
+      {/* Context message (shows detected value info) */}
+      {contextMessage && !hasSubmitted && (
+        <p className="mb-2 text-sm text-muted-foreground">{contextMessage}</p>
       )}
+      <p className="mb-3 text-sm font-medium text-foreground">{prompt}</p>
+
+      {renderFormState()}
     </motion.div>
   );
 }
@@ -466,13 +489,12 @@ export function SelectionPrompt({
   disabled = false,
   contextMessage,
   preSelectedValues,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   preFilledDateRange: _preFilledDateRange,
   requireConfirmation,
   minCount,
   maxCount,
 }: SelectionPromptProps) {
-  // Note: _preFilledDateRange is reserved for future DateRangePicker pre-fill support
-  void _preFilledDateRange;
   // Handle date selection callback
   const handleDateSelect = useCallback((value: string | { start: string; end: string }) => {
     // Convert to string array format for consistency

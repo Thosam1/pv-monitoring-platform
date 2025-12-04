@@ -9,6 +9,7 @@ import {
   SystemMessage,
   ToolMessage,
 } from '@langchain/core/messages';
+import { isAiMessage } from '../utils/message-utils';
 import type {
   ExplicitFlowState,
   FlowType,
@@ -287,8 +288,8 @@ export function extractToolCalls(
   const toolCalls: Array<{ name: string; args: unknown; id?: string }> = [];
 
   for (const msg of state.messages) {
-    if (msg._getType() === 'ai') {
-      const aiMsg = msg as AIMessage;
+    if (isAiMessage(msg)) {
+      const aiMsg = msg;
       if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
         toolCalls.push(...aiMsg.tool_calls);
       }
@@ -309,7 +310,7 @@ export function getLastAIMessageContent(
 ): string | null {
   for (let i = state.messages.length - 1; i >= 0; i--) {
     const msg = state.messages[i];
-    if (msg._getType() === 'ai') {
+    if (isAiMessage(msg)) {
       return typeof msg.content === 'string'
         ? msg.content
         : JSON.stringify(msg.content);

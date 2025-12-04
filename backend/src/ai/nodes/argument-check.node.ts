@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { AIMessage, BaseMessage } from '@langchain/core/messages';
+import { isHumanMessage } from '../utils/message-utils';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
@@ -41,7 +42,7 @@ const logger = new Logger('ArgumentCheckNode');
  */
 function getLastUserMessage(messages: BaseMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i]._getType() === 'human') {
+    if (isHumanMessage(messages[i])) {
       const content = messages[i].content;
       return typeof content === 'string' ? content : '';
     }
@@ -203,6 +204,64 @@ async function generateContextAwarePrompt(
 }
 
 /**
+ * Intent keyword patterns for dynamic spec injection in free_chat.
+ * Each entry maps keywords to the appropriate argument specification.
+ */
+const FREE_CHAT_INTENT_SPECS: Array<{
+  keywords: string[];
+  spec: FlowArgumentSpec[];
+  logDescription: string;
+}> = [
+  {
+    keywords: ['power curve', 'production', 'power output'],
+    spec: [{ name: 'loggerId', required: true, type: 'single_logger' }],
+    logDescription: 'power curve',
+  },
+  {
+    keywords: ['savings', 'money', 'financial'],
+    spec: [{ name: 'loggerId', required: true, type: 'single_logger' }],
+    logDescription: 'savings',
+  },
+  {
+    keywords: ['compare', 'all loggers', 'fleet'],
+    spec: [
+      {
+        name: 'loggerIds',
+        required: true,
+        type: 'multiple_loggers',
+        minCount: 2,
+        maxCount: 5,
+      },
+    ],
+    logDescription: 'comparison',
+  },
+  {
+    keywords: ['health', 'error', 'diagnose'],
+    spec: [{ name: 'loggerId', required: true, type: 'single_logger' }],
+    logDescription: 'health check',
+  },
+];
+
+/**
+ * Detect intent from message and return appropriate specs for free_chat.
+ * Returns empty array if no intent is detected.
+ */
+function detectFreeChatIntentSpecs(message: string): FlowArgumentSpec[] {
+  const lowerMessage = message.toLowerCase();
+
+  for (const intent of FREE_CHAT_INTENT_SPECS) {
+    if (intent.keywords.some((kw) => lowerMessage.includes(kw))) {
+      logger.debug(
+        `[ARG CHECK] Injected spec for ${intent.logDescription} in free_chat`,
+      );
+      return intent.spec;
+    }
+  }
+
+  return [];
+}
+
+/**
  * Argument Check Node - validates required arguments and generates context-aware prompts.
  *
  * This reusable node:
@@ -276,52 +335,10 @@ export async function argumentCheckNode(
   // FIX #3: DYNAMIC SPEC INJECTION FOR FREE CHAT
   // When free_chat has no specs, inject based on detected intent keywords
   if (flowType === 'free_chat' && specs.length === 0) {
-    const lastMsg = getLastUserMessage(state.messages).toLowerCase();
-
-    if (
-      lastMsg.includes('power curve') ||
-      lastMsg.includes('production') ||
-      lastMsg.includes('power output')
-    ) {
-      specs = [{ name: 'loggerId', required: true, type: 'single_logger' }];
-      logger.debug(
-        '[ARG CHECK] Injected loggerId spec for power curve in free_chat',
-      );
-    } else if (
-      lastMsg.includes('savings') ||
-      lastMsg.includes('money') ||
-      lastMsg.includes('financial')
-    ) {
-      specs = [{ name: 'loggerId', required: true, type: 'single_logger' }];
-      logger.debug(
-        '[ARG CHECK] Injected loggerId spec for savings in free_chat',
-      );
-    } else if (
-      lastMsg.includes('compare') ||
-      lastMsg.includes('all loggers') ||
-      lastMsg.includes('fleet')
-    ) {
-      specs = [
-        {
-          name: 'loggerIds',
-          required: true,
-          type: 'multiple_loggers',
-          minCount: 2,
-          maxCount: 5,
-        },
-      ];
-      logger.debug(
-        '[ARG CHECK] Injected loggerIds spec for comparison in free_chat',
-      );
-    } else if (
-      lastMsg.includes('health') ||
-      lastMsg.includes('error') ||
-      lastMsg.includes('diagnose')
-    ) {
-      specs = [{ name: 'loggerId', required: true, type: 'single_logger' }];
-      logger.debug(
-        '[ARG CHECK] Injected loggerId spec for health check in free_chat',
-      );
+    const lastMsg = getLastUserMessage(state.messages);
+    const detectedSpecs = detectFreeChatIntentSpecs(lastMsg);
+    if (detectedSpecs.length > 0) {
+      specs = detectedSpecs;
     }
   }
 
