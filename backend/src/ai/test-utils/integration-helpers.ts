@@ -8,7 +8,6 @@ import { LanggraphService } from '../langgraph.service';
 import { CapturedEvents, createEventCapture } from './sse-capture';
 import { createClassificationResponse } from './fake-model';
 import { FakeStreamingChatModel } from '@langchain/core/utils/testing';
-import { AIMessage } from '@langchain/core/messages';
 
 /**
  * Message in a conversation turn.
@@ -274,7 +273,7 @@ export function wasToolCalled(
 export function getToolOutput(
   events: CapturedEvents,
   toolName: string,
-): unknown | undefined {
+): unknown {
   const input = events.toolInputs.find((e) => e.toolName === toolName);
   if (!input) return undefined;
 

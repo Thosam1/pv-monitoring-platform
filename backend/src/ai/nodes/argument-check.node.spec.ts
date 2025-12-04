@@ -451,9 +451,8 @@ describe('ArgumentCheckNode', () => {
         const aiMessage = result.messages![0] as AIMessage;
         expect(typeof aiMessage.content).toBe('string');
         // NarrativeEngine fallback prompt for health_check uses friendly language
-        expect(aiMessage.content.toLowerCase()).toMatch(
-          /solar|installation|check/,
-        );
+        const content = aiMessage.content as string;
+        expect(content.toLowerCase()).toMatch(/solar|installation|check/);
       });
 
       it('should generate persona-aware prompt for financial_report', async () => {
@@ -471,7 +470,8 @@ describe('ArgumentCheckNode', () => {
         const aiMessage = result.messages![0] as AIMessage;
         expect(typeof aiMessage.content).toBe('string');
         // NarrativeEngine fallback prompt for financial_report mentions savings
-        expect(aiMessage.content.toLowerCase()).toMatch(/savings|system/);
+        const content = aiMessage.content as string;
+        expect(content.toLowerCase()).toMatch(/savings|system/);
       });
 
       it('should include flowHint for multiple_loggers type', async () => {

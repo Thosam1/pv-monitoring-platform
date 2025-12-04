@@ -41,7 +41,7 @@ describe('SSEEmitter', () => {
       // SSE format is "data: {...}\n\n"
       const match = text.match(/^data: (.+)\n\n$/);
       if (match) {
-        events.push(JSON.parse(match[1]));
+        events.push(JSON.parse(match[1]) as SSEEvent);
       }
     }
 
@@ -63,18 +63,21 @@ describe('SSEEmitter', () => {
     it('should skip empty text', () => {
       emitter.emitText('');
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockController.enqueue).not.toHaveBeenCalled();
     });
 
     it('should skip whitespace-only text', () => {
       emitter.emitText('   ');
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockController.enqueue).not.toHaveBeenCalled();
     });
 
     it('should skip tab and newline only text', () => {
       emitter.emitText('\t\n  \n\t');
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockController.enqueue).not.toHaveBeenCalled();
     });
 
@@ -273,6 +276,7 @@ describe('SSEEmitter', () => {
     it('should handle empty messages array', () => {
       emitter.emitFromMessages([]);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockController.enqueue).not.toHaveBeenCalled();
     });
 
@@ -281,6 +285,7 @@ describe('SSEEmitter', () => {
 
       emitter.emitFromMessages(messages);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockController.enqueue).not.toHaveBeenCalled();
     });
 
@@ -308,6 +313,7 @@ describe('SSEEmitter', () => {
 
       emitter.emitFromMessages(messages);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockController.enqueue).not.toHaveBeenCalled();
     });
 
@@ -346,7 +352,7 @@ describe('SSEEmitter', () => {
       // Parse the JSON to ensure it's valid
       const jsonMatch = text.match(/^data: (.+)\n\n$/);
       expect(jsonMatch).not.toBeNull();
-      const parsed = JSON.parse(jsonMatch![1]);
+      const parsed = JSON.parse(jsonMatch![1]) as { text: string };
       expect(parsed.text).toBe('Quote: "hello" and backslash: \\');
     });
 

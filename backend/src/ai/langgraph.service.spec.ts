@@ -270,7 +270,7 @@ describe('LanggraphService Graph Behavior', () => {
   });
 
   describe('graph state management', () => {
-    it('should maintain separate states across conversations', async () => {
+    it('should maintain separate states across conversations', () => {
       // Start first conversation
       const stream1 = service.streamChat([
         { role: 'user', content: 'Check health' },
@@ -298,7 +298,7 @@ describe('LanggraphService Graph Behavior', () => {
   });
 
   describe('tool execution', () => {
-    it('should call mock tools client when tools are invoked', async () => {
+    it('should call mock tools client when tools are invoked', () => {
       mockToolsClient.executeTool.mockResolvedValue({
         status: 'ok',
         result: { loggers: [] },
@@ -308,7 +308,7 @@ describe('LanggraphService Graph Behavior', () => {
       expect(mockToolsClient.executeTool).toBeDefined();
     });
 
-    it('should handle tool execution errors gracefully', async () => {
+    it('should handle tool execution errors gracefully', () => {
       mockToolsClient.executeTool.mockRejectedValue(
         new Error('Tool execution failed'),
       );
@@ -319,7 +319,7 @@ describe('LanggraphService Graph Behavior', () => {
   });
 
   describe('flow termination', () => {
-    it('should properly terminate greeting flow', async () => {
+    it('should properly terminate greeting flow', () => {
       // Greeting flow should be fast and deterministic
       const stream = service.streamChat([{ role: 'user', content: 'Hello' }]);
 
@@ -327,12 +327,12 @@ describe('LanggraphService Graph Behavior', () => {
       expect(stream[Symbol.asyncIterator]).toBeDefined();
     });
 
-    it('should handle empty message gracefully', async () => {
+    it('should handle empty message gracefully', () => {
       const stream = service.streamChat([{ role: 'user', content: '' }]);
       expect(stream).toBeDefined();
     });
 
-    it('should handle whitespace-only message', async () => {
+    it('should handle whitespace-only message', () => {
       const stream = service.streamChat([{ role: 'user', content: '   ' }]);
       expect(stream).toBeDefined();
     });

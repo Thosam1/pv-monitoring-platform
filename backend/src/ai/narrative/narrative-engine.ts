@@ -146,10 +146,7 @@ export interface RequestPromptResult {
 /**
  * Context for generating transition messages between flows.
  */
-export interface TransitionCon
-  generateTransitionMessage(activeFlow: string | null, arg1: string, arg2: { reason: string; selectedValue: string | string[]; }) {
-      throw new Error("Method not implemented.");
-  }text {
+export interface TransitionContext {
   /** The value(s) selected by the user, if any */
   selectedValue?: string | string[];
   /** Reason for the transition */

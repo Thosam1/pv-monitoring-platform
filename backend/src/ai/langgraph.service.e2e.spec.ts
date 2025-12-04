@@ -41,7 +41,6 @@ import {
   simulateConversation,
   assertNoDuplicates,
   wasToolCalled,
-  hasToolCall,
 } from './test-utils';
 
 // Skip E2E tests by default - they require a real API key
@@ -93,19 +92,6 @@ describeE2E('LanggraphService E2E UX Flows', () => {
     service.resetGraph();
     jest.clearAllMocks();
   });
-
-  /**
-   * Helper to verify events don't have duplicates regardless of API success.
-   */
-  function verifyNoDuplicates(events: CapturedEvents): void {
-    const toolInputIds = events.toolInputs.map((e) => e.toolCallId);
-    const uniqueInputIds = new Set(toolInputIds);
-    expect(toolInputIds.length).toBe(uniqueInputIds.size);
-
-    const toolOutputIds = events.toolOutputs.map((e) => e.toolCallId);
-    const uniqueOutputIds = new Set(toolOutputIds);
-    expect(toolOutputIds.length).toBe(uniqueOutputIds.size);
-  }
 
   describe('Greeting Flow', () => {
     it('should respond to "Hello" with a greeting', async () => {

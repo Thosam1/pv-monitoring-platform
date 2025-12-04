@@ -1170,7 +1170,9 @@ describe('FlowUtils', () => {
           nested,
         );
 
-        const args = message.tool_calls?.[0]?.args;
+        const args = message.tool_calls?.[0]?.args as {
+          level1: { level2: { value: string; array: number[] } };
+        };
         expect(args?.level1.level2.value).toBe('deep');
         expect(args?.level1.level2.array).toEqual([1, 2, 3]);
       });
@@ -1266,7 +1268,10 @@ describe('FlowUtils', () => {
           typeof message.content === 'string'
             ? message.content
             : JSON.stringify(message.content);
-        const parsed = JSON.parse(content);
+        const parsed = JSON.parse(content) as {
+          loggers: unknown[];
+          summary: { total: number };
+        };
         expect(parsed.loggers).toHaveLength(2);
         expect(parsed.summary.total).toBe(2);
       });
@@ -1284,7 +1289,11 @@ describe('FlowUtils', () => {
           typeof message.content === 'string'
             ? message.content
             : JSON.stringify(message.content);
-        const parsed = JSON.parse(content);
+        const parsed = JSON.parse(content) as {
+          power: number;
+          count: number;
+          ratio: number;
+        };
         expect(parsed.power).toBe(5000.5);
         expect(parsed.count).toBe(10);
         expect(parsed.ratio).toBe(0.85);
@@ -1302,7 +1311,10 @@ describe('FlowUtils', () => {
           typeof message.content === 'string'
             ? message.content
             : JSON.stringify(message.content);
-        const parsed = JSON.parse(content);
+        const parsed = JSON.parse(content) as {
+          isOnline: boolean;
+          hasErrors: boolean;
+        };
         expect(parsed.isOnline).toBe(true);
         expect(parsed.hasErrors).toBe(false);
       });
