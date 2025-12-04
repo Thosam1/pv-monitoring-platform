@@ -22,6 +22,8 @@ import {
   extractComparisonSeverity,
   AnomalyData,
 } from './narrative-context';
+import { FlowType, FlowArgumentSpec } from '../types/flow-state';
+import { LoggerInfo } from '../flows/flow-utils';
 import {
   NarrativePreferences,
   DEFAULT_NARRATIVE_PREFERENCES,
@@ -42,6 +44,9 @@ import {
   buildRefinementPrompt,
   generateFallbackNarrative,
   NarrativePromptOptions,
+  REQUEST_PROMPT_SYSTEM,
+  REQUEST_PROMPT_FALLBACKS,
+  FORBIDDEN_TERMS,
 } from './narrative-prompts';
 import { EnhancedSuggestion } from '../types/flow-state';
 
@@ -102,6 +107,40 @@ export interface NarrativeResult {
     retryCount: number;
     generationTimeMs: number;
   };
+}
+
+/**
+ * Context for generating selection prompts.
+ * Provides flow-specific information to personalize the prompt.
+ */
+export interface RequestPromptContext {
+  /** The type of flow requesting the selection */
+  flowType: FlowType;
+  /** Information extracted from user's message */
+  extractedInfo?: {
+    /** Logger name pattern detected (e.g., "GoodWe", "meteo station") */
+    loggerName?: string;
+    /** Logger type pattern detected (e.g., "inverter", "meteo") */
+    loggerType?: string;
+    /** Date hint from user message */
+    dateHint?: string;
+  };
+  /** Number of available options to choose from */
+  optionCount: number;
+  /** Values pre-selected from pattern matching */
+  preSelectedValues?: string[];
+}
+
+/**
+ * Result from generating a request prompt.
+ */
+export interface RequestPromptResult {
+  /** The generated prompt text */
+  prompt: string;
+  /** Optional context message providing additional information */
+  contextMessage?: string;
+  /** Whether the fallback was used instead of LLM */
+  usedFallback: boolean;
 }
 
 /**
@@ -423,9 +462,254 @@ export class NarrativeEngine {
       suggested: 2,
       optional: 3,
     };
-    return suggestions
-      .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])
-      .slice(0, maxSuggestions);
+
+    // Deduplicate by label (keep first occurrence - higher priority wins after sort)
+    const sortedSuggestions = suggestions.sort(
+      (a, b) => priorityOrder[a.priority] - priorityOrder[b.priority],
+    );
+    const uniqueSuggestions = sortedSuggestions.filter(
+      (s, i, arr) => arr.findIndex((x) => x.label === s.label) === i,
+    );
+
+    return uniqueSuggestions.slice(0, maxSuggestions);
+  }
+
+  /**
+   * Generate a persona-aware selection prompt for a flow argument.
+   * Uses LLM to generate warm, conversational prompts with fallback to static strings.
+   *
+   * @param spec - The argument specification (type, required, etc.)
+   * @param context - Context about the current flow and extracted info
+   * @param availableLoggers - List of available loggers for context
+   * @returns Generated prompt with fallback flag
+   */
+  async generateRequestPrompt(
+    spec: FlowArgumentSpec,
+    context: RequestPromptContext,
+    availableLoggers: LoggerInfo[],
+  ): Promise<RequestPromptResult> {
+    try {
+      // Build prompt for LLM
+      const llmPrompt = this.buildRequestPromptInput(
+        spec,
+        context,
+        availableLoggers,
+      );
+
+      const response = await this.model.invoke([
+        new SystemMessage(REQUEST_PROMPT_SYSTEM),
+        new HumanMessage(llmPrompt),
+      ]);
+
+      const content = response.content?.toString().trim();
+
+      // Validate the response
+      if (this.isValidRequestPrompt(content)) {
+        const { prompt, contextMessage: parsedContext } =
+          this.parseRequestPromptResponse(content);
+        // Generate contextMessage if extracted info exists but LLM didn't provide one
+        const contextMessage =
+          parsedContext || this.generateExtractedInfoContext(context);
+        return { prompt, contextMessage, usedFallback: false };
+      }
+
+      logger.debug('LLM response failed validation, using fallback');
+    } catch (error) {
+      logger.warn(`LLM failed for request prompt: ${error}`);
+    }
+
+    // Fallback to static strings
+    return this.generateFallbackRequestPrompt(spec, context);
+  }
+
+  /**
+   * Build the input prompt for LLM request prompt generation.
+   */
+  private buildRequestPromptInput(
+    spec: FlowArgumentSpec,
+    context: RequestPromptContext,
+    availableLoggers: LoggerInfo[],
+  ): string {
+    const parts: string[] = [];
+
+    parts.push(`ARGUMENT TYPE: ${spec.type}`);
+    parts.push(`FLOW: ${context.flowType}`);
+    parts.push(
+      `OPTION COUNT: ${context.optionCount} device${context.optionCount !== 1 ? 's' : ''} available`,
+    );
+
+    if (context.extractedInfo?.loggerName) {
+      parts.push(
+        `DETECTED PATTERN: User mentioned "${context.extractedInfo.loggerName}"`,
+      );
+    }
+    if (context.extractedInfo?.loggerType) {
+      parts.push(
+        `DEVICE TYPE: User asked about ${context.extractedInfo.loggerType} devices`,
+      );
+    }
+    if (context.preSelectedValues?.length) {
+      parts.push(`PRE-SELECTED: ${context.preSelectedValues.join(', ')}`);
+    }
+
+    // Add available device names for context (limit to 5)
+    const deviceNames = availableLoggers
+      .slice(0, 5)
+      .map((l) => `${l.loggerId} (${l.loggerType})`)
+      .join(', ');
+    if (deviceNames) {
+      parts.push(
+        `AVAILABLE DEVICES: ${deviceNames}${availableLoggers.length > 5 ? '...' : ''}`,
+      );
+    }
+
+    // Add flow-specific context
+    switch (context.flowType) {
+      case 'health_check':
+        parts.push('PURPOSE: Analyzing device health and detecting issues');
+        break;
+      case 'financial_report':
+        parts.push('PURPOSE: Calculating financial savings and energy value');
+        break;
+      case 'performance_audit':
+        parts.push('PURPOSE: Comparing performance across multiple devices');
+        break;
+      case 'morning_briefing':
+        parts.push('PURPOSE: Providing daily fleet status overview');
+        break;
+      default:
+        parts.push('PURPOSE: Analyzing solar system data');
+    }
+
+    parts.push('');
+    parts.push(
+      'Generate a SHORT (1-2 sentences) prompt asking the user to select.',
+    );
+    parts.push('If there is a pre-selected value, acknowledge it warmly.');
+
+    return parts.join('\n');
+  }
+
+  /**
+   * Validate that an LLM-generated prompt is acceptable.
+   */
+  private isValidRequestPrompt(content: string | undefined): boolean {
+    if (!content || content.length < 10 || content.length > 300) {
+      return false;
+    }
+
+    // Check for forbidden technical terms
+    const lowerContent = content.toLowerCase();
+    for (const term of FORBIDDEN_TERMS) {
+      if (lowerContent.includes(term.toLowerCase())) {
+        logger.debug(`Rejected prompt - contains forbidden term: "${term}"`);
+        return false;
+      }
+    }
+
+    // Reject if it contains system prompt leakage
+    if (
+      content.includes('RULES:') ||
+      content.includes('OUTPUT FORMAT:') ||
+      content.includes('AVOID:')
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Parse the LLM response into prompt and optional context message.
+   */
+  private parseRequestPromptResponse(content: string): {
+    prompt: string;
+    contextMessage?: string;
+  } {
+    // If response has two sentences, first is context, second is prompt
+    const sentences = content
+      .split(/(?<=[.!?])\s+/)
+      .filter((s) => s.trim().length > 0);
+
+    if (sentences.length >= 2) {
+      return {
+        contextMessage: sentences.slice(0, -1).join(' '),
+        prompt: sentences[sentences.length - 1],
+      };
+    }
+
+    return { prompt: content };
+  }
+
+  /**
+   * Generate fallback prompt when LLM fails or is unavailable.
+   */
+  private generateFallbackRequestPrompt(
+    spec: FlowArgumentSpec,
+    context: RequestPromptContext,
+  ): RequestPromptResult {
+    const flowType = context.flowType;
+    const argType = spec.type;
+
+    // Get fallback from static map
+    const flowFallbacks = REQUEST_PROMPT_FALLBACKS[argType];
+    const prompt =
+      flowFallbacks?.[flowType] ||
+      flowFallbacks?.['free_chat'] ||
+      this.getGenericFallback(spec);
+
+    // Generate context message if we have pre-selected values
+    let contextMessage: string | undefined;
+    if (context.preSelectedValues?.length) {
+      const count = context.preSelectedValues.length;
+      if (count === 1) {
+        contextMessage = `I noticed you mentioned ${context.extractedInfo?.loggerName || context.preSelectedValues[0]}. I've selected it for you.`;
+      } else {
+        contextMessage = `I found ${count} matches from your description. Here's what I've pre-selected:`;
+      }
+    } else if (context.optionCount > 0) {
+      contextMessage = `You have ${context.optionCount} device${context.optionCount !== 1 ? 's' : ''} in your solar system.`;
+    }
+
+    return { prompt, contextMessage, usedFallback: true };
+  }
+
+  /**
+   * Get generic fallback when no flow-specific fallback exists.
+   */
+  private getGenericFallback(spec: FlowArgumentSpec): string {
+    switch (spec.type) {
+      case 'single_logger':
+        return 'Which of your solar installations would you like me to look at?';
+      case 'multiple_loggers':
+        return 'Which devices would you like to compare?';
+      case 'date':
+        return 'What date should I analyze?';
+      case 'date_range':
+        return 'What time period should I cover?';
+      default:
+        return 'Please make a selection to continue.';
+    }
+  }
+
+  /**
+   * Generate context message for extracted info when LLM doesn't provide one.
+   */
+  private generateExtractedInfoContext(
+    context: RequestPromptContext,
+  ): string | undefined {
+    // Generate contextMessage if we have pre-selected values or extracted info
+    if (context.preSelectedValues?.length) {
+      const count = context.preSelectedValues.length;
+      if (count === 1) {
+        return `I noticed you mentioned ${context.extractedInfo?.loggerName || context.preSelectedValues[0]}. I've selected it for you.`;
+      } else {
+        return `I found ${count} matches from your description. Here's what I've pre-selected:`;
+      }
+    } else if (context.extractedInfo?.loggerName) {
+      return `I noticed you mentioned "${context.extractedInfo.loggerName}" - let me help you find the right device.`;
+    }
+    return undefined;
   }
 
   /**

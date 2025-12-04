@@ -16,7 +16,11 @@
 
 // Core engine
 export { NarrativeEngine } from './narrative-engine';
-export type { NarrativeResult } from './narrative-engine';
+export type {
+  NarrativeResult,
+  RequestPromptContext,
+  RequestPromptResult,
+} from './narrative-engine';
 
 // Preferences
 export {
@@ -69,6 +73,9 @@ export {
   buildNarrativePrompt,
   buildRefinementPrompt,
   generateFallbackNarrative,
+  REQUEST_PROMPT_SYSTEM,
+  REQUEST_PROMPT_FALLBACKS,
+  FORBIDDEN_TERMS,
 } from './narrative-prompts';
 export type { NarrativePromptOptions } from './narrative-prompts';
 

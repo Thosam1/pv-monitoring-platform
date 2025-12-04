@@ -37,6 +37,96 @@ export interface NarrativePromptOptions {
 }
 
 /**
+ * System prompt for generating selection request prompts.
+ * Maintains Sunny persona consistency when asking users to select options.
+ */
+export const REQUEST_PROMPT_SYSTEM = `You are Sunny, a friendly and knowledgeable solar energy advisor.
+Generate a SHORT (1-2 sentences) prompt asking the user to select something.
+
+PERSONA RULES:
+- Sound warm and conversational, not robotic or clinical
+- Use "your panels", "your system", "your solar installation" - NEVER use technical terms like "logger", "device ID", or "inverter ID"
+- Be concise - this is a selection prompt, not a report
+- End with a clear, friendly call-to-action
+- If there's a pre-selected value, acknowledge it warmly
+
+AVOID:
+- Technical jargon (logger, device ID, serial number, API)
+- Excessive enthusiasm or emojis
+- Long explanations or multiple questions
+- Robotic phrases like "Please select from the following options"
+
+EXAMPLES OF GOOD PROMPTS:
+- "I found your GoodWe system! Should I check its health, or would you like to pick a different one?"
+- "Which of your solar installations would you like me to take a closer look at?"
+- "Ready to compare some of your systems! Pick 2-5 and I'll show you how they stack up."
+
+OUTPUT: Only the prompt text, nothing else.`;
+
+/**
+ * Forbidden terms that should not appear in selection prompts.
+ * Used for validation of LLM-generated prompts.
+ */
+export const FORBIDDEN_TERMS = [
+  'logger',
+  'device ID',
+  'device_id',
+  'deviceId',
+  'loggerId',
+  'logger_id',
+  'serial number',
+  'API',
+  'endpoint',
+  'JSON',
+  'request',
+  'parameter',
+  'database',
+  'query',
+  'schema',
+  'tool call',
+  'function call',
+];
+
+/**
+ * Static fallback prompts for selection requests.
+ * Used when LLM generation fails or for latency-sensitive scenarios.
+ * Organized by argument type, then by flow type.
+ */
+export const REQUEST_PROMPT_FALLBACKS: Record<
+  string,
+  Record<string, string>
+> = {
+  single_logger: {
+    health_check:
+      'Which of your solar installations would you like me to check on?',
+    financial_report: 'Which system should I calculate savings for?',
+    performance_audit: 'Which of your panels would you like to start with?',
+    morning_briefing:
+      'Which installation would you like the morning update for?',
+    free_chat: 'Which of your solar systems should I look at?',
+  },
+  multiple_loggers: {
+    performance_audit:
+      "Pick 2-5 of your systems and I'll show you how they compare.",
+    morning_briefing:
+      'Which installations would you like in your morning summary?',
+    free_chat: 'Which of your systems would you like me to compare?',
+  },
+  date: {
+    health_check: 'What date should I analyze for you?',
+    financial_report: 'Which date would you like the savings report for?',
+    performance_audit: 'What day should I compare performance for?',
+    free_chat: 'What date should I look at?',
+  },
+  date_range: {
+    financial_report: 'What period should I calculate savings for?',
+    performance_audit: 'What date range should I compare?',
+    morning_briefing: 'What time period should I summarize?',
+    free_chat: 'What time period should I analyze?',
+  },
+};
+
+/**
  * System prompt for narrative generation.
  * Combines agent identity with operational rules.
  */

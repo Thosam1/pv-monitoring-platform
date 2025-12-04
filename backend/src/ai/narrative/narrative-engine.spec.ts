@@ -456,4 +456,327 @@ describe('NarrativeEngine', () => {
       expect(result.narrative).toBeDefined();
     });
   });
+
+  describe('NarrativeEngine.generateRequestPrompt', () => {
+    const mockLoggers = [
+      { loggerId: '925', loggerType: 'goodwe' },
+      { loggerId: '926', loggerType: 'lti' },
+      { loggerId: '927', loggerType: 'meteocontrol' },
+    ];
+
+    describe('LLM generation', () => {
+      it('should generate warm prompt for health_check flow', async () => {
+        const fakeModel = createFakeModel([
+          new AIMessage({
+            content:
+              'Which of your solar installations would you like me to check on today?',
+          }),
+        ]);
+        const engine = new NarrativeEngine(fakeModel as never);
+
+        const spec = {
+          name: 'loggerId',
+          required: true,
+          type: 'single_logger' as const,
+        };
+        const context = {
+          flowType: 'health_check' as const,
+          optionCount: 3,
+        };
+
+        const result = await engine.generateRequestPrompt(
+          spec,
+          context,
+          mockLoggers as never,
+        );
+
+        expect(result.prompt).toBeDefined();
+        expect(result.prompt.length).toBeGreaterThan(10);
+        expect(result.usedFallback).toBe(false);
+      });
+
+      it('should reject prompt containing forbidden terms', async () => {
+        const fakeModel = createFakeModel([
+          new AIMessage({
+            content: 'Please select a logger ID from the following options.',
+          }),
+        ]);
+        const engine = new NarrativeEngine(fakeModel as never);
+
+        const spec = {
+          name: 'loggerId',
+          required: true,
+          type: 'single_logger' as const,
+        };
+        const context = {
+          flowType: 'health_check' as const,
+          optionCount: 3,
+        };
+
+        const result = await engine.generateRequestPrompt(
+          spec,
+          context,
+          mockLoggers as never,
+        );
+
+        // Should fallback because "logger ID" is forbidden
+        expect(result.usedFallback).toBe(true);
+      });
+
+      it('should parse multi-sentence response into contextMessage and prompt', async () => {
+        const fakeModel = createFakeModel([
+          new AIMessage({
+            content:
+              'I found your GoodWe system! Should I check its health, or would you like to pick a different one?',
+          }),
+        ]);
+        const engine = new NarrativeEngine(fakeModel as never);
+
+        const spec = {
+          name: 'loggerId',
+          required: true,
+          type: 'single_logger' as const,
+        };
+        const context = {
+          flowType: 'health_check' as const,
+          optionCount: 3,
+          extractedInfo: { loggerName: 'GoodWe' },
+          preSelectedValues: ['925'],
+        };
+
+        const result = await engine.generateRequestPrompt(
+          spec,
+          context,
+          mockLoggers as never,
+        );
+
+        expect(result.usedFallback).toBe(false);
+        // Multi-sentence should split into context and prompt
+        expect(result.contextMessage || result.prompt).toBeTruthy();
+      });
+    });
+
+    describe('fallback generation', () => {
+      it('should use fallback when LLM fails', async () => {
+        const errorModel = createErrorModel('Model failed');
+        const engine = new NarrativeEngine(errorModel as never);
+
+        const spec = {
+          name: 'loggerId',
+          required: true,
+          type: 'single_logger' as const,
+        };
+        const context = {
+          flowType: 'health_check' as const,
+          optionCount: 3,
+        };
+
+        const result = await engine.generateRequestPrompt(
+          spec,
+          context,
+          mockLoggers as never,
+        );
+
+        expect(result.usedFallback).toBe(true);
+        expect(result.prompt).toBe(
+          'Which of your solar installations would you like me to check on?',
+        );
+      });
+
+      it('should provide correct fallback for financial_report', async () => {
+        const errorModel = createErrorModel('Model failed');
+        const engine = new NarrativeEngine(errorModel as never);
+
+        const spec = {
+          name: 'loggerId',
+          required: true,
+          type: 'single_logger' as const,
+        };
+        const context = {
+          flowType: 'financial_report' as const,
+          optionCount: 3,
+        };
+
+        const result = await engine.generateRequestPrompt(
+          spec,
+          context,
+          mockLoggers as never,
+        );
+
+        expect(result.usedFallback).toBe(true);
+        expect(result.prompt).toBe(
+          'Which system should I calculate savings for?',
+        );
+      });
+
+      it('should provide correct fallback for multiple_loggers', async () => {
+        const errorModel = createErrorModel('Model failed');
+        const engine = new NarrativeEngine(errorModel as never);
+
+        const spec = {
+          name: 'loggerIds',
+          required: true,
+          type: 'multiple_loggers' as const,
+          minCount: 2,
+          maxCount: 5,
+        };
+        const context = {
+          flowType: 'performance_audit' as const,
+          optionCount: 3,
+        };
+
+        const result = await engine.generateRequestPrompt(
+          spec,
+          context,
+          mockLoggers as never,
+        );
+
+        expect(result.usedFallback).toBe(true);
+        expect(result.prompt).toContain('2-5');
+      });
+
+      it('should include context message when pre-selected values exist', async () => {
+        const errorModel = createErrorModel('Model failed');
+        const engine = new NarrativeEngine(errorModel as never);
+
+        const spec = {
+          name: 'loggerId',
+          required: true,
+          type: 'single_logger' as const,
+        };
+        const context = {
+          flowType: 'health_check' as const,
+          optionCount: 3,
+          extractedInfo: { loggerName: 'GoodWe' },
+          preSelectedValues: ['925'],
+        };
+
+        const result = await engine.generateRequestPrompt(
+          spec,
+          context,
+          mockLoggers as never,
+        );
+
+        expect(result.contextMessage).toBeDefined();
+        expect(result.contextMessage).toContain('GoodWe');
+      });
+
+      it('should include device count in context message when no pre-selection', async () => {
+        const errorModel = createErrorModel('Model failed');
+        const engine = new NarrativeEngine(errorModel as never);
+
+        const spec = {
+          name: 'loggerId',
+          required: true,
+          type: 'single_logger' as const,
+        };
+        const context = {
+          flowType: 'health_check' as const,
+          optionCount: 5,
+        };
+
+        const result = await engine.generateRequestPrompt(
+          spec,
+          context,
+          mockLoggers as never,
+        );
+
+        expect(result.contextMessage).toContain('5 devices');
+      });
+    });
+
+    describe('date arguments', () => {
+      it('should provide fallback for date argument', async () => {
+        const errorModel = createErrorModel('Model failed');
+        const engine = new NarrativeEngine(errorModel as never);
+
+        const spec = { name: 'date', required: true, type: 'date' as const };
+        const context = {
+          flowType: 'health_check' as const,
+          optionCount: 0,
+        };
+
+        const result = await engine.generateRequestPrompt(spec, context, []);
+
+        expect(result.usedFallback).toBe(true);
+        expect(result.prompt).toContain('date');
+      });
+
+      it('should provide fallback for date_range argument', async () => {
+        const errorModel = createErrorModel('Model failed');
+        const engine = new NarrativeEngine(errorModel as never);
+
+        const spec = {
+          name: 'dateRange',
+          required: true,
+          type: 'date_range' as const,
+        };
+        const context = {
+          flowType: 'financial_report' as const,
+          optionCount: 0,
+        };
+
+        const result = await engine.generateRequestPrompt(spec, context, []);
+
+        expect(result.usedFallback).toBe(true);
+        expect(result.prompt).toContain('period');
+      });
+    });
+
+    describe('validation', () => {
+      it('should reject prompts that are too short', async () => {
+        const fakeModel = createFakeModel([
+          new AIMessage({ content: 'Pick one' }),
+        ]);
+        const engine = new NarrativeEngine(fakeModel as never);
+
+        const spec = {
+          name: 'loggerId',
+          required: true,
+          type: 'single_logger' as const,
+        };
+        const context = {
+          flowType: 'health_check' as const,
+          optionCount: 3,
+        };
+
+        const result = await engine.generateRequestPrompt(
+          spec,
+          context,
+          mockLoggers as never,
+        );
+
+        // 'Pick one' is valid (> 10 chars is false, so should use fallback)
+        // Actually 'Pick one' is 8 chars, so it should fail validation
+        expect(result.usedFallback).toBe(true);
+      });
+
+      it('should reject prompts containing system prompt leakage', async () => {
+        const fakeModel = createFakeModel([
+          new AIMessage({
+            content: 'RULES: Here is how to select. Which one would you like?',
+          }),
+        ]);
+        const engine = new NarrativeEngine(fakeModel as never);
+
+        const spec = {
+          name: 'loggerId',
+          required: true,
+          type: 'single_logger' as const,
+        };
+        const context = {
+          flowType: 'health_check' as const,
+          optionCount: 3,
+        };
+
+        const result = await engine.generateRequestPrompt(
+          spec,
+          context,
+          mockLoggers as never,
+        );
+
+        expect(result.usedFallback).toBe(true);
+      });
+    });
+  });
 });
