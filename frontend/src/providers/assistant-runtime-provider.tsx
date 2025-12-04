@@ -16,7 +16,6 @@ import {
   useThreadListItem,
   RuntimeAdapterProvider,
   type ChatModelAdapter,
-  type ThreadAssistantMessagePart,
   type unstable_RemoteThreadListAdapter as RemoteThreadListAdapter,
   type ThreadHistoryAdapter,
   type ThreadMessage,
@@ -27,7 +26,7 @@ import {
   processSSEEvent,
   stateToContentParts,
   parseSSEStream,
-  type SSEEvent,
+
 } from '@/lib/assistant-stream-adapter';
 import { createAssistantStream } from 'assistant-stream';
 
@@ -96,7 +95,7 @@ const SolarAnalystModelAdapter: ChatModelAdapter = {
         break;
       }
 
-      const sseEvent = event as SSEEvent;
+      const sseEvent = event;
 
       if (sseEvent.type === 'error') {
         throw new Error(sseEvent.message || 'Unknown error from backend');
@@ -108,7 +107,7 @@ const SolarAnalystModelAdapter: ChatModelAdapter = {
       // Only yield if we have content
       if (content.length > 0) {
         yield {
-          content: content as ThreadAssistantMessagePart[],
+          content: content,
         };
       }
     }
@@ -117,7 +116,7 @@ const SolarAnalystModelAdapter: ChatModelAdapter = {
     const finalContent = stateToContentParts(state);
     if (finalContent.length > 0) {
       yield {
-        content: finalContent as ThreadAssistantMessagePart[],
+        content: finalContent,
       };
     }
   },
