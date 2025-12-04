@@ -14,11 +14,11 @@ import {
 import {
   executeTool,
   generateToolCallId,
-  createRenderArgs,
   getLastUserMessage,
   ALL_DEVICES_PATTERN,
   LoggerInfo,
 } from './flow-utils';
+import { UIResponseBuilder } from '../response';
 import {
   NarrativeEngine,
   NarrativeContext,
@@ -384,13 +384,18 @@ export function createHealthCheckFlow(
         `Fleet narrative generated via branch: ${narrativeResult.metadata.branchPath}`,
       );
 
+      const renderArgs = UIResponseBuilder.fleetHealthReport(
+        props,
+        suggestions,
+      );
+
       const aiMessage = new AIMessage({
         content: narrativeResult.narrative,
         tool_calls: [
           {
             id: toolCallId,
             name: 'render_ui_component',
-            args: createRenderArgs('FleetHealthReport', props, suggestions),
+            args: renderArgs,
           },
         ],
       });
@@ -410,7 +415,7 @@ export function createHealthCheckFlow(
           {
             toolCallId,
             toolName: 'render_ui_component',
-            args: createRenderArgs('FleetHealthReport', props, suggestions),
+            args: renderArgs,
           },
         ],
       };
@@ -478,13 +483,15 @@ export function createHealthCheckFlow(
       `Single logger narrative generated via branch: ${narrativeResult.metadata.branchPath}`,
     );
 
+    const renderArgs = UIResponseBuilder.healthReport(props, suggestions);
+
     const aiMessage = new AIMessage({
       content: narrativeResult.narrative,
       tool_calls: [
         {
           id: toolCallId,
           name: 'render_ui_component',
-          args: createRenderArgs('HealthReport', props, suggestions),
+          args: renderArgs,
         },
       ],
     });
@@ -504,7 +511,7 @@ export function createHealthCheckFlow(
         {
           toolCallId,
           toolName: 'render_ui_component',
-          args: createRenderArgs('HealthReport', props, suggestions),
+          args: renderArgs,
         },
       ],
     };

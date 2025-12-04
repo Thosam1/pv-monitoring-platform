@@ -333,7 +333,7 @@ describe('PerformanceAuditFlow', () => {
   });
 
   describe('chart rendering', () => {
-    it('should render ComparisonChart component', async () => {
+    it('should render DynamicChart component', async () => {
       const graph = createPerformanceAuditFlow(
         mockToolsClient as never,
         fakeModel as never,
@@ -357,7 +357,7 @@ describe('PerformanceAuditFlow', () => {
       expect(renderAction).toBeDefined();
       if (renderAction) {
         const args = renderAction.args as { component: string };
-        expect(args.component).toBe('ComparisonChart');
+        expect(args.component).toBe('DynamicChart');
       }
     });
 

@@ -14,7 +14,6 @@ import {
 import {
   executeTool,
   generateToolCallId,
-  createRenderArgs,
   computeBestPerformer,
   computeWorstPerformer,
   computeSpreadPercent,
@@ -22,6 +21,7 @@ import {
   formatLoggerOptions,
   LoggerInfo,
 } from './flow-utils';
+import { UIResponseBuilder, type DynamicChartProps } from '../response';
 import {
   NarrativeEngine,
   NarrativeContext,
@@ -223,7 +223,7 @@ export function createPerformanceAuditFlow(
       type: 'line' as const,
     }));
 
-    const props = {
+    const props: DynamicChartProps = {
       chartType: 'line',
       title: `Power Comparison - ${comparison?.date || 'Latest'}`,
       xAxisKey: 'timestamp',
@@ -344,13 +344,15 @@ export function createPerformanceAuditFlow(
 
     const narrative = narrativeResult.narrative;
 
+    const renderArgs = UIResponseBuilder.dynamicChart(props, suggestions);
+
     const aiMessage = new AIMessage({
       content: narrative,
       tool_calls: [
         {
           id: toolCallId,
           name: 'render_ui_component',
-          args: createRenderArgs('ComparisonChart', props, suggestions),
+          args: renderArgs,
         },
       ],
     });
@@ -370,7 +372,7 @@ export function createPerformanceAuditFlow(
         {
           toolCallId,
           toolName: 'render_ui_component',
-          args: createRenderArgs('ComparisonChart', props, suggestions),
+          args: renderArgs,
         },
       ],
     };

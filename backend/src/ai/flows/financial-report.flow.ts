@@ -14,11 +14,11 @@ import {
 import {
   executeTool,
   generateToolCallId,
-  createRenderArgs,
   getDateDaysAgo,
   getLatestDateString,
   LoggerInfo,
 } from './flow-utils';
+import { UIResponseBuilder } from '../response';
 import {
   NarrativeEngine,
   NarrativeContext,
@@ -353,13 +353,15 @@ export function createFinancialReportFlow(
 
     const narrative = narrativeResult.narrative;
 
+    const renderArgs = UIResponseBuilder.financialReport(props, suggestions);
+
     const aiMessage = new AIMessage({
       content: narrative,
       tool_calls: [
         {
           id: toolCallId,
           name: 'render_ui_component',
-          args: createRenderArgs('FinancialReport', props, suggestions),
+          args: renderArgs,
         },
       ],
     });
@@ -379,7 +381,7 @@ export function createFinancialReportFlow(
         {
           toolCallId,
           toolName: 'render_ui_component',
-          args: createRenderArgs('FinancialReport', props, suggestions),
+          args: renderArgs,
         },
       ],
     };

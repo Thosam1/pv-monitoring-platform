@@ -12,11 +12,8 @@ import {
   ToolResponse,
   FleetStatusSnapshot,
 } from '../types/flow-state';
-import {
-  executeTool,
-  generateToolCallId,
-  createRenderArgs,
-} from './flow-utils';
+import { executeTool, generateToolCallId } from './flow-utils';
+import { UIResponseBuilder } from '../response';
 import {
   NarrativeEngine,
   NarrativeContext,
@@ -357,6 +354,8 @@ Would you like me to explain what data formats I can work with?`,
 
     const narrative = narrativeResult.narrative;
 
+    const renderArgs = UIResponseBuilder.fleetOverview(props, suggestions);
+
     // Create AI message with render_ui_component tool call
     const aiMessage = new AIMessage({
       content: narrative,
@@ -364,7 +363,7 @@ Would you like me to explain what data formats I can work with?`,
         {
           id: toolCallId,
           name: 'render_ui_component',
-          args: createRenderArgs('FleetOverview', props, suggestions),
+          args: renderArgs,
         },
       ],
     });
