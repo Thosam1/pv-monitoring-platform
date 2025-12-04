@@ -461,7 +461,8 @@ function getPersonalityName(personality: PersonalityType): string {
 }
 
 // Run the seeder
-void (async () => { // NOSONAR - CommonJS module, top-level await not supported
+void (async () => {
+  // NOSONAR - CommonJS module, top-level await not supported
   try {
     await seedRichData();
     console.log('\nRich demo data seeded successfully!');

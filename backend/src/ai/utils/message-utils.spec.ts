@@ -197,7 +197,9 @@ describe('Message Utils', () => {
       };
       // Force type to BaseMessage for testing
       expect(
-        getMessageType(mockMsg as unknown as Parameters<typeof getMessageType>[0]),
+        getMessageType(
+          mockMsg as unknown as Parameters<typeof getMessageType>[0],
+        ),
       ).toBe('unknown');
     });
   });
