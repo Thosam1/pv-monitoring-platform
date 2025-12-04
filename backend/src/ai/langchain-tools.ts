@@ -135,7 +135,7 @@ export function createLangChainTools(httpClient: ToolsHttpClient) {
           electricity_rate: z
             .number()
             .min(0.01)
-            .max(1.0)
+            .max(1)
             .default(0.2)
             .describe('Electricity rate in $/kWh (default 0.20)'),
         }),

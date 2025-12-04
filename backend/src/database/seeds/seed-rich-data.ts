@@ -249,7 +249,7 @@ function generateDayData(
   let dailyEnergy = 0;
 
   // Seeded random for reproducible "randomness"
-  const daySeed = dayNumber * 1000 + config.id.charCodeAt(0);
+  const daySeed = dayNumber * 1000 + (config.id.codePointAt(0) ?? 0);
 
   for (let hour = 0; hour < 24; hour++) {
     for (let minute = 0; minute < 60; minute += INTERVAL_MINUTES) {

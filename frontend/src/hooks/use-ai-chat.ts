@@ -15,7 +15,7 @@ export interface ChatConversation {
  * Generate a unique ID for chat conversations.
  */
 function generateId(): string {
-  return `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `chat_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
 /**
@@ -38,7 +38,7 @@ function extractTitle(messages: Message[]): string {
  * Load conversations from localStorage.
  */
 function loadConversations(): ChatConversation[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof globalThis.window === 'undefined') return [];
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored) : [];
@@ -51,7 +51,7 @@ function loadConversations(): ChatConversation[] {
  * Save conversations to localStorage.
  */
 function saveConversations(conversations: ChatConversation[]): void {
-  if (typeof window === 'undefined') return;
+  if (typeof globalThis.window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
   } catch (error) {

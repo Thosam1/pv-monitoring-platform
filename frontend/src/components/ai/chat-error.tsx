@@ -50,7 +50,7 @@ export function ChatError({
   message,
   onRetry,
   className,
-}: ChatErrorProps) {
+}: Readonly<ChatErrorProps>) {
   const config = ERROR_CONFIG[type];
   const Icon = config.icon;
 
@@ -109,11 +109,11 @@ export function InlineError({
   message,
   onRetry,
   className,
-}: {
+}: Readonly<{
   message: string;
   onRetry?: () => void;
   className?: string;
-}) {
+}>) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}

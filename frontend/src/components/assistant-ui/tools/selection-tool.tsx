@@ -32,7 +32,7 @@ interface SelectionToolArgs {
 /**
  * Completed selection display component
  */
-function SelectionCompleted({ result }: { result: string }) {
+function SelectionCompleted({ result }: Readonly<{ result: string }>) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 5 }}

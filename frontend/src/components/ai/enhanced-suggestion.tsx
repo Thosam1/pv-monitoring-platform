@@ -32,8 +32,6 @@ export interface EnhancedSuggestionProps {
   priority: EnhancedPriority;
   /** Contextual explanation for why this is suggested */
   reason?: string;
-  /** Visual badge character for the priority */
-  badge?: PriorityBadge;
   /** Icon hint for rendering */
   icon?: SuggestionIcon;
   /** Click handler */
@@ -107,7 +105,7 @@ export function EnhancedSuggestion({
   reason,
   icon,
   onClick,
-}: EnhancedSuggestionProps) {
+}: Readonly<EnhancedSuggestionProps>) {
   const styles = PRIORITY_STYLES[priority];
   const Icon = icon ? ICON_MAP[icon] : null;
 

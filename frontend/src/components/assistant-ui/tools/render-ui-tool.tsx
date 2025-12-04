@@ -72,10 +72,10 @@ function RenderUILoading() {
 function FlowSuggestions({
   suggestions,
   onSuggestionClick,
-}: {
+}: Readonly<{
   suggestions: SuggestionItem[];
   onSuggestionClick?: (action: string) => void;
-}) {
+}>) {
   if (!suggestions || suggestions.length === 0) return null;
 
   return (
@@ -111,7 +111,7 @@ function FleetOverview({
   props,
   suggestions,
   onSuggestionClick,
-}: {
+}: Readonly<{
   props: {
     totalPower?: number;
     totalEnergy?: number;
@@ -122,7 +122,7 @@ function FleetOverview({
   };
   suggestions?: SuggestionItem[];
   onSuggestionClick?: (action: string) => void;
-}) {
+}>) {
   const health: StatusType =
     (props.percentOnline ?? 100) >= 100
       ? 'healthy'
@@ -201,7 +201,7 @@ function FinancialReport({
   props,
   suggestions,
   onSuggestionClick,
-}: {
+}: Readonly<{
   props: {
     energyGenerated?: number;
     savings?: number;
@@ -212,7 +212,7 @@ function FinancialReport({
   };
   suggestions?: SuggestionItem[];
   onSuggestionClick?: (action: string) => void;
-}) {
+}>) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -282,7 +282,7 @@ function HealthReport({
   props,
   suggestions,
   onSuggestionClick,
-}: {
+}: Readonly<{
   props: {
     loggerId?: string;
     period?: string;
@@ -298,7 +298,7 @@ function HealthReport({
   };
   suggestions?: SuggestionItem[];
   onSuggestionClick?: (action: string) => void;
-}) {
+}>) {
   const anomalyCount = props.anomalies?.length ?? 0;
   const status: StatusType =
     anomalyCount === 0 ? 'healthy' : anomalyCount < 5 ? 'warning' : 'critical';

@@ -161,10 +161,10 @@ function buildClassificationPrompt(
 ): string {
   if (!waitingFor) return CLASSIFICATION_PROMPT;
 
-  const contextBlock = WAITING_FOR_CONTEXT.replace(
+  const contextBlock = WAITING_FOR_CONTEXT.replaceAll(
     /\{\{WAITING_FOR\}\}/g,
     waitingFor,
-  ).replace(/\{\{ACTIVE_FLOW\}\}/g, activeFlow || 'free_chat');
+  ).replaceAll(/\{\{ACTIVE_FLOW\}\}/g, activeFlow || 'free_chat');
 
   // Inject the context block before RESPONSE FORMAT
   return CLASSIFICATION_PROMPT.replace(
@@ -196,7 +196,7 @@ function parseClassificationResponse(response: string): FlowClassification {
 
   try {
     // Clean markdown fences and extra whitespace
-    let cleaned = response.replace(/```(?:json)?\n?|\n?```/g, '').trim();
+    let cleaned = response.replaceAll(/```(?:json)?\n?|\n?```/g, '').trim();
 
     // Detect and log hallucinated comments in JSON
     if (cleaned.includes('//') || cleaned.includes('/*')) {
@@ -205,12 +205,12 @@ function parseClassificationResponse(response: string): FlowClassification {
       );
       // Remove single-line and multi-line comments
       cleaned = cleaned
-        .replace(/\/\/.*$/gm, '')
-        .replace(/\/\*[\s\S]*?\*\//g, '');
+        .replaceAll(/\/\/.*$/gm, '')
+        .replaceAll(/\/\*[\s\S]*?\*\//g, '');
     }
 
     // Try to extract JSON from mixed content (LLM may include extra text)
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    const jsonMatch = /\{[\s\S]*\}/.exec(cleaned);
     if (jsonMatch) {
       if (jsonMatch[0].length < cleaned.length * 0.8) {
         logger.warn(

@@ -111,47 +111,47 @@ function sanitizeTextContent(text: string): string {
 
   // Remove Ollama-specific tool call markers (Ollama doesn't properly call tools)
   // It outputs raw text like <|python_tag|>render_ui_component(component="FleetOverview", ...)
-  sanitized = sanitized.replace(/<\|python_tag\|>[^<]*(?:<\|eom_id\|>)?/g, '');
-  sanitized = sanitized.replace(/<\|eom_id\|>/g, '');
+  sanitized = sanitized.replaceAll(/<\|python_tag\|>[^<]*(?:<\|eom_id\|>)?/g, '');
+  sanitized = sanitized.replaceAll('<|eom_id|>', '');
 
   // Remove tool invocation patterns that Ollama outputs as text
   // e.g., render_ui_component(component="...", props={...})
-  sanitized = sanitized.replace(/render_ui_component\s*\([^)]*\)/g, '');
-  sanitized = sanitized.replace(/request_user_selection\s*\([^)]*\)/g, '');
-  sanitized = sanitized.replace(/list_loggers\s*\([^)]*\)/g, '');
-  sanitized = sanitized.replace(/get_fleet_overview\s*\([^)]*\)/g, '');
-  sanitized = sanitized.replace(/analyze_inverter_health\s*\([^)]*\)/g, '');
+  sanitized = sanitized.replaceAll(/render_ui_component\s*\([^)]*\)/g, '');
+  sanitized = sanitized.replaceAll(/request_user_selection\s*\([^)]*\)/g, '');
+  sanitized = sanitized.replaceAll(/list_loggers\s*\([^)]*\)/g, '');
+  sanitized = sanitized.replaceAll(/get_fleet_overview\s*\([^)]*\)/g, '');
+  sanitized = sanitized.replaceAll(/analyze_inverter_health\s*\([^)]*\)/g, '');
 
   // Remove JSON-like objects with tool-specific keys
-  sanitized = sanitized.replace(
+  sanitized = sanitized.replaceAll(
     /\{[\s\S]*?"prompt"[\s\S]*?"options"[\s\S]*?"selectionType"[\s\S]*?\}/g,
     ''
   );
 
   // Remove JSON-like objects with component keys
-  sanitized = sanitized.replace(
+  sanitized = sanitized.replaceAll(
     /\{[\s\S]*?"component"[\s\S]*?"props"[\s\S]*?\}/g,
     ''
   );
 
   // Remove placeholder text patterns (bracket-style)
-  sanitized = sanitized.replace(/\[Chart:.*?\]/gi, '');
-  sanitized = sanitized.replace(/\[Chart is rendered here.*?\]/gi, '');
-  sanitized = sanitized.replace(/\[Visualize.*?\]/gi, '');
-  sanitized = sanitized.replace(/\[Visualization.*?\]/gi, '');
+  sanitized = sanitized.replaceAll(/\[Chart:.*?\]/gi, '');
+  sanitized = sanitized.replaceAll(/\[Chart is rendered here.*?\]/gi, '');
+  sanitized = sanitized.replaceAll(/\[Visualize.*?\]/gi, '');
+  sanitized = sanitized.replaceAll(/\[Visualization.*?\]/gi, '');
 
   // Remove visualization placeholder text patterns (natural language)
   // These occur when the LLM describes rendering instead of actually rendering
-  sanitized = sanitized.replace(/Visualizing (?:the )?data\.{0,3}/gi, '');
-  sanitized = sanitized.replace(/\(?I(?:'m| am) rendering[^.]*\.?\)?/gi, '');
-  sanitized = sanitized.replace(/(?:The )?chart (?:will be|is being|is) (?:rendered|displayed|shown)[^.]*\.?/gi, '');
-  sanitized = sanitized.replace(/\(?(?:I'm |I am )?showing (?:you )?(?:a |the )?(?:chart|visualization|graph)[^.]*\.?\)?/gi, '');
-  sanitized = sanitized.replace(/Let me (?:show|visualize|render|display)[^.]*\.?/gi, '');
-  sanitized = sanitized.replace(/(?:Here(?:'s| is) |Below is )(?:a |the )?(?:chart|visualization|graph)[^.]*\.?/gi, '');
-  sanitized = sanitized.replace(/\((?:Chart|Visualization|Graph)[^)]*\)/gi, '');
+  sanitized = sanitized.replaceAll(/Visualizing (?:the )?data\.{0,3}/gi, '');
+  sanitized = sanitized.replaceAll(/\(?I(?:'m| am) rendering[^.]*\.?\)?/gi, '');
+  sanitized = sanitized.replaceAll(/(?:The )?chart (?:will be|is being|is) (?:rendered|displayed|shown)[^.]*\.?/gi, '');
+  sanitized = sanitized.replaceAll(/\(?(?:I'm |I am )?showing (?:you )?(?:a |the )?(?:chart|visualization|graph)[^.]*\.?\)?/gi, '');
+  sanitized = sanitized.replaceAll(/Let me (?:show|visualize|render|display)[^.]*\.?/gi, '');
+  sanitized = sanitized.replaceAll(/(?:Here(?:'s| is) |Below is )(?:a |the )?(?:chart|visualization|graph)[^.]*\.?/gi, '');
+  sanitized = sanitized.replaceAll(/\((?:Chart|Visualization|Graph)[^)]*\)/gi, '');
 
   // Clean up excessive whitespace from removed content
-  sanitized = sanitized.replace(/\n{3,}/g, '\n\n');
+  sanitized = sanitized.replaceAll(/\n{3,}/g, '\n\n');
 
   return sanitized.trim();
 }

@@ -358,9 +358,11 @@ export function buildNarrativePrompt(
   }
 
   // Add preference modifiers
-  layers.push(`TONE: ${toneModifier}`);
-  layers.push(`LENGTH: ${verbosityModifier}`);
-  layers.push(`PERSPECTIVE: ${personaModifier}`);
+  layers.push(
+    `TONE: ${toneModifier}`,
+    `LENGTH: ${verbosityModifier}`,
+    `PERSPECTIVE: ${personaModifier}`,
+  );
 
   // Add examples if requested
   if (options?.includeExamples) {

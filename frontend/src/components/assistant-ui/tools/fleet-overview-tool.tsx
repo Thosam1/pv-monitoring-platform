@@ -130,7 +130,7 @@ export const FleetOverviewTool = makeAssistantToolUI<FleetOverviewArgs, FleetOve
                 <span className="font-medium">Historical Data:</span>{' '}
                 Showing data from{' '}
                 <span className="font-semibold">{data.dateMismatch.actualDataDate}</span>
-                {' '}({data.dateMismatch.daysDifference} day{data.dateMismatch.daysDifference !== 1 ? 's' : ''} ago)
+                {' '}({data.dateMismatch.daysDifference} day{data.dateMismatch.daysDifference === 1 ? '' : 's'} ago)
               </div>
             </motion.div>
           )}

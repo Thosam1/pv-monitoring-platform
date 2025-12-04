@@ -17,7 +17,7 @@ export interface AIChatViewProps {
  * Error fallback component for thread errors.
  * Displays a recovery UI when the thread fails to render.
  */
-function ThreadErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
+function ThreadErrorFallback({ error, resetErrorBoundary }: Readonly<FallbackProps>) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
@@ -46,7 +46,7 @@ function ThreadErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
  * Inner component that has access to the runtime context.
  * Separated so we can use useAssistantRuntime hook.
  */
-function AIChatViewInner({ className }: { className?: string }) {
+function AIChatViewInner({ className }: Readonly<{ className?: string }>) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const runtime = useAssistantRuntime();
 
@@ -115,7 +115,7 @@ function AIChatViewInner({ className }: { className?: string }) {
  * Uses assistant-ui primitives for the chat interface.
  * Wrapped in error boundaries to prevent blank screens on errors.
  */
-export function AIChatView({ className }: AIChatViewProps) {
+export function AIChatView({ className }: Readonly<AIChatViewProps>) {
   return (
     <MyRuntimeProvider>
       <AIChatViewInner className={className} />

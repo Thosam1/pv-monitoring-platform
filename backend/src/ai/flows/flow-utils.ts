@@ -855,16 +855,16 @@ export function parseNaturalDateRange(
   const lowered = input.toLowerCase().trim();
 
   // "last N days" pattern
-  const lastNDaysMatch = lowered.match(/last\s+(\d+)\s+days?/);
+  const lastNDaysMatch = /last\s+(\d+)\s+days?/.exec(lowered);
   if (lastNDaysMatch) {
-    const days = parseInt(lastNDaysMatch[1], 10);
+    const days = Number.parseInt(lastNDaysMatch[1], 10);
     return { start: getDateDaysAgo(days), end: today };
   }
 
   // "past N days" pattern
-  const pastNDaysMatch = lowered.match(/past\s+(\d+)\s+days?/);
+  const pastNDaysMatch = /past\s+(\d+)\s+days?/.exec(lowered);
   if (pastNDaysMatch) {
-    const days = parseInt(pastNDaysMatch[1], 10);
+    const days = Number.parseInt(pastNDaysMatch[1], 10);
     return { start: getDateDaysAgo(days), end: today };
   }
 
@@ -1035,6 +1035,6 @@ export function getOverallDataRange(
   const sorted = dates.sort((a, b) => a.localeCompare(b));
   return {
     start: sorted[0],
-    end: sorted[sorted.length - 1],
+    end: sorted.at(-1),
   };
 }

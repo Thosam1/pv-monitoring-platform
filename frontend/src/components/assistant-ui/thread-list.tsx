@@ -29,7 +29,7 @@ function ThreadListItem() {
     const runtime = useAssistantRuntime();
 
     const handleRename = () => {
-        const newTitle = window.prompt('Enter new name:', threadListItem.title || 'New Conversation');
+        const newTitle = globalThis.window.prompt('Enter new name:', threadListItem.title || 'New Conversation');
         if (newTitle && newTitle.trim()) {
             try {
                 threadListItemRuntime.rename(newTitle.trim());
@@ -40,7 +40,7 @@ function ThreadListItem() {
     };
 
     const handleDelete = async () => {
-        if (window.confirm('Delete this conversation?')) {
+        if (globalThis.window.confirm('Delete this conversation?')) {
             try {
                 const threadIdToDelete = threadListItem.id;
                 const threadList = runtime.threadList.getState();
@@ -135,9 +135,9 @@ export interface ThreadListProps {
  * This helps users recover from corrupted state or the "Parent message not found" error.
  */
 function clearAllChatHistory() {
-    if (typeof window === 'undefined') return;
+    if (typeof globalThis.window === 'undefined') return;
 
-    const confirmed = window.confirm(
+    const confirmed = globalThis.window.confirm(
         'This will delete all conversations and chat history. This action cannot be undone. Continue?'
     );
 
@@ -157,10 +157,10 @@ function clearAllChatHistory() {
         keysToRemove.forEach((key) => localStorage.removeItem(key));
 
         // Reload the page to reset the application state
-        window.location.reload();
+        globalThis.window.location.reload();
     } catch (error) {
         console.error('Failed to clear chat history:', error);
-        window.alert('Failed to clear chat history. Please try again.');
+        globalThis.window.alert('Failed to clear chat history. Please try again.');
     }
 }
 
@@ -168,7 +168,7 @@ function clearAllChatHistory() {
  * Thread list sidebar component.
  * Shows all conversation threads with options to create new, rename, or delete.
  */
-export function ThreadList({className}: ThreadListProps) {
+export function ThreadList({className}: Readonly<ThreadListProps>) {
     return (
         <ThreadListPrimitive.Root
             className={cn('flex h-full flex-col border-r border-border bg-card', className)}

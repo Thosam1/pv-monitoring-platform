@@ -86,7 +86,7 @@ export function StatusBadge({
   showIcon = true,
   size = 'md',
   className,
-}: StatusBadgeProps) {
+}: Readonly<StatusBadgeProps>) {
   const config = statusConfig[status];
   const Icon = config.icon;
 
@@ -115,11 +115,11 @@ export function StatusIndicator({
   status,
   label,
   className,
-}: {
+}: Readonly<{
   status: StatusType;
   label?: string;
   className?: string;
-}) {
+}>) {
   const config = statusConfig[status];
 
   return (

@@ -41,7 +41,7 @@ export function MetricCard({
   icon,
   color = 'default',
   className,
-}: MetricCardProps) {
+}: Readonly<MetricCardProps>) {
   const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
 
   return (
@@ -87,11 +87,11 @@ export function MetricCardGrid({
   children,
   columns = 2,
   className,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   columns?: 2 | 3 | 4;
   className?: string;
-}) {
+}>) {
   const gridCols = {
     2: 'grid-cols-2',
     3: 'grid-cols-3',

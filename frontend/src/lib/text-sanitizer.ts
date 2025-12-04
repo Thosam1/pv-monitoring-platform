@@ -33,95 +33,95 @@ export function sanitizeLLMOutput(text: string): string {
   const sanitized = text
     // Remove raw JSON objects that look like tool call args
     // These appear when LLM outputs tool args as text instead of proper tool calls
-    .replace(/\{\s*"prompt"\s*:\s*"[^"]*"\s*,\s*"options"\s*:\s*\[[\s\S]*?\]\s*,\s*"selectionType"\s*:\s*"[^"]*"[^}]*\}/g, '')
+    .replaceAll(/\{\s*"prompt"\s*:\s*"[^"]*"\s*,\s*"options"\s*:\s*\[[\s\S]*?\]\s*,\s*"selectionType"\s*:\s*"[^"]*"[^}]*\}/g, '')
     // Remove Ollama special tokens
-    .replace(/<\|python_tag\|>/g, '')
-    .replace(/<\|eot_id\|>/g, '')
-    .replace(/<\|end_of_text\|>/g, '')
-    .replace(/<\|start_header_id\|>.*?<\|end_header_id\|>/gs, '')
+    .replaceAll('<|python_tag|>', '')
+    .replaceAll('<|eot_id|>', '')
+    .replaceAll('<|end_of_text|>', '')
+    .replaceAll(/<\|start_header_id\|>.*?<\|end_header_id\|>/gs, '')
 
     // Remove other common LLM special tokens
-    .replace(/<\|im_start\|>/g, '')
-    .replace(/<\|im_end\|>/g, '')
-    .replace(/<\|endoftext\|>/g, '')
+    .replaceAll('<|im_start|>', '')
+    .replaceAll('<|im_end|>', '')
+    .replaceAll('<|endoftext|>', '')
 
     // Remove Python code blocks with function definitions
     // Matches: ```python\nimport...\ndef...\n```
-    .replace(/```python\s+(?:import\s+|from\s+|def\s+|class\s+)[\s\S]*?```/g, '')
-    .replace(/```\s+(?:import\s+|from\s+|def\s+|class\s+)[\s\S]*?```/g, '')
+    .replaceAll(/```python\s+(?:import\s+|from\s+|def\s+|class\s+)[\s\S]*?```/g, '')
+    .replaceAll(/```\s+(?:import\s+|from\s+|def\s+|class\s+)[\s\S]*?```/g, '')
 
     // Remove inline Python code patterns (import, def, class keywords)
-    .replace(/(?:^|\n)(?:import|from)\s+\w+(?:\.\w+)*(?:\s+import\s+\w+(?:,\s*\w+)*)?[\s\S]*?(?=\n\n|\n#|\n[A-Z]|$)/g, '')
-    .replace(/(?:^|\n)(?:def|class)\s+\w+\s*\([^)]*\)[\s\S]*?(?=\n\n|\n#|\n[A-Z]|$)/g, '')
+    .replaceAll(/(?:^|\n)(?:import|from)\s+\w+(?:\.\w+)*(?:\s+import\s+\w+(?:,\s*\w+)*)?[\s\S]*?(?=\n\n|\n#|\n[A-Z]|$)/g, '')
+    .replaceAll(/(?:^|\n)(?:def|class)\s+\w+\s*\([^)]*\)[\s\S]*?(?=\n\n|\n#|\n[A-Z]|$)/g, '')
 
     // Remove system prompt headers and sections
-    .replace(/^#+\s*(?:Tool Selection|Output Formatting|Input Processing|Response Generation|Error Handling)\s+Rules?\s*$/gm, '')
-    .replace(/^#+\s*(?:System|Instructions|Guidelines|Context|Prompt)\s*$/gm, '')
+    .replaceAll(/^#+\s*(?:Tool Selection|Output Formatting|Input Processing|Response Generation|Error Handling)\s+Rules?\s*$/gm, '')
+    .replaceAll(/^#+\s*(?:System|Instructions|Guidelines|Context|Prompt)\s*$/gm, '')
 
     // Remove common system prompt instruction patterns
-    .replace(/^You are (?:a|an)\s+.+$/gm, '')
-    .replace(/^Your task is to\s+.+$/gm, '')
-    .replace(/^When responding,?\s+(?:you should|always|never)\s+.+$/gm, '')
-    .replace(/^Follow these steps:\s*$/gm, '')
-    .replace(/^Important:\s+(?:Always|Never|Do not)\s+.+$/gm, '')
+    .replaceAll(/^You are (?:a|an)\s+.+$/gm, '')
+    .replaceAll(/^Your task is to\s+.+$/gm, '')
+    .replaceAll(/^When responding,?\s+(?:you should|always|never)\s+.+$/gm, '')
+    .replaceAll(/^Follow these steps:\s*$/gm, '')
+    .replaceAll(/^Important:\s+(?:Always|Never|Do not)\s+.+$/gm, '')
 
     // Remove raw output markers and execution traces
-    .replace(/^Output:\s*["'][\s\S]*?["']\s*$/gm, '')
-    .replace(/^Result:\s*["'][\s\S]*?["']\s*$/gm, '')
-    .replace(/^Executing:\s+.+$/gm, '')
-    .replace(/^Calling function:\s+.+$/gm, '')
+    .replaceAll(/^Output:\s*["'][\s\S]*?["']\s*$/gm, '')
+    .replaceAll(/^Result:\s*["'][\s\S]*?["']\s*$/gm, '')
+    .replaceAll(/^Executing:\s+.+$/gm, '')
+    .replaceAll(/^Calling function:\s+.+$/gm, '')
 
     // Remove numbered instruction lists that look like system prompts
-    .replace(/^\d+\.\s+(?:Always|Never|Do not|Ensure|Remember)\s+.+$/gm, '')
+    .replaceAll(/^\d+\.\s+(?:Always|Never|Do not|Ensure|Remember)\s+.+$/gm, '')
 
     // Remove raw function calls that appear on their own lines
     // Matches: function_name(args) or function_name()
-    .replace(/^\s*\w+\([^)]*\)\s*$/gm, '')
+    .replaceAll(/^\s*\w+\([^)]*\)\s*$/gm, '')
 
     // Remove raw tool/function names in parentheses (leaked from LLM)
     // These appear when the LLM mentions a tool name instead of calling it
-    .replace(/\(render_ui_component\)/g, '')
-    .replace(/\(request_user_selection\)/g, '')
-    .replace(/\(list_loggers\)/g, '')
-    .replace(/\(analyze_inverter_health\)/g, '')
-    .replace(/\(get_power_curve\)/g, '')
-    .replace(/\(compare_loggers\)/g, '')
-    .replace(/\(calculate_financial_savings\)/g, '')
-    .replace(/\(calculate_performance_ratio\)/g, '')
-    .replace(/\(forecast_production\)/g, '')
-    .replace(/\(diagnose_error_codes\)/g, '')
-    .replace(/\(get_fleet_overview\)/g, '')
-    .replace(/\(health_check\)/g, '')
+    .replaceAll('(render_ui_component)', '')
+    .replaceAll('(request_user_selection)', '')
+    .replaceAll('(list_loggers)', '')
+    .replaceAll('(analyze_inverter_health)', '')
+    .replaceAll('(get_power_curve)', '')
+    .replaceAll('(compare_loggers)', '')
+    .replaceAll('(calculate_financial_savings)', '')
+    .replaceAll('(calculate_performance_ratio)', '')
+    .replaceAll('(forecast_production)', '')
+    .replaceAll('(diagnose_error_codes)', '')
+    .replaceAll('(get_fleet_overview)', '')
+    .replaceAll('(health_check)', '')
 
     // Remove internal prompt structure labels that leak from LLM output
     // Handles both plain and markdown bold versions (e.g., "Opening:" and "**Opening**:")
-    .replace(/^\*{0,2}Opening\*{0,2}:\s*/gm, '')
-    .replace(/^\*{0,2}Insight\*{0,2}:\s*/gm, '')
-    .replace(/^\*{0,2}Next Step\*{0,2}:\s*/gm, '')
-    .replace(/^\*{0,2}Note\*{0,2}:\s*/gm, '')
-    .replace(/^\*{0,2}Visualization\*{0,2}:\s*/gm, '')
-    .replace(/^\*{0,2}Action\*{0,2}:\s*/gm, '')
-    .replace(/^\*{0,2}Summary\*{0,2}:\s*/gm, '')
-    .replace(/^\*{0,2}Conclusion\*{0,2}:\s*/gm, '')
+    .replaceAll(/^\*{0,2}Opening\*{0,2}:\s*/gm, '')
+    .replaceAll(/^\*{0,2}Insight\*{0,2}:\s*/gm, '')
+    .replaceAll(/^\*{0,2}Next Step\*{0,2}:\s*/gm, '')
+    .replaceAll(/^\*{0,2}Note\*{0,2}:\s*/gm, '')
+    .replaceAll(/^\*{0,2}Visualization\*{0,2}:\s*/gm, '')
+    .replaceAll(/^\*{0,2}Action\*{0,2}:\s*/gm, '')
+    .replaceAll(/^\*{0,2}Summary\*{0,2}:\s*/gm, '')
+    .replaceAll(/^\*{0,2}Conclusion\*{0,2}:\s*/gm, '')
 
     // Remove visualization placeholder text patterns
     // These occur when the LLM describes rendering instead of actually rendering
-    .replace(/Visualizing (?:the )?data\.{0,3}/gi, '')
-    .replace(/\(?I(?:'m| am) rendering[^.]*\.?\)?/gi, '')
-    .replace(/(?:The )?chart (?:will be|is being|is) (?:rendered|displayed|shown)[^.]*\.?/gi, '')
-    .replace(/\(?(?:I'm |I am )?showing (?:you )?(?:a |the )?(?:chart|visualization|graph)[^.]*\.?\)?/gi, '')
-    .replace(/Let me (?:show|visualize|render|display)[^.]*\.?/gi, '')
-    .replace(/(?:Here(?:'s| is) |Below is )(?:a |the )?(?:chart|visualization|graph)[^.]*\.?/gi, '')
-    .replace(/\[Chart[^\]]*\]/gi, '')
-    .replace(/\[Visualiz[^\]]*\]/gi, '')
-    .replace(/\((?:Chart|Visualization|Graph)[^)]*\)/gi, '')
+    .replaceAll(/Visualizing (?:the )?data\.{0,3}/gi, '')
+    .replaceAll(/\(?I(?:'m| am) rendering[^.]*\.?\)?/gi, '')
+    .replaceAll(/(?:The )?chart (?:will be|is being|is) (?:rendered|displayed|shown)[^.]*\.?/gi, '')
+    .replaceAll(/\(?(?:I'm |I am )?showing (?:you )?(?:a |the )?(?:chart|visualization|graph)[^.]*\.?\)?/gi, '')
+    .replaceAll(/Let me (?:show|visualize|render|display)[^.]*\.?/gi, '')
+    .replaceAll(/(?:Here(?:'s| is) |Below is )(?:a |the )?(?:chart|visualization|graph)[^.]*\.?/gi, '')
+    .replaceAll(/\[Chart[^\]]*\]/gi, '')
+    .replaceAll(/\[Visualiz[^\]]*\]/gi, '')
+    .replaceAll(/\((?:Chart|Visualization|Graph)[^)]*\)/gi, '')
 
     // Remove empty markdown code blocks
-    .replace(/```\s*```/g, '')
-    .replace(/```\w*\s*```/g, '')
+    .replaceAll(/```\s*```/g, '')
+    .replaceAll(/```\w*\s*```/g, '')
 
     // Clean up excessive whitespace (but preserve intentional spacing)
-    .replace(/\n\s*\n\s*\n/g, '\n\n') // Max 2 consecutive newlines
+    .replaceAll(/\n\s*\n\s*\n/g, '\n\n') // Max 2 consecutive newlines
     .trim();
 
   return sanitized;

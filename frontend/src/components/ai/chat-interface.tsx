@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button';
  * Error fallback component for chat message rendering failures.
  * Prevents a single broken message from crashing the entire chat.
  */
-function MessageErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
+function MessageErrorFallback({ error, resetErrorBoundary }: Readonly<FallbackProps>) {
   return (
     <div className="my-2 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
       <div className="flex items-start gap-2">
@@ -123,7 +123,7 @@ const WORKFLOW_CHIPS: WorkflowChip[] = [
  * Generate a unique ID for messages.
  */
 function generateId(): string {
-  return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
 /**
@@ -152,11 +152,12 @@ export function ChatInterface({
   initialMessages = [],
   onMessagesChange,
   className,
-}: ChatInterfaceProps) {
+}: Readonly<ChatInterfaceProps>) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<ChatStatus>('idle');
-  const [, setErrorType] = useState<ErrorType>('unknown');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_errorType, setErrorType] = useState<ErrorType>('unknown');
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [lastUserMessage, setLastUserMessage] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -527,7 +528,7 @@ export function ChatInterface({
   // Convert to UIMessage format for ChatMessage component
   const uiMessages = messages.map((m) => ({
     id: m.id,
-    role: m.role as 'user' | 'assistant' | 'system',
+    role: m.role,
     content: m.content,
     parts: m.parts.map((p) => {
       if (p.type === 'text') {

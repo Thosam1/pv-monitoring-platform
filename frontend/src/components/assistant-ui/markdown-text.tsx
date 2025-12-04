@@ -74,41 +74,49 @@ export const MarkdownText = memo(MarkdownTextImpl);
  * Memoized markdown components for better performance.
  */
 const defaultComponents = memoizeMarkdownComponents({
-  h1: ({ className, ...props }) => (
+  h1: ({ className, children, ...props }) => (
     <h1
       className={cn(
         'mb-4 scroll-m-20 text-2xl font-bold tracking-tight',
         className
       )}
       {...props}
-    />
+    >
+      {children}
+    </h1>
   ),
-  h2: ({ className, ...props }) => (
+  h2: ({ className, children, ...props }) => (
     <h2
       className={cn(
         'mb-3 mt-6 scroll-m-20 text-xl font-semibold tracking-tight first:mt-0',
         className
       )}
       {...props}
-    />
+    >
+      {children}
+    </h2>
   ),
-  h3: ({ className, ...props }) => (
+  h3: ({ className, children, ...props }) => (
     <h3
       className={cn(
         'mb-2 mt-4 scroll-m-20 text-lg font-semibold tracking-tight first:mt-0',
         className
       )}
       {...props}
-    />
+    >
+      {children}
+    </h3>
   ),
-  h4: ({ className, ...props }) => (
+  h4: ({ className, children, ...props }) => (
     <h4
       className={cn(
         'mb-2 mt-4 scroll-m-20 text-base font-semibold tracking-tight first:mt-0',
         className
       )}
       {...props}
-    />
+    >
+      {children}
+    </h4>
   ),
   p: ({ className, ...props }) => (
     <p
@@ -116,7 +124,7 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  a: ({ className, ...props }) => (
+  a: ({ className, children, ...props }) => (
     <a
       className={cn(
         'text-primary font-medium underline underline-offset-4 hover:text-primary/80',
@@ -125,7 +133,9 @@ const defaultComponents = memoizeMarkdownComponents({
       target="_blank"
       rel="noopener noreferrer"
       {...props}
-    />
+    >
+      {children}
+    </a>
   ),
   blockquote: ({ className, ...props }) => (
     <blockquote

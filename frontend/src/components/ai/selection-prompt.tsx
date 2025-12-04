@@ -61,7 +61,7 @@ function SingleSelectDropdown({
   contextMessage,
   preSelectedValues,
   requireConfirmation = false,
-}: Omit<SelectionPromptProps, 'inputType' | 'minDate' | 'maxDate' | 'selectionType' | 'preFilledDateRange'>) {
+}: Readonly<Omit<SelectionPromptProps, 'inputType' | 'minDate' | 'maxDate' | 'selectionType' | 'preFilledDateRange'>>) {
   const [hasSubmitted, setHasSubmitted] = useState(false);
   // Initialize with pre-selected value if provided
   const [selectedValue, setSelectedValue] = useState<string | null>(
@@ -88,7 +88,7 @@ function SingleSelectDropdown({
 
   // Get color for a logger type (if applicable)
   const getLoggerColor = useCallback((group?: string): string | null => {
-    const loggerType = group?.toLowerCase().replace(/\s+/g, '') as LoggerType;
+    const loggerType = group?.toLowerCase().replaceAll(/\s+/g, '') as LoggerType;
     if (loggerType && LOGGER_CONFIG[loggerType]) {
       return LOGGER_CONFIG[loggerType].color;
     }
@@ -249,7 +249,7 @@ function MultiSelectDropdown({
   preSelectedValues,
   minCount = 1,
   maxCount,
-}: Omit<SelectionPromptProps, 'inputType' | 'minDate' | 'maxDate' | 'selectionType' | 'preFilledDateRange' | 'requireConfirmation'>) {
+}: Readonly<Omit<SelectionPromptProps, 'inputType' | 'minDate' | 'maxDate' | 'selectionType' | 'preFilledDateRange' | 'requireConfirmation'>>) {
   const [isOpen, setIsOpen] = useState(false);
   // Initialize with pre-selected values if provided
   const [selectedValues, setSelectedValues] = useState<string[]>(preSelectedValues || []);
@@ -273,7 +273,7 @@ function MultiSelectDropdown({
 
   // Get color for a logger type (if applicable)
   const getLoggerColor = useCallback((group?: string): string | null => {
-    const loggerType = group?.toLowerCase().replace(/\s+/g, '') as LoggerType;
+    const loggerType = group?.toLowerCase().replaceAll(/\s+/g, '') as LoggerType;
     if (loggerType && LOGGER_CONFIG[loggerType]) {
       return LOGGER_CONFIG[loggerType].color;
     }
@@ -494,7 +494,7 @@ export function SelectionPrompt({
   requireConfirmation,
   minCount,
   maxCount,
-}: SelectionPromptProps) {
+}: Readonly<SelectionPromptProps>) {
   // Handle date selection callback
   const handleDateSelect = useCallback((value: string | { start: string; end: string }) => {
     // Convert to string array format for consistency

@@ -118,7 +118,7 @@ export const CompareLoggersTool = makeAssistantToolUI<CompareLoggersArgs, Compar
           xAxisKey="timestamp"
           yAxisLabel={data.metric === 'power' ? 'Power (W)' : data.metric || ''}
           series={series}
-          data={data.data as Record<string, unknown>[]}
+          data={data.data}
         />
         <p className="mt-2 text-xs text-muted-foreground">
           Comparing {data.loggerIds?.length || 0} loggers • {data.recordCount || 0} data points

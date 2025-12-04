@@ -74,7 +74,7 @@ export function ChatHistorySidebar({
   onNewChat,
   onDeleteChat,
   className,
-}: ChatHistorySidebarProps) {
+}: Readonly<ChatHistorySidebarProps>) {
   const groupedConversations = useMemo(
     () => groupConversationsByDate(conversations),
     [conversations]
@@ -124,6 +124,15 @@ export function ChatHistorySidebar({
                         : 'hover:bg-sidebar-accent/50 text-sidebar-foreground'
                     )}
                     onClick={() => onSelectChat(conv.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onSelectChat(conv.id);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Select conversation: ${conv.title}`}
                   >
                     <MessageSquare className="size-4 shrink-0" />
                     <span className="flex-1 truncate">{conv.title}</span>
@@ -135,7 +144,7 @@ export function ChatHistorySidebar({
                         e.stopPropagation();
                         onDeleteChat(conv.id);
                       }}
-                      title="Delete conversation"
+                      aria-label={`Delete conversation: ${conv.title}`}
                     >
                       <Trash2 className="size-3" />
                     </Button>

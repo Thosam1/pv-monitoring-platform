@@ -76,17 +76,17 @@ export class AiController {
     } catch (error) {
       this.logger.error(`Chat error: ${error}`);
 
-      if (!res.headersSent) {
-        throw new HttpException(
-          error instanceof Error ? error.message : 'Chat processing failed',
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
-      } else {
+      if (res.headersSent) {
         // If headers already sent, send error as SSE event
         res.write(
           `data: ${JSON.stringify({ type: 'error', message: error instanceof Error ? error.message : 'Unknown error' })}\n\n`,
         );
         res.end();
+      } else {
+        throw new HttpException(
+          error instanceof Error ? error.message : 'Chat processing failed',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
     }
   }

@@ -280,7 +280,7 @@ export class LanggraphService {
       state: ExplicitFlowState,
     ): Partial<ExplicitFlowState> => {
       const messages = state.messages;
-      const lastMessage = messages[messages.length - 1];
+      const lastMessage = messages.at(-1);
 
       if (!isToolMessage(lastMessage)) {
         return {};
@@ -333,7 +333,7 @@ export class LanggraphService {
 
     // Routing: should continue after LLM?
     const shouldContinue = (state: ExplicitFlowState): 'tools' | 'end' => {
-      const lastMessage = state.messages[state.messages.length - 1];
+      const lastMessage = state.messages.at(-1);
 
       if (
         isAiMessage(lastMessage) &&
@@ -537,7 +537,7 @@ export class LanggraphService {
       state: ExplicitFlowState,
     ): Partial<ExplicitFlowState> => {
       const messages = state.messages;
-      const lastMessage = messages[messages.length - 1];
+      const lastMessage = messages.at(-1);
 
       if (!isToolMessage(lastMessage)) {
         return {};
@@ -574,7 +574,7 @@ export class LanggraphService {
     };
 
     const shouldContinue = (state: ExplicitFlowState): 'tools' | 'end' => {
-      const lastMessage = state.messages[state.messages.length - 1];
+      const lastMessage = state.messages.at(-1);
 
       if (
         isAiMessage(lastMessage) &&
@@ -710,7 +710,7 @@ export class LanggraphService {
       const msg = messages[i];
       if (isAiMessage(msg)) {
         const content = typeof msg.content === 'string' ? msg.content : '';
-        const match = content.match(/<!-- (\{"__flowContext":.+?\}) -->/s);
+        const match = /<!-- (\{"__flowContext":.+?\}) -->/s.exec(content);
         if (match) {
           try {
             const parsed = JSON.parse(match[1]) as {
@@ -847,7 +847,7 @@ export class LanggraphService {
     );
     this.logger.debug(
       '[DEBUG ENTRY] Last user message:',
-      messages[messages.length - 1]?.content?.slice(0, 100),
+      messages.at(-1)?.content?.slice(0, 100),
     );
 
     // Track tool calls and flow messages we've already reported (for deduplication)
@@ -913,11 +913,12 @@ export class LanggraphService {
 
       // Stream events from the graph
       // Generate fallback thread_id if not provided - MemorySaver ALWAYS requires one
-      const effectiveThreadId =
-        threadId ||
-        `thread_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      let effectiveThreadId = threadId;
+      if (effectiveThreadId === undefined) {
+        effectiveThreadId = `thread_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      }
       this.logger.debug(
-        `[CHECKPOINTING] Using thread_id: ${effectiveThreadId}${!threadId ? ' (auto-generated)' : ''}`,
+        `[CHECKPOINTING] Using thread_id: ${effectiveThreadId}${threadId ? '' : ' (auto-generated)'}`,
       );
 
       const stream = graph.streamEvents(initialState, {
@@ -973,7 +974,13 @@ export class LanggraphService {
           if (output?.tool_calls && Array.isArray(output.tool_calls)) {
             for (const toolCall of output.tool_calls) {
               const toolCallId = toolCall.id ?? `tool_${Date.now()}`;
-              if (!reportedToolCalls.has(toolCallId)) {
+              if (reportedToolCalls.has(toolCallId)) {
+                // TODO: DELETE - Debug logging dedup skip
+                debugCounters.dedupSkips.toolCalls++;
+                this.logger.debug(
+                  `[DEBUG DEDUP SKIP] toolCall already reported: ${toolCallId}`,
+                );
+              } else {
                 reportedToolCalls.add(toolCallId);
                 // TODO: DELETE - Debug logging
                 debugCounters.toolInputEmissions++;
@@ -1007,12 +1014,6 @@ export class LanggraphService {
                     output: toolCall.args,
                   };
                 }
-              } else {
-                // TODO: DELETE - Debug logging dedup skip
-                debugCounters.dedupSkips.toolCalls++;
-                this.logger.debug(
-                  `[DEBUG DEDUP SKIP] toolCall already reported: ${toolCallId}`,
-                );
               }
             }
           }
@@ -1070,7 +1071,13 @@ export class LanggraphService {
               `[DEBUG CHAIN_END] pendingUiActions count: ${output.pendingUiActions.length}`,
             );
             for (const action of output.pendingUiActions) {
-              if (!reportedToolCalls.has(action.toolCallId)) {
+              if (reportedToolCalls.has(action.toolCallId)) {
+                // TODO: DELETE - Debug logging dedup skip
+                debugCounters.dedupSkips.toolCalls++;
+                this.logger.debug(
+                  `[DEBUG DEDUP SKIP] pendingUiAction already reported: ${action.toolCallId}`,
+                );
+              } else {
                 reportedToolCalls.add(action.toolCallId);
                 // TODO: DELETE - Debug logging
                 debugCounters.toolInputEmissions++;
@@ -1101,12 +1108,6 @@ export class LanggraphService {
                     output: action.args,
                   };
                 }
-              } else {
-                // TODO: DELETE - Debug logging dedup skip
-                debugCounters.dedupSkips.toolCalls++;
-                this.logger.debug(
-                  `[DEBUG DEDUP SKIP] pendingUiAction already reported: ${action.toolCallId}`,
-                );
               }
             }
           }
@@ -1185,7 +1186,13 @@ export class LanggraphService {
                 if (!cleanContent.trim()) continue;
 
                 const msgKey = cleanContent.trim();
-                if (!reportedFlowMessages.has(msgKey)) {
+                if (reportedFlowMessages.has(msgKey)) {
+                  // TODO: DELETE - Debug logging dedup skip
+                  debugCounters.dedupSkips.flowMessages++;
+                  this.logger.debug(
+                    `[DEBUG DEDUP SKIP] flow message already reported: ${msgKey.substring(0, 50)}...`,
+                  );
+                } else {
                   reportedFlowMessages.add(msgKey);
                   // TODO: DELETE - Debug logging
                   debugCounters.flowMessages++;
@@ -1193,12 +1200,6 @@ export class LanggraphService {
                     `[DEBUG EMIT] flow message: ${cleanContent.substring(0, 100)}...`,
                   );
                   yield { type: 'text-delta', delta: cleanContent };
-                } else {
-                  // TODO: DELETE - Debug logging dedup skip
-                  debugCounters.dedupSkips.flowMessages++;
-                  this.logger.debug(
-                    `[DEBUG DEDUP SKIP] flow message already reported: ${msgKey.substring(0, 50)}...`,
-                  );
                 }
               }
               // Handle multi-part content: [{ type: 'text', text: '...' }]
@@ -1217,7 +1218,13 @@ export class LanggraphService {
                     if (!cleanContent.trim()) continue;
 
                     const partKey = cleanContent.trim();
-                    if (!reportedFlowMessages.has(partKey)) {
+                    if (reportedFlowMessages.has(partKey)) {
+                      // TODO: DELETE - Debug logging dedup skip
+                      debugCounters.dedupSkips.flowMessages++;
+                      this.logger.debug(
+                        `[DEBUG DEDUP SKIP] flow message part already reported: ${partKey.substring(0, 50)}...`,
+                      );
+                    } else {
                       reportedFlowMessages.add(partKey);
                       // TODO: DELETE - Debug logging
                       debugCounters.flowMessages++;
@@ -1225,12 +1232,6 @@ export class LanggraphService {
                         `[DEBUG EMIT] flow message part: ${cleanContent.substring(0, 100)}...`,
                       );
                       yield { type: 'text-delta', delta: cleanContent };
-                    } else {
-                      // TODO: DELETE - Debug logging dedup skip
-                      debugCounters.dedupSkips.flowMessages++;
-                      this.logger.debug(
-                        `[DEBUG DEDUP SKIP] flow message part already reported: ${partKey.substring(0, 50)}...`,
-                      );
                     }
                   }
                 }

@@ -39,7 +39,7 @@ export function DateRangePicker({
   presets = [],
   onSelect,
   disabled = false,
-}: DateRangePickerProps) {
+}: Readonly<DateRangePickerProps>) {
   const [isOpen, setIsOpen] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);

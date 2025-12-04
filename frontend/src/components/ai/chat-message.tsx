@@ -98,7 +98,7 @@ const FOLLOWUP_RULES: Record<string, FollowUpRule> = {
  * Renders a single chat message with role-specific styling.
  * Handles text content, tool invocations, and loading states.
  */
-export function ChatMessage({ message, isLoading, isLastMessage, onUserSelection, onFollowUpClick }: ChatMessageProps) {
+export function ChatMessage({ message, isLoading, isLastMessage, onUserSelection, onFollowUpClick }: Readonly<ChatMessageProps>) {
   const { role, parts } = message;
   const isUser = role === 'user';
 
@@ -219,7 +219,7 @@ export function ChatMessage({ message, isLoading, isLastMessage, onUserSelection
           // Determine state based on whether result exists (for assistant-ui compatibility)
           // assistant-ui uses 'result' field presence, not 'state' field
           const effectiveState: 'partial-call' | 'call' | 'result' =
-            toolPart.state || (toolPart.result !== undefined ? 'result' : 'call');
+            toolPart.state || (toolPart.result === undefined ? 'call' : 'result');
 
           return (
             <ToolRenderer

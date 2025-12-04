@@ -167,7 +167,7 @@ export interface ThreadProps {
  * Main thread component for the AI chat.
  * Renders messages, empty state, and composer.
  */
-export function Thread({ className }: ThreadProps) {
+export function Thread({ className }: Readonly<ThreadProps>) {
   return (
     <ThreadPrimitive.Root
       className={cn('flex h-full flex-col', className)}

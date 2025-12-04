@@ -28,7 +28,7 @@ export function ToolDebugPanel({
   tools,
   defaultExpanded = false,
   className,
-}: ToolDebugPanelProps) {
+}: Readonly<ToolDebugPanelProps>) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   if (tools.length === 0) return null;
@@ -115,7 +115,7 @@ interface ToolDebugItemProps {
 /**
  * Individual tool call display with expandable input/output.
  */
-function ToolDebugItem({ tool }: ToolDebugItemProps) {
+function ToolDebugItem({ tool }: Readonly<ToolDebugItemProps>) {
   const [showDetails, setShowDetails] = useState(false);
 
   const isError = (() => {

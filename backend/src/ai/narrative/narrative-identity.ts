@@ -185,7 +185,7 @@ export function getCurrentHourInTimezone(timezone?: string): number {
       hour12: false,
     });
     const hourStr = formatter.format(new Date());
-    return parseInt(hourStr, 10);
+    return Number.parseInt(hourStr, 10);
   } catch {
     // Invalid timezone, fall back to UTC
     return new Date().getUTCHours();

@@ -10,7 +10,7 @@ interface WorkflowCardProps {
   onClick: () => void;
 }
 
-export function WorkflowCard({ icon: Icon, title, description, onClick }: WorkflowCardProps) {
+export function WorkflowCard({ icon: Icon, title, description, onClick }: Readonly<WorkflowCardProps>) {
   return (
     <motion.button
       type="button"

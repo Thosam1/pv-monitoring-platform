@@ -120,7 +120,7 @@ const SolarAnalystModelAdapter: ChatModelAdapter = {
  */
 const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   async list() {
-    if (typeof window === 'undefined') {
+    if (typeof globalThis.window === 'undefined') {
       return { threads: [] };
     }
 
@@ -130,7 +130,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
 
       return {
         threads: threads.map((t) => ({
-          status: t.archived ? ('archived' as const) : ('regular' as const),
+          status: t.archived ? 'archived' : 'regular',
           remoteId: t.id,
           title: t.title,
         })),
@@ -141,7 +141,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async initialize(threadId: string) {
-    if (typeof window === 'undefined') {
+    if (typeof globalThis.window === 'undefined') {
       return { remoteId: threadId, externalId: threadId };
     }
 
@@ -166,7 +166,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async rename(remoteId: string, newTitle: string) {
-    if (typeof window === 'undefined') return;
+    if (typeof globalThis.window === 'undefined') return;
 
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY}-metadata`);
@@ -183,7 +183,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async archive(remoteId: string) {
-    if (typeof window === 'undefined') return;
+    if (typeof globalThis.window === 'undefined') return;
 
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY}-metadata`);
@@ -200,7 +200,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async unarchive(remoteId: string) {
-    if (typeof window === 'undefined') return;
+    if (typeof globalThis.window === 'undefined') return;
 
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY}-metadata`);
@@ -217,7 +217,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async delete(remoteId: string) {
-    if (typeof window === 'undefined') return;
+    if (typeof globalThis.window === 'undefined') return;
 
     try {
       // Delete thread metadata
@@ -234,7 +234,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
   },
 
   async fetch(threadId: string) {
-    if (typeof window === 'undefined') {
+    if (typeof globalThis.window === 'undefined') {
       return {
         status: 'regular' as const,
         remoteId: threadId,
@@ -249,7 +249,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
 
       if (thread) {
         return {
-          status: thread.archived ? ('archived' as const) : ('regular' as const),
+          status: thread.archived ? 'archived' : 'regular',
           remoteId: thread.id,
           externalId: thread.id,
           title: thread.title,
@@ -260,7 +260,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
     }
 
     return {
-      status: 'regular' as const,
+      status: 'regular',
       remoteId: threadId,
       title: 'New Conversation',
     };
@@ -283,7 +283,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
     }
 
     // Update title in storage
-    if (typeof window !== 'undefined') {
+    if (typeof globalThis.window !== 'undefined') {
       try {
         const stored = localStorage.getItem(`${STORAGE_KEY}-metadata`);
         const threads: StoredThread[] = stored ? JSON.parse(stored) : [];
@@ -324,7 +324,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
     // Flush pending messages when remoteId becomes available
     // eslint-disable-next-line react-hooks/rules-of-hooks
     useEffect(() => {
-      if (!remoteId || typeof window === 'undefined' || pendingMessagesRef.current.length === 0) {
+      if (!remoteId || typeof globalThis.window === 'undefined' || pendingMessagesRef.current.length === 0) {
         return;
       }
 
@@ -362,7 +362,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
     const history = useMemo<ThreadHistoryAdapter>(
       () => ({
         async load() {
-          if (!remoteId || typeof window === 'undefined') {
+          if (!remoteId || typeof globalThis.window === 'undefined') {
             return { messages: [] };
           }
 
@@ -379,7 +379,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
         },
 
         async append(item) {
-          if (typeof window === 'undefined') {
+          if (typeof globalThis.window === 'undefined') {
             return;
           }
 
@@ -455,7 +455,7 @@ export interface MyRuntimeProviderProps {
  * Runtime provider component for the Solar Analyst AI chat.
  * Wraps the application with assistant-ui's runtime context with multi-thread support.
  */
-export function MyRuntimeProvider({ children }: MyRuntimeProviderProps) {
+export function MyRuntimeProvider({ children }: Readonly<MyRuntimeProviderProps>) {
   const runtime = useRemoteThreadListRuntime({
     runtimeHook: () =>
       // eslint-disable-next-line react-hooks/rules-of-hooks

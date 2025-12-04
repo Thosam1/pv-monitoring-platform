@@ -169,7 +169,7 @@ export const MOCK_FINANCIAL_SAVINGS = {
     period: { start: '2024-12-01', end: '2024-12-31' },
     electricityRate: 0.2,
     currency: 'USD',
-    projectedAnnualSavings: 3001.2,
+    projectedAnnualSavings: 3001,
   },
 };
 
@@ -224,7 +224,7 @@ export const MOCK_PERFORMANCE_RATIO = {
     rating: 'Good',
     factors: {
       temperature: -2.5,
-      shading: -1.0,
+      shading: -1,
       soiling: -0.5,
     },
   },
@@ -241,7 +241,7 @@ export const MOCK_FORECAST = {
       { date: '2025-01-16', predictedEnergy: 42.5, confidence: 0.85 },
       { date: '2025-01-17', predictedEnergy: 38.2, confidence: 0.82 },
       { date: '2025-01-18', predictedEnergy: 45.1, confidence: 0.8 },
-      { date: '2025-01-19', predictedEnergy: 41.0, confidence: 0.78 },
+      { date: '2025-01-19', predictedEnergy: 41, confidence: 0.78 },
       { date: '2025-01-20', predictedEnergy: 39.5, confidence: 0.75 },
       { date: '2025-01-21', predictedEnergy: 44.2, confidence: 0.72 },
       { date: '2025-01-22', predictedEnergy: 40.8, confidence: 0.7 },

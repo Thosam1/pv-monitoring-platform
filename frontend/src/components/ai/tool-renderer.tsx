@@ -37,7 +37,7 @@ import { Button } from '@/components/ui/button';
  * Error fallback component for tool rendering failures.
  * Displays a user-friendly error message instead of crashing the chat.
  */
-function ToolErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
+function ToolErrorFallback({ error, resetErrorBoundary }: Readonly<FallbackProps>) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 5 }}
@@ -152,10 +152,10 @@ function normalizeToEnhancedSuggestionItem(
 function FlowSuggestions({
   suggestions,
   onSuggestionClick,
-}: {
+}: Readonly<{
   suggestions: SuggestionItem[];
   onSuggestionClick?: (action: string) => void;
-}) {
+}>) {
   if (!suggestions || suggestions.length === 0) return null;
 
   // Normalize all suggestions to enhanced format
@@ -183,7 +183,6 @@ function FlowSuggestions({
             action={suggestion.action}
             priority={suggestion.priority}
             reason={suggestion.reason}
-            badge={suggestion.badge}
             icon={suggestion.icon}
             onClick={onSuggestionClick || (() => {})}
           />
@@ -203,7 +202,7 @@ function FlowSuggestions({
  * - analyze_inverter_health: Custom health report
  * - Others: Hidden (shown in debug panel)
  */
-export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClick }: ToolRendererProps) {
+export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClick }: Readonly<ToolRendererProps>) {
   const { toolName, args, state, toolCallId, result } = toolInvocation;
 
   // Hide internal tools - they appear in debug panel
@@ -308,7 +307,7 @@ export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClic
                   <span className="font-medium">Historical Data:</span>{' '}
                   Showing data from{' '}
                   <span className="font-semibold">{props.dateMismatch.actualDataDate}</span>
-                  {' '}({props.dateMismatch.daysDifference} day{props.dateMismatch.daysDifference !== 1 ? 's' : ''} ago)
+                  {' '}({props.dateMismatch.daysDifference} day{props.dateMismatch.daysDifference === 1 ? '' : 's'} ago)
                 </div>
               </motion.div>
             )}
@@ -758,7 +757,7 @@ export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClic
                   <span className="font-medium">Historical Data:</span>{' '}
                   Showing data from{' '}
                   <span className="font-semibold">{data.dateMismatch.actualDataDate}</span>
-                  {' '}({data.dateMismatch.daysDifference} day{data.dateMismatch.daysDifference !== 1 ? 's' : ''} ago)
+                  {' '}({data.dateMismatch.daysDifference} day{data.dateMismatch.daysDifference === 1 ? '' : 's'} ago)
                 </div>
               </motion.div>
             )}
@@ -1058,7 +1057,7 @@ export function ToolRenderer({ toolInvocation, onUserSelection, onSuggestionClic
               xAxisKey="timestamp"
               yAxisLabel={data.metric === 'power' ? 'Power (W)' : data.metric || ''}
               series={series}
-              data={data.data as Record<string, unknown>[]}
+              data={data.data}
             />
             <p className="mt-2 text-xs text-muted-foreground">
               Comparing {data.loggerIds?.length || 0} loggers • {data.recordCount || 0} data points

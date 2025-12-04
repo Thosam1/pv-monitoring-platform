@@ -18,7 +18,7 @@ export function TypingIndicator({
   message = 'Thinking...',
   variant = 'default',
   className,
-}: TypingIndicatorProps) {
+}: Readonly<TypingIndicatorProps>) {
   const Icon = variant === 'tools' ? Wrench : Sparkles;
 
   return (

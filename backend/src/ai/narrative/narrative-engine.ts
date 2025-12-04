@@ -22,7 +22,11 @@ import {
   extractComparisonSeverity,
   AnomalyData,
 } from './narrative-context';
-import { FlowType, FlowArgumentSpec } from '../types/flow-state';
+import {
+  FlowType,
+  FlowArgumentSpec,
+  EnhancedSuggestion,
+} from '../types/flow-state';
 import { LoggerInfo } from '../flows/flow-utils';
 import {
   NarrativePreferences,
@@ -48,7 +52,6 @@ import {
   REQUEST_PROMPT_FALLBACKS,
   FORBIDDEN_TERMS,
 } from './narrative-prompts';
-import { EnhancedSuggestion } from '../types/flow-state';
 
 const logger = new Logger('NarrativeEngine');
 
@@ -339,7 +342,9 @@ export class NarrativeEngine {
 
     // Add flow-specific suggestions
     if (context.flowType === 'health_check') {
-      if (!isActionRequired(branch)) {
+      if (isActionRequired(branch)) {
+        // No additional suggestion when action is required - diagnostics already added
+      } else {
         suggestions.push({
           label: 'Check savings',
           action: `How much have I saved with ${context.subject}?`,
@@ -350,7 +355,9 @@ export class NarrativeEngine {
         });
       }
 
-      if (!context.isFleetAnalysis) {
+      if (context.isFleetAnalysis) {
+        // No compare suggestion for fleet analysis
+      } else {
         suggestions.push({
           label: 'Compare devices',
           action: 'Compare all my inverters',
@@ -363,16 +370,7 @@ export class NarrativeEngine {
 
     // Morning briefing suggestions
     if (context.flowType === 'morning_briefing') {
-      if (!isActionRequired(branch)) {
-        suggestions.push({
-          label: 'Check efficiency',
-          action: 'Show me the efficiency breakdown',
-          priority: 'suggested',
-          reason: 'System is healthy - optimize performance',
-          badge: '>',
-          icon: 'chart',
-        });
-      } else {
+      if (isActionRequired(branch)) {
         suggestions.push({
           label: 'Diagnose issues',
           action: 'Diagnose the offline devices',
@@ -380,6 +378,15 @@ export class NarrativeEngine {
           reason: 'Some devices need attention',
           badge: '!',
           icon: 'alert',
+        });
+      } else {
+        suggestions.push({
+          label: 'Check efficiency',
+          action: 'Show me the efficiency breakdown',
+          priority: 'suggested',
+          reason: 'System is healthy - optimize performance',
+          badge: '>',
+          icon: 'chart',
         });
       }
 
@@ -705,7 +712,7 @@ export class NarrativeEngine {
     if (sentences.length >= 2) {
       return {
         contextMessage: sentences.slice(0, -1).join(' '),
-        prompt: sentences[sentences.length - 1],
+        prompt: sentences.at(-1),
       };
     }
 
@@ -739,7 +746,7 @@ export class NarrativeEngine {
         contextMessage = `I found ${count} matches from your description. Here's what I've pre-selected:`;
       }
     } else if (context.optionCount > 0) {
-      contextMessage = `You have ${context.optionCount} device${context.optionCount !== 1 ? 's' : ''} in your solar system.`;
+      contextMessage = `You have ${context.optionCount} device${context.optionCount === 1 ? '' : 's'} in your solar system.`;
     }
 
     return { prompt, contextMessage, usedFallback: true };
