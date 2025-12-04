@@ -12,4 +12,11 @@ export class ChatMessageDto {
  */
 export class ChatRequestDto {
   messages: ChatMessageDto[];
+
+  /**
+   * Optional thread ID for state persistence across invocations.
+   * When provided, the LangGraph checkpointer will save and restore
+   * graph state, enabling multi-turn flows with user selections.
+   */
+  threadId?: string;
 }

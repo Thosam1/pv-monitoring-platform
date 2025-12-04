@@ -23,6 +23,10 @@ const logger = new Logger('FlowUtils');
 
 /**
  * Execute a tool and return the parsed result.
+ *
+ * NOTE: ToolsHttpClient.executeTool() returns the unwrapped result (just T),
+ * but flows expect ToolResponse<T> with { status, result } structure.
+ * This wrapper normalizes the response to the expected format.
  */
 export async function executeTool<T = unknown>(
   httpClient: ToolsHttpClient,
@@ -31,7 +35,24 @@ export async function executeTool<T = unknown>(
 ): Promise<ToolResponse<T>> {
   try {
     const result = await httpClient.executeTool(toolName, args);
-    return result as ToolResponse<T>;
+
+    // Check if the result is already a ToolResponse-shaped object (has status field)
+    // This handles cases where the mock or real API returns { status, result, ... }
+    if (
+      result &&
+      typeof result === 'object' &&
+      'status' in result &&
+      typeof (result as { status: unknown }).status === 'string'
+    ) {
+      // Return as-is, it's already a ToolResponse
+      return result as ToolResponse<T>;
+    }
+
+    // Wrap the unwrapped result from HTTP client in ToolResponse format
+    return {
+      status: 'ok',
+      result: result as T,
+    };
   } catch (error) {
     logger.error(`Tool ${toolName} failed: ${error}`);
     return {
@@ -184,24 +205,30 @@ export function getDateDaysAgo(days: number): string {
 
 /**
  * Format logger options for selection from list_loggers response.
+ * Handles both flat structure (earliestData/latestData) and nested (dataRange).
  */
 export function formatLoggerOptions(loggersResult: {
-  loggers?: Array<{
-    loggerId: string;
-    loggerType: string;
-    dataRange?: { earliestData: string; latestData: string };
-  }>;
+  loggers?: Array<
+    LoggerInfo & { dataRange?: { earliestData: string; latestData: string } }
+  >;
 }): Array<{ value: string; label: string; group: string; subtitle: string }> {
   const loggers = loggersResult?.loggers || [];
 
-  return loggers.map((l) => ({
-    value: l.loggerId,
-    label: l.loggerId,
-    group: l.loggerType,
-    subtitle: l.dataRange
-      ? `Data: ${l.dataRange.earliestData} to ${l.dataRange.latestData}`
-      : 'No data range available',
-  }));
+  return loggers.map((l) => {
+    // Support both flat structure and nested dataRange
+    const earliestData = l.earliestData || l.dataRange?.earliestData;
+    const latestData = l.latestData || l.dataRange?.latestData;
+
+    return {
+      value: l.loggerId,
+      label: l.loggerId,
+      group: l.loggerType,
+      subtitle:
+        earliestData && latestData
+          ? `Data: ${earliestData.split('T')[0]} to ${latestData.split('T')[0]}`
+          : 'No data range available',
+    };
+  });
 }
 
 /**
@@ -788,4 +815,230 @@ export function computeComparisonSeverity(
   } else {
     return 'large_difference';
   }
+}
+
+// ============================================================
+// Proactive Argument Collection Helpers
+// ============================================================
+
+/**
+ * Logger type categories for pattern matching.
+ */
+export const METEO_LOGGER_TYPES = ['mbmet', 'meteocontrol', 'plexlog'];
+export const INVERTER_LOGGER_TYPES = [
+  'goodwe',
+  'lti',
+  'integra',
+  'meier',
+  'smartdog',
+];
+
+/**
+ * Logger info structure for argument resolution.
+ */
+export interface LoggerInfo {
+  loggerId: string;
+  loggerType: string;
+  // Python returns these at top-level, not nested in dataRange
+  earliestData?: string;
+  latestData?: string;
+  recordCount?: number;
+}
+
+/**
+ * Parse natural language date range references.
+ * Converts phrases like "last 7 days", "last week", "past month" to date range.
+ *
+ * @param input - Natural language date range string
+ * @returns Date range object or null if not recognized
+ */
+export function parseNaturalDateRange(
+  input: string,
+): { start: string; end: string } | null {
+  const today = getLatestDateString();
+  const lowered = input.toLowerCase().trim();
+
+  // "last N days" pattern
+  const lastNDaysMatch = lowered.match(/last\s+(\d+)\s+days?/);
+  if (lastNDaysMatch) {
+    const days = parseInt(lastNDaysMatch[1], 10);
+    return { start: getDateDaysAgo(days), end: today };
+  }
+
+  // "past N days" pattern
+  const pastNDaysMatch = lowered.match(/past\s+(\d+)\s+days?/);
+  if (pastNDaysMatch) {
+    const days = parseInt(pastNDaysMatch[1], 10);
+    return { start: getDateDaysAgo(days), end: today };
+  }
+
+  // Common phrases
+  if (lowered.includes('last week') || lowered.includes('past week')) {
+    return { start: getDateDaysAgo(7), end: today };
+  }
+
+  if (lowered.includes('last month') || lowered.includes('past month')) {
+    return { start: getDateDaysAgo(30), end: today };
+  }
+
+  if (lowered.includes('last 2 weeks') || lowered.includes('past 2 weeks')) {
+    return { start: getDateDaysAgo(14), end: today };
+  }
+
+  return null;
+}
+
+/**
+ * Resolve logger IDs from name patterns using available loggers list.
+ * Matches logger name/type patterns to actual logger IDs.
+ *
+ * @param pattern - Logger name pattern (e.g., "GoodWe", "meteo")
+ * @param typePattern - Logger type pattern (e.g., "inverter", "meteo", "all")
+ * @param availableLoggers - List of available loggers
+ * @returns Array of matching logger IDs
+ */
+export function resolveLoggersByPattern(
+  pattern: string | undefined,
+  typePattern: 'inverter' | 'meteo' | 'all' | undefined,
+  availableLoggers: LoggerInfo[],
+): string[] {
+  if (!availableLoggers.length) return [];
+
+  const results: string[] = [];
+
+  for (const logger of availableLoggers) {
+    let matched = false;
+
+    // Match by name pattern (case-insensitive)
+    if (pattern) {
+      const lowerPattern = pattern.toLowerCase();
+      if (
+        logger.loggerType.toLowerCase().includes(lowerPattern) ||
+        logger.loggerId.toLowerCase().includes(lowerPattern)
+      ) {
+        matched = true;
+      }
+    }
+
+    // Match by type pattern
+    if (typePattern === 'all') {
+      matched = true;
+    } else if (
+      typePattern === 'meteo' &&
+      METEO_LOGGER_TYPES.includes(logger.loggerType)
+    ) {
+      matched = true;
+    } else if (
+      typePattern === 'inverter' &&
+      INVERTER_LOGGER_TYPES.includes(logger.loggerType)
+    ) {
+      matched = true;
+    }
+
+    if (matched) {
+      results.push(logger.loggerId);
+    }
+  }
+
+  return [...new Set(results)];
+}
+
+/**
+ * Check if a logger type is a meteo station.
+ *
+ * @param loggerType - Logger type string
+ * @returns True if the logger is a meteo station
+ */
+export function isMeteoLogger(loggerType: string): boolean {
+  return METEO_LOGGER_TYPES.includes(loggerType.toLowerCase());
+}
+
+/**
+ * Check if a logger type is an inverter.
+ *
+ * @param loggerType - Logger type string
+ * @returns True if the logger is an inverter
+ */
+export function isInverterLogger(loggerType: string): boolean {
+  return INVERTER_LOGGER_TYPES.includes(loggerType.toLowerCase());
+}
+
+/**
+ * Enhanced selection arguments with pre-fill support.
+ */
+export interface EnhancedSelectionConfig {
+  prompt: string;
+  contextMessage?: string;
+  options: Array<{
+    value: string;
+    label: string;
+    group?: string;
+    subtitle?: string;
+  }>;
+  selectionType: 'single' | 'multiple';
+  inputType: 'dropdown' | 'date' | 'date-range';
+  preSelectedValues?: string[];
+  preFilledDateRange?: { start: string; end: string };
+  requireConfirmation?: boolean;
+  minDate?: string;
+  maxDate?: string;
+  /** Minimum number of selections required (for multiple selection) */
+  minCount?: number;
+  /** Maximum number of selections allowed (for multiple selection) */
+  maxCount?: number;
+  flowHint?: {
+    expectedNext: string;
+    skipOption?: { label: string; action: string };
+  };
+}
+
+/**
+ * Build enhanced selection args with pre-fill support.
+ * Extends the basic createSelectionArgs with context message and pre-selection.
+ *
+ * @param config - Enhanced selection configuration
+ * @returns Selection args object for request_user_selection tool
+ */
+export function createEnhancedSelectionArgs(
+  config: EnhancedSelectionConfig,
+): Record<string, unknown> {
+  return {
+    prompt: config.prompt,
+    contextMessage: config.contextMessage,
+    options: config.options,
+    selectionType: config.selectionType,
+    inputType: config.inputType,
+    preSelectedValues: config.preSelectedValues,
+    preFilledDateRange: config.preFilledDateRange,
+    requireConfirmation:
+      config.requireConfirmation ?? !!config.preSelectedValues?.length,
+    minDate: config.minDate,
+    maxDate: config.maxDate,
+    minCount: config.minCount,
+    maxCount: config.maxCount,
+    flowHint: config.flowHint,
+  };
+}
+
+/**
+ * Get the overall data range from a list of loggers.
+ * Returns the earliest start and latest end across all loggers.
+ *
+ * @param loggers - List of loggers with optional data ranges
+ * @returns Overall data range or undefined if no ranges available
+ */
+export function getOverallDataRange(
+  loggers: LoggerInfo[],
+): { start: string; end: string } | undefined {
+  const dates = loggers
+    .filter((l) => l.earliestData && l.latestData)
+    .flatMap((l) => [l.earliestData as string, l.latestData as string]);
+
+  if (dates.length === 0) return undefined;
+
+  const sorted = dates.sort();
+  return {
+    start: sorted[0],
+    end: sorted[sorted.length - 1],
+  };
 }

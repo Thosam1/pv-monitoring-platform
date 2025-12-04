@@ -1164,7 +1164,11 @@ describe('FlowUtils', () => {
             },
           },
         };
-        const message = createToolCallMessage('call_nested', 'test_tool', nested);
+        const message = createToolCallMessage(
+          'call_nested',
+          'test_tool',
+          nested,
+        );
 
         const args = message.tool_calls?.[0]?.args;
         expect(args?.level1.level2.value).toBe('deep');
@@ -1231,7 +1235,11 @@ describe('FlowUtils', () => {
       });
 
       it('should handle empty objects', () => {
-        const message = createToolCallMessage('call_empty_obj', 'list_loggers', {});
+        const message = createToolCallMessage(
+          'call_empty_obj',
+          'list_loggers',
+          {},
+        );
 
         const args = message.tool_calls?.[0]?.args;
         expect(args).toEqual({});

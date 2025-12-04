@@ -230,11 +230,14 @@ describe('AiController', () => {
 
       await controller.chat(body, mockResponse as never);
 
-      expect(mockLanggraphService.chat).toHaveBeenCalledWith([
-        { role: 'user', content: 'First message' },
-        { role: 'assistant', content: 'Response' },
-        { role: 'user', content: 'Second message' },
-      ]);
+      expect(mockLanggraphService.chat).toHaveBeenCalledWith(
+        [
+          { role: 'user', content: 'First message' },
+          { role: 'assistant', content: 'Response' },
+          { role: 'user', content: 'Second message' },
+        ],
+        undefined, // threadId is optional
+      );
     });
 
     it('should handle tool call events', async () => {

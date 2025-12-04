@@ -37,7 +37,7 @@ export class AiController {
     @Res() res: Response,
   ): Promise<void> {
     this.logger.log(
-      `Chat request received with ${body.messages.length} messages`,
+      `Chat request received with ${body.messages.length} messages${body.threadId ? `, threadId: ${body.threadId}` : ''}`,
     );
 
     // Validate that AI service is ready
@@ -62,7 +62,8 @@ export class AiController {
       res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
       // Stream the response using LangGraph's async generator
-      const stream = this.langgraphService.chat(messages);
+      // Pass threadId for checkpointing (enables state persistence for multi-turn flows)
+      const stream = this.langgraphService.chat(messages, body.threadId);
 
       for await (const event of stream) {
         // Format events to match the frontend's expected SSE format
