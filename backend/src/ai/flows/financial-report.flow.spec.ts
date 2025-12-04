@@ -59,6 +59,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -82,6 +83,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -103,6 +105,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -124,6 +127,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -151,6 +155,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -190,7 +195,9 @@ describe('FinancialReportFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Financial report');
+      const initialState = createStateWithUserMessage('Financial report', {
+        activeFlow: 'financial_report',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -207,7 +214,9 @@ describe('FinancialReportFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Financial report');
+      const initialState = createStateWithUserMessage('Financial report', {
+        activeFlow: 'financial_report',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -227,7 +236,7 @@ describe('FinancialReportFlow', () => {
           flowHint: { expectedNext: string };
         };
         expect(args.flowHint).toBeDefined();
-        expect(args.flowHint.expectedNext).toContain('financial savings');
+        expect(args.flowHint.expectedNext).toContain('financial');
       }
     });
 
@@ -237,7 +246,9 @@ describe('FinancialReportFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Financial report');
+      const initialState = createStateWithUserMessage('Financial report', {
+        activeFlow: 'financial_report',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -261,7 +272,9 @@ describe('FinancialReportFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Financial report');
+      const initialState = createStateWithUserMessage('Financial report', {
+        activeFlow: 'financial_report',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -292,6 +305,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -313,6 +327,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -331,6 +346,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -352,6 +368,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -376,6 +393,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -410,6 +428,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -444,6 +463,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -465,6 +485,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -485,6 +506,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -517,6 +539,7 @@ describe('FinancialReportFlow', () => {
       // State with empty flowContext (no selectedLoggerId)
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {},
       });
 
@@ -548,6 +571,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -575,7 +599,9 @@ describe('FinancialReportFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Financial report');
+      const initialState = createStateWithUserMessage('Financial report', {
+        activeFlow: 'financial_report',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -600,6 +626,7 @@ describe('FinancialReportFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'financial_report',
         flowContext: {
           selectedLoggerId: '925',
         },

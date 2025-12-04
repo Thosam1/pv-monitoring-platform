@@ -23,6 +23,7 @@ export {
   createTextWithToolMessage,
   createClassificationResponse,
   createErrorModel,
+  type ClassificationResponseOptions,
 } from './fake-model';
 
 // Mock tool responses

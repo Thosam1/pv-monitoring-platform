@@ -203,6 +203,11 @@ export const MOCK_COMPARE_LOGGERS = {
       energyDifference: 23.2,
       efficiencyDifference: 4.3,
     },
+    // Summary stats for computeBestPerformer/computeWorstPerformer
+    summary: {
+      '925': { average: 1695, peak: 5200, total: 285.3 },
+      '926': { average: 1557, peak: 4800, total: 262.1 },
+    },
   },
 };
 

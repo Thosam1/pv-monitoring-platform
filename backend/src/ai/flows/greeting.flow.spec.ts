@@ -10,63 +10,56 @@ import { AIMessage } from '@langchain/core/messages';
 import { isGreeting } from '../nodes/router.node';
 
 // Mock fleet overview response matching greeting flow's expected structure
+// Note: These are RAW results (not wrapped in ToolResponse) because
+// flow-utils.executeTool wraps them in { status: 'ok', result: ... }
 const MOCK_GREETING_FLEET = {
-  status: 'ok',
-  result: {
-    site: {
-      totalLoggers: 3,
-      onlineLoggers: 3,
-      offlineLoggers: [],
-      percentOnline: 100,
-    },
-    production: {
-      currentPowerWatts: 15600,
-      todayEnergyKwh: 85.2,
-    },
-    health: {
-      overallScore: 95,
-      status: 'healthy' as const,
-    },
+  site: {
+    totalLoggers: 3,
+    onlineLoggers: 3,
+    offlineLoggers: [],
+    percentOnline: 100,
+  },
+  production: {
+    currentPowerWatts: 15600,
+    todayEnergyKwh: 85.2,
+  },
+  health: {
+    overallScore: 95,
+    status: 'healthy' as const,
   },
 };
 
 const MOCK_GREETING_FLEET_WARNING = {
-  status: 'ok',
-  result: {
-    site: {
-      totalLoggers: 3,
-      onlineLoggers: 2,
-      offlineLoggers: ['926'],
-      percentOnline: 67,
-    },
-    production: {
-      currentPowerWatts: 10400,
-      todayEnergyKwh: 55.2,
-    },
-    health: {
-      overallScore: 72,
-      status: 'warning' as const,
-    },
+  site: {
+    totalLoggers: 3,
+    onlineLoggers: 2,
+    offlineLoggers: ['926'],
+    percentOnline: 67,
+  },
+  production: {
+    currentPowerWatts: 10400,
+    todayEnergyKwh: 55.2,
+  },
+  health: {
+    overallScore: 72,
+    status: 'warning' as const,
   },
 };
 
 const MOCK_GREETING_FLEET_EMPTY = {
-  status: 'ok',
-  result: {
-    site: {
-      totalLoggers: 0,
-      onlineLoggers: 0,
-      offlineLoggers: [],
-      percentOnline: 0,
-    },
-    production: {
-      currentPowerWatts: 0,
-      todayEnergyKwh: 0,
-    },
-    health: {
-      overallScore: 0,
-      status: 'healthy' as const,
-    },
+  site: {
+    totalLoggers: 0,
+    onlineLoggers: 0,
+    offlineLoggers: [],
+    percentOnline: 0,
+  },
+  production: {
+    currentPowerWatts: 0,
+    todayEnergyKwh: 0,
+  },
+  health: {
+    overallScore: 0,
+    status: 'healthy' as const,
   },
 };
 
@@ -262,7 +255,9 @@ describe('GreetingFlow', () => {
       const content = aiMessages[0].content as string;
 
       // Should have a time-based greeting (either "Good morning" or "Morning greetings")
-      expect(content).toMatch(/(Good (morning|afternoon|evening)|(Morning|Afternoon|Evening) greetings)/i);
+      expect(content).toMatch(
+        /(Good (morning|afternoon|evening)|(Morning|Afternoon|Evening) greetings)/i,
+      );
     });
 
     it('should handle invalid timezone gracefully', async () => {

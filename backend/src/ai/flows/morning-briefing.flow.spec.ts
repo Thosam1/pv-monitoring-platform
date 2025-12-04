@@ -12,39 +12,49 @@ import {
 } from '../test-utils';
 import { AIMessage } from '@langchain/core/messages';
 
-// Mock fleet overview with all devices online
+// Mock fleet overview with all devices online (matches Python ai/tools/fleet.py structure)
+// NOTE: flow-utils.executeTool wraps the result, so we return the UNWRAPPED data here
 const MOCK_FLEET_HEALTHY = {
-  status: 'ok',
-  result: {
-    status: { totalPower: 15000, totalEnergy: 85.2, percentOnline: 100 },
-    devices: { total: 3, online: 3, offline: 0 },
-    offlineLoggers: [],
+  status: {
+    totalLoggers: 3,
+    activeLoggers: 3,
+    percentOnline: 100,
+    fleetHealth: 'Healthy',
   },
+  production: {
+    currentTotalPowerWatts: 15000,
+    todayTotalEnergyKwh: 85.2,
+    siteAvgIrradiance: 800,
+  },
+  offlineLoggers: [],
 };
 
 // Mock fleet overview with some devices offline
 const MOCK_FLEET_UNHEALTHY = {
-  status: 'ok',
-  result: {
-    status: { totalPower: 10000, totalEnergy: 65.0, percentOnline: 66.7 },
-    devices: { total: 3, online: 2, offline: 1 },
-    offlineLoggers: ['926'],
+  status: {
+    totalLoggers: 3,
+    activeLoggers: 2,
+    percentOnline: 66.7,
+    fleetHealth: 'Degraded',
   },
+  production: {
+    currentTotalPowerWatts: 10000,
+    todayTotalEnergyKwh: 65.0,
+    siteAvgIrradiance: 750,
+  },
+  offlineLoggers: ['926'],
 };
 
-// Mock diagnosis result
+// Mock diagnosis result (unwrapped - flow-utils.executeTool wraps it)
 const MOCK_DIAGNOSIS = {
-  status: 'ok',
-  result: {
-    errors: [
-      {
-        code: 'E201',
-        description: 'Grid voltage out of range',
-        count: 3,
-      },
-    ],
-    summary: 'Found 1 error type with 3 occurrences',
-  },
+  errors: [
+    {
+      code: 'E201',
+      description: 'Grid voltage out of range',
+      count: 3,
+    },
+  ],
+  summary: 'Found 1 error type with 3 occurrences',
 };
 
 describe('MorningBriefingFlow', () => {
@@ -139,10 +149,11 @@ describe('MorningBriefingFlow', () => {
 
       const result = await graph.invoke(initialState);
 
-      // Check for render_ui_component in pending actions
-      const renderAction = result.pendingUiActions?.find(
-        (action: { toolName: string }) =>
-          action.toolName === 'render_ui_component',
+      // Check AIMessage.tool_calls for render_ui_component
+      const lastMessage = result.messages[result.messages.length - 1];
+      const toolCalls = (lastMessage as AIMessage).tool_calls || [];
+      const renderAction = toolCalls.find(
+        (tc: { name: string }) => tc.name === 'render_ui_component',
       );
 
       expect(renderAction).toBeDefined();
@@ -163,16 +174,20 @@ describe('MorningBriefingFlow', () => {
 
       const result = await graph.invoke(initialState);
 
-      const renderAction = result.pendingUiActions?.find(
-        (action: { toolName: string }) =>
-          action.toolName === 'render_ui_component',
+      // Check AIMessage.tool_calls for render_ui_component
+      const lastMessage = result.messages[result.messages.length - 1];
+      const toolCalls = (lastMessage as AIMessage).tool_calls || [];
+      const renderAction = toolCalls.find(
+        (tc: { name: string }) => tc.name === 'render_ui_component',
       );
 
+      expect(renderAction).toBeDefined();
       if (renderAction) {
         const args = renderAction.args as {
           props: { totalPower: number; percentOnline: number };
         };
-        expect(args.props.totalPower).toBe(15000);
+        // totalPower is now in kW (15000W / 1000 = 15kW)
+        expect(args.props.totalPower).toBe(15);
         expect(args.props.percentOnline).toBe(100);
       }
     });
@@ -187,11 +202,14 @@ describe('MorningBriefingFlow', () => {
 
       const result = await graph.invoke(initialState);
 
-      const renderAction = result.pendingUiActions?.find(
-        (action: { toolName: string }) =>
-          action.toolName === 'render_ui_component',
+      // Check AIMessage.tool_calls for render_ui_component
+      const lastMessage = result.messages[result.messages.length - 1];
+      const toolCalls = (lastMessage as AIMessage).tool_calls || [];
+      const renderAction = toolCalls.find(
+        (tc: { name: string }) => tc.name === 'render_ui_component',
       );
 
+      expect(renderAction).toBeDefined();
       if (renderAction) {
         const args = renderAction.args as {
           suggestions: Array<{ label: string }>;
@@ -229,7 +247,8 @@ describe('MorningBriefingFlow', () => {
       expect(result.flowContext?.toolResults?.hasIssues).toBe(true);
     });
 
-    it('should call diagnose_error_codes for offline logger', async () => {
+    it('should auto-call diagnose_error_codes when offline loggers exist', async () => {
+      // Diagnosis is now auto-triggered for proactive behavior when offline devices exist
       const graph = createMorningBriefingFlow(
         mockToolsClient as never,
         fakeModel as never,
@@ -239,9 +258,10 @@ describe('MorningBriefingFlow', () => {
 
       await graph.invoke(initialState);
 
+      // Should call diagnose_error_codes automatically for offline loggers
       expect(mockToolsClient.executeTool).toHaveBeenCalledWith(
         'diagnose_error_codes',
-        expect.objectContaining({ logger_id: '926' }),
+        { logger_id: '926', days: 7 },
       );
     });
 
@@ -255,11 +275,14 @@ describe('MorningBriefingFlow', () => {
 
       const result = await graph.invoke(initialState);
 
-      const renderAction = result.pendingUiActions?.find(
-        (action: { toolName: string }) =>
-          action.toolName === 'render_ui_component',
+      // Check AIMessage.tool_calls for render_ui_component
+      const lastMessage = result.messages[result.messages.length - 1];
+      const toolCalls = (lastMessage as AIMessage).tool_calls || [];
+      const renderAction = toolCalls.find(
+        (tc: { name: string }) => tc.name === 'render_ui_component',
       );
 
+      expect(renderAction).toBeDefined();
       if (renderAction) {
         const args = renderAction.args as {
           props: { alerts: Array<{ type: string; message: string }> };
@@ -280,11 +303,14 @@ describe('MorningBriefingFlow', () => {
 
       const result = await graph.invoke(initialState);
 
-      const renderAction = result.pendingUiActions?.find(
-        (action: { toolName: string }) =>
-          action.toolName === 'render_ui_component',
+      // Check AIMessage.tool_calls for render_ui_component
+      const lastMessage = result.messages[result.messages.length - 1];
+      const toolCalls = (lastMessage as AIMessage).tool_calls || [];
+      const renderAction = toolCalls.find(
+        (tc: { name: string }) => tc.name === 'render_ui_component',
       );
 
+      expect(renderAction).toBeDefined();
       if (renderAction) {
         const args = renderAction.args as {
           suggestions: Array<{ label: string }>;
@@ -299,7 +325,8 @@ describe('MorningBriefingFlow', () => {
       }
     });
 
-    it('should store diagnosis result in context', async () => {
+    it('should store diagnosis result when offline loggers exist', async () => {
+      // Diagnosis is auto-triggered for proactive behavior
       const graph = createMorningBriefingFlow(
         mockToolsClient as never,
         fakeModel as never,
@@ -309,7 +336,9 @@ describe('MorningBriefingFlow', () => {
 
       const result = await graph.invoke(initialState);
 
+      // Diagnosis should be stored when offline devices trigger auto-diagnosis
       expect(result.flowContext?.toolResults?.diagnosis).toBeDefined();
+      expect(result.flowContext?.toolResults?.diagnosis?.status).toBe('ok');
     });
   });
 
@@ -372,10 +401,16 @@ describe('MorningBriefingFlow', () => {
     it('should handle empty fleet response', async () => {
       mockToolsClient = createMockToolsClient({
         get_fleet_overview: {
-          status: 'ok',
-          result: {
-            status: { totalPower: 0, totalEnergy: 0, percentOnline: 100 },
-            devices: { total: 0, online: 0, offline: 0 },
+          status: {
+            totalLoggers: 0,
+            activeLoggers: 0,
+            percentOnline: 100,
+            fleetHealth: 'Healthy',
+          },
+          production: {
+            currentTotalPowerWatts: 0,
+            todayTotalEnergyKwh: 0,
+            siteAvgIrradiance: 0,
           },
         },
       });
@@ -393,11 +428,10 @@ describe('MorningBriefingFlow', () => {
     });
 
     it('should handle tool execution error', async () => {
+      // When tool errors, executeTool throws and catches, returning error response
+      // Mock returns null to trigger error handling
       mockToolsClient = createMockToolsClient({
-        get_fleet_overview: {
-          status: 'error',
-          message: 'Database connection failed',
-        },
+        get_fleet_overview: null,
       });
 
       const graph = createMorningBriefingFlow(
@@ -415,12 +449,18 @@ describe('MorningBriefingFlow', () => {
     it('should handle missing offline loggers array', async () => {
       mockToolsClient = createMockToolsClient({
         get_fleet_overview: {
-          status: 'ok',
-          result: {
-            status: { totalPower: 10000, totalEnergy: 50, percentOnline: 75 },
-            devices: { total: 4, online: 3, offline: 1 },
-            // offlineLoggers is undefined
+          status: {
+            totalLoggers: 4,
+            activeLoggers: 3,
+            percentOnline: 75,
+            fleetHealth: 'Degraded',
           },
+          production: {
+            currentTotalPowerWatts: 10000,
+            todayTotalEnergyKwh: 50,
+            siteAvgIrradiance: 700,
+          },
+          // offlineLoggers is undefined
         },
       });
 
@@ -438,9 +478,9 @@ describe('MorningBriefingFlow', () => {
   });
 
   describe('pending UI actions', () => {
-    it('should include render_ui_component in final pendingUiActions', async () => {
-      // Note: get_fleet_overview pendingUiActions is overwritten by later nodes
-      // The final pendingUiActions reflects the last node's actions
+    it('should include render_ui_component in AIMessage tool_calls', async () => {
+      // Note: render_ui_component is now in AIMessage.tool_calls (not pendingUiActions)
+      // This avoids duplicate messages in the frontend
       const graph = createMorningBriefingFlow(
         mockToolsClient as never,
         fakeModel as never,
@@ -450,10 +490,11 @@ describe('MorningBriefingFlow', () => {
 
       const result = await graph.invoke(initialState);
 
-      // The final pendingUiActions comes from render_briefing node
-      const hasRenderAction = result.pendingUiActions?.some(
-        (action: { toolName: string }) =>
-          action.toolName === 'render_ui_component',
+      // The render_ui_component is embedded in the AIMessage's tool_calls
+      const lastMessage = result.messages[result.messages.length - 1];
+      const toolCalls = (lastMessage as AIMessage).tool_calls || [];
+      const hasRenderAction = toolCalls.some(
+        (tc: { name: string }) => tc.name === 'render_ui_component',
       );
       expect(hasRenderAction).toBe(true);
     });
@@ -475,7 +516,7 @@ describe('MorningBriefingFlow', () => {
       );
     });
 
-    it('should have tool call IDs in pendingUiActions', async () => {
+    it('should have tool call IDs in AIMessage tool_calls', async () => {
       const graph = createMorningBriefingFlow(
         mockToolsClient as never,
         fakeModel as never,
@@ -485,12 +526,14 @@ describe('MorningBriefingFlow', () => {
 
       const result = await graph.invoke(initialState);
 
-      const renderAction = result.pendingUiActions?.find(
-        (action: { toolName: string }) =>
-          action.toolName === 'render_ui_component',
+      // Check AIMessage.tool_calls for render_ui_component
+      const lastMessage = result.messages[result.messages.length - 1];
+      const toolCalls = (lastMessage as AIMessage).tool_calls || [];
+      const renderAction = toolCalls.find(
+        (tc: { name: string }) => tc.name === 'render_ui_component',
       );
-      expect(renderAction?.toolCallId).toBeDefined();
-      expect(renderAction?.toolCallId).toMatch(/^tool_/);
+      expect(renderAction?.id).toBeDefined();
+      expect(renderAction?.id).toMatch(/^tool_/);
     });
   });
 });

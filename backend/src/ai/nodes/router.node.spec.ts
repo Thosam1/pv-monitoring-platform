@@ -716,3 +716,266 @@ describe('Integration: Router with sample messages', () => {
     },
   );
 });
+
+/**
+ * Smart Selection Tests
+ *
+ * Tests the LLM-based selection handling that replaced the regex bypass.
+ * These tests verify that:
+ * 1. Valid selections are recognized via isSelectionResponse
+ * 2. Intent changes are properly handled (user says "Actually, show me savings")
+ * 3. Cancellations are recognized (user says "Cancel" or "Never mind")
+ * 4. The flow resumes correctly after selection
+ */
+describe('Smart Selection Handling', () => {
+  describe('valid selection responses', () => {
+    it('should process single logger selection when isSelectionResponse=true', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('health_check', 0.95, undefined, {
+          isSelectionResponse: true,
+          selectedValue: '925',
+        }),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Check health'],
+        ['assistant', 'Which logger would you like me to check?'],
+        ['user', '925'],
+      ]);
+      state.activeFlow = 'health_check';
+      state.flowContext = {
+        waitingForUserInput: true,
+        currentPromptArg: 'loggerId',
+      };
+
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.activeFlow).toBe('health_check');
+      expect(result.flowContext?.selectedLoggerId).toBe('925');
+      expect(result.flowContext?.waitingForUserInput).toBe(false);
+      expect(result.flowStep).toBe(1); // Advances past check_args
+    });
+
+    it('should process multiple logger selection when isSelectionResponse=true', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('performance_audit', 0.95, undefined, {
+          isSelectionResponse: true,
+          selectedValue: ['925', '926', '927'],
+        }),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Compare my inverters'],
+        ['assistant', 'Select 2-5 loggers to compare'],
+        ['user', '925, 926, 927'],
+      ]);
+      state.activeFlow = 'performance_audit';
+      state.flowContext = {
+        waitingForUserInput: true,
+        currentPromptArg: 'loggerIds',
+      };
+
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.activeFlow).toBe('performance_audit');
+      expect(result.flowContext?.selectedLoggerIds).toEqual([
+        '925',
+        '926',
+        '927',
+      ]);
+      expect(result.flowStep).toBe(1);
+    });
+
+    it('should process "I selected: X" format', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('financial_report', 0.95, undefined, {
+          isSelectionResponse: true,
+          selectedValue: '925',
+        }),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Show me savings'],
+        ['assistant', 'Which system should I calculate savings for?'],
+        ['user', 'I selected: 925'],
+      ]);
+      state.activeFlow = 'financial_report';
+      state.flowContext = {
+        waitingForUserInput: true,
+        currentPromptArg: 'loggerId',
+      };
+
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.flowContext?.selectedLoggerId).toBe('925');
+    });
+  });
+
+  describe('intent change during selection', () => {
+    it('should route to new flow when user changes intent', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('financial_report', 0.9, undefined, {
+          isSelectionResponse: false,
+        }),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Check health'],
+        ['assistant', 'Which logger would you like me to check?'],
+        ['user', 'Actually, show me my savings instead'],
+      ]);
+      state.activeFlow = 'health_check';
+      state.flowContext = {
+        waitingForUserInput: true,
+        currentPromptArg: 'loggerId',
+      };
+
+      const result = await routerNode(state, fakeModel as never);
+
+      // Should route to new flow instead of processing as selection
+      expect(result.activeFlow).toBe('financial_report');
+      expect(result.flowStep).toBe(0); // New flow starts at step 0
+    });
+
+    it('should handle "never mind" as cancellation', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('free_chat', 0.85, undefined, {
+          isSelectionResponse: false,
+        }),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Compare inverters'],
+        ['assistant', 'Select 2-5 loggers to compare'],
+        ['user', 'Never mind'],
+      ]);
+      state.activeFlow = 'performance_audit';
+      state.flowContext = {
+        waitingForUserInput: true,
+        currentPromptArg: 'loggerIds',
+      };
+
+      const result = await routerNode(state, fakeModel as never);
+
+      // Should recognize cancellation and route to free_chat
+      expect(result.activeFlow).toBe('free_chat');
+    });
+
+    it('should handle "help" as help request', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('free_chat', 0.8, undefined, {
+          isSelectionResponse: false,
+        }),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Check health'],
+        ['assistant', 'Which logger would you like me to check?'],
+        ['user', 'Help me choose'],
+      ]);
+      state.activeFlow = 'health_check';
+      state.flowContext = {
+        waitingForUserInput: true,
+        currentPromptArg: 'loggerId',
+      };
+
+      const result = await routerNode(state, fakeModel as never);
+
+      // Should route to free_chat for help
+      expect(result.activeFlow).toBe('free_chat');
+    });
+  });
+
+  describe('date selection', () => {
+    it('should process date selection when isSelectionResponse=true', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('free_chat', 0.95, undefined, {
+          isSelectionResponse: true,
+          selectedValue: '2025-01-15',
+        }),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Show power curve'],
+        ['assistant', 'What date should I analyze?'],
+        ['user', '2025-01-15'],
+      ]);
+      state.activeFlow = 'free_chat';
+      state.flowContext = {
+        waitingForUserInput: true,
+        currentPromptArg: 'date',
+      };
+
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.flowContext?.selectedDate).toBe('2025-01-15');
+    });
+
+    it('should process date range selection', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('financial_report', 0.95, undefined, {
+          isSelectionResponse: true,
+          selectedValue: ['2025-01-01', '2025-01-31'],
+        }),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Monthly savings report'],
+        ['assistant', 'What time period should I cover?'],
+        ['user', 'January 2025'],
+      ]);
+      state.activeFlow = 'financial_report';
+      state.flowContext = {
+        waitingForUserInput: true,
+        currentPromptArg: 'dateRange',
+      };
+
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.flowContext?.dateRange).toEqual({
+        start: '2025-01-01',
+        end: '2025-01-31',
+      });
+    });
+  });
+
+  describe('context-aware prompt injection', () => {
+    it('should use standard prompt when not waiting for input', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('health_check', 0.9),
+      ]);
+
+      const state = createStateWithUserMessage('Check my system');
+      // No waitingForUserInput set
+
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.activeFlow).toBe('health_check');
+    });
+
+    it('should preserve recoveryAttempts when processing selection', async () => {
+      const fakeModel = createFakeModel([
+        createClassificationResponse('health_check', 0.95, undefined, {
+          isSelectionResponse: true,
+          selectedValue: '925',
+        }),
+      ]);
+
+      const state = createStateWithHistory([
+        ['user', 'Check health'],
+        ['assistant', 'Which logger?'],
+        ['user', '925'],
+      ]);
+      state.activeFlow = 'health_check';
+      state.flowContext = {
+        waitingForUserInput: true,
+        currentPromptArg: 'loggerId',
+      };
+      state.recoveryAttempts = 1;
+
+      const result = await routerNode(state, fakeModel as never);
+
+      expect(result.recoveryAttempts).toBe(1); // Preserved from previous state
+    });
+  });
+});

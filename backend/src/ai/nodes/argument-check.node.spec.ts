@@ -8,7 +8,7 @@ import { AIMessage } from '@langchain/core/messages';
 import { argumentCheckNode, hasRequiredArgs } from './argument-check.node';
 import {
   createTestState,
-  createStateWithUserMessage,
+  createFakeModel,
   SAMPLE_LOGGERS,
 } from '../test-utils';
 import { ExplicitFlowState, FlowType } from '../types/flow-state';
@@ -27,9 +27,14 @@ describe('ArgumentCheckNode', () => {
       : undefined,
   }));
 
+  // Create a mock model for testing - uses fallback prompts
+  const mockModel = createFakeModel([
+    new AIMessage({ content: 'Which of your solar systems should I look at?' }),
+  ]);
+
   describe('argumentCheckNode', () => {
     describe('health_check flow arguments', () => {
-      it('should return flowStep=1 when loggerId is provided', () => {
+      it('should return flowStep=1 when loggerId is provided', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {
@@ -37,20 +42,28 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(1);
         expect(result.messages).toBeUndefined();
         expect(result.pendingUiActions).toBeUndefined();
       });
 
-      it('should generate selection prompt when loggerId is missing', () => {
+      it('should generate selection prompt when loggerId is missing', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(0);
         expect(result.messages).toHaveLength(1);
@@ -67,7 +80,7 @@ describe('ArgumentCheckNode', () => {
         );
       });
 
-      it('should apply last_7_days default for optional dateRange', () => {
+      it('should apply last_7_days default for optional dateRange', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {
@@ -76,7 +89,11 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(1);
         expect(result.flowContext?.dateRange).toBeDefined();
@@ -88,7 +105,7 @@ describe('ArgumentCheckNode', () => {
         );
       });
 
-      it('should preserve existing dateRange if already provided', () => {
+      it('should preserve existing dateRange if already provided', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {
@@ -97,7 +114,11 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(1);
         expect(result.flowContext?.dateRange).toEqual({
@@ -108,7 +129,7 @@ describe('ArgumentCheckNode', () => {
     });
 
     describe('performance_audit flow arguments', () => {
-      it('should require at least 2 loggerIds', () => {
+      it('should require at least 2 loggerIds', async () => {
         const state = createTestState({
           activeFlow: 'performance_audit',
           flowContext: {
@@ -116,14 +137,18 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(0);
         expect(result.messages).toHaveLength(1);
         expect(result.pendingUiActions).toHaveLength(1);
       });
 
-      it('should accept exactly 2 loggerIds', () => {
+      it('should accept exactly 2 loggerIds', async () => {
         const state = createTestState({
           activeFlow: 'performance_audit',
           flowContext: {
@@ -131,13 +156,17 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(1);
         expect(result.messages).toBeUndefined();
       });
 
-      it('should accept 3-5 loggerIds', () => {
+      it('should accept 3-5 loggerIds', async () => {
         const state = createTestState({
           activeFlow: 'performance_audit',
           flowContext: {
@@ -145,18 +174,26 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(1);
       });
 
-      it('should prompt for loggerIds when none provided', () => {
+      it('should prompt for loggerIds when none provided', async () => {
         const state = createTestState({
           activeFlow: 'performance_audit',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(0);
         expect(result.pendingUiActions).toHaveLength(1);
@@ -168,7 +205,7 @@ describe('ArgumentCheckNode', () => {
         expect(args.selectionType).toBe('multiple');
       });
 
-      it('should apply latest_date default for optional date', () => {
+      it('should apply latest_date default for optional date', async () => {
         const state = createTestState({
           activeFlow: 'performance_audit',
           flowContext: {
@@ -177,7 +214,11 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(1);
         expect(result.flowContext?.selectedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -185,19 +226,23 @@ describe('ArgumentCheckNode', () => {
     });
 
     describe('financial_report flow arguments', () => {
-      it('should require loggerId', () => {
+      it('should require loggerId', async () => {
         const state = createTestState({
           activeFlow: 'financial_report',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(0);
         expect(result.pendingUiActions).toHaveLength(1);
       });
 
-      it('should proceed when loggerId is provided', () => {
+      it('should proceed when loggerId is provided', async () => {
         const state = createTestState({
           activeFlow: 'financial_report',
           flowContext: {
@@ -205,12 +250,16 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(1);
       });
 
-      it('should apply last_7_days default for optional dateRange', () => {
+      it('should apply last_7_days default for optional dateRange', async () => {
         const state = createTestState({
           activeFlow: 'financial_report',
           flowContext: {
@@ -218,51 +267,67 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowContext?.dateRange).toBeDefined();
       });
     });
 
     describe('flows without argument requirements', () => {
-      it('should return flowStep=1 for morning_briefing', () => {
+      it('should return flowStep=1 for morning_briefing', async () => {
         const state = createTestState({
           activeFlow: 'morning_briefing',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(1);
         expect(result.messages).toBeUndefined();
         expect(result.pendingUiActions).toBeUndefined();
       });
 
-      it('should return flowStep=1 for greeting', () => {
+      it('should return flowStep=1 for greeting', async () => {
         const state = createTestState({
           activeFlow: 'greeting',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(1);
       });
 
-      it('should return flowStep=1 for free_chat', () => {
+      it('should return flowStep=1 for free_chat', async () => {
         const state = createTestState({
           activeFlow: 'free_chat',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowStep).toBe(1);
       });
     });
 
     describe('waitingForUserInput flag handling', () => {
-      it('should preserve state when waitingForUserInput is true', () => {
+      it('should preserve state when waitingForUserInput is true', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {
@@ -278,7 +343,11 @@ describe('ArgumentCheckNode', () => {
           ],
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         // Should NOT generate a new prompt
         expect(result.messages).toBeUndefined();
@@ -287,7 +356,7 @@ describe('ArgumentCheckNode', () => {
         expect(result.flowContext?.currentPromptArg).toBe('loggerId');
       });
 
-      it('should NOT re-prompt when already waiting for input', () => {
+      it('should NOT re-prompt when already waiting for input', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {
@@ -296,20 +365,28 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         // Should return preserved state without new messages
         expect(result.messages).toBeUndefined();
         expect(result.pendingUiActions).toBeDefined();
       });
 
-      it('should set waitingForUserInput when generating prompt', () => {
+      it('should set waitingForUserInput when generating prompt', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result.flowContext?.waitingForUserInput).toBe(true);
         expect(result.flowContext?.currentPromptArg).toBe('loggerId');
@@ -317,7 +394,7 @@ describe('ArgumentCheckNode', () => {
     });
 
     describe('context-aware prompt generation', () => {
-      it('should include contextMessage when extractedLoggerName detected', () => {
+      it('should include contextMessage when extractedLoggerName detected', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {
@@ -325,14 +402,19 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         const aiMessage = result.messages![0] as AIMessage;
         expect(typeof aiMessage.content).toBe('string');
-        expect(aiMessage.content).toContain('found');
+        // Now uses NarrativeEngine fallback prompts which mention the matched name
+        expect(aiMessage.content).toContain('goodwe');
       });
 
-      it('should include preSelectedValues when pattern resolves to loggers', () => {
+      it('should include preSelectedValues when pattern resolves to loggers', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {
@@ -340,7 +422,11 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         const args = result.pendingUiActions![0].args as Record<
           string,
@@ -350,39 +436,55 @@ describe('ArgumentCheckNode', () => {
         expect(args.preSelectedValues).toContain('925');
       });
 
-      it('should add flow-specific context for health_check', () => {
+      it('should generate persona-aware prompt for health_check', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         const aiMessage = result.messages![0] as AIMessage;
         expect(typeof aiMessage.content).toBe('string');
-        expect(aiMessage.content).toContain('logger');
+        // NarrativeEngine fallback prompt for health_check uses friendly language
+        expect(aiMessage.content.toLowerCase()).toMatch(
+          /solar|installation|check/,
+        );
       });
 
-      it('should add flow-specific context for financial_report', () => {
+      it('should generate persona-aware prompt for financial_report', async () => {
         const state = createTestState({
           activeFlow: 'financial_report',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         const aiMessage = result.messages![0] as AIMessage;
         expect(typeof aiMessage.content).toBe('string');
-        expect(aiMessage.content).toContain('financial');
+        // NarrativeEngine fallback prompt for financial_report mentions savings
+        expect(aiMessage.content.toLowerCase()).toMatch(/savings|system/);
       });
 
-      it('should include flowHint for multiple_loggers type', () => {
+      it('should include flowHint for multiple_loggers type', async () => {
         const state = createTestState({
           activeFlow: 'performance_audit',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         const args = result.pendingUiActions![0].args as Record<
           string,
@@ -395,7 +497,7 @@ describe('ArgumentCheckNode', () => {
     });
 
     describe('logger pattern resolution', () => {
-      it('should resolve "GoodWe" pattern to matching logger ID', () => {
+      it('should resolve "GoodWe" pattern to matching logger ID', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {
@@ -403,7 +505,11 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         const args = result.pendingUiActions![0].args as Record<
           string,
@@ -412,7 +518,7 @@ describe('ArgumentCheckNode', () => {
         expect(args.preSelectedValues).toContain('925');
       });
 
-      it('should resolve loggerTypePattern "inverter" to inverter loggers', () => {
+      it('should resolve loggerTypePattern "inverter" to inverter loggers', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {
@@ -422,7 +528,11 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         const args = result.pendingUiActions![0].args as Record<
           string,
@@ -436,7 +546,7 @@ describe('ArgumentCheckNode', () => {
         }
       });
 
-      it('should resolve loggerTypePattern "meteo" to meteo loggers', () => {
+      it('should resolve loggerTypePattern "meteo" to meteo loggers', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {
@@ -446,7 +556,11 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         const args = result.pendingUiActions![0].args as Record<
           string,
@@ -461,20 +575,24 @@ describe('ArgumentCheckNode', () => {
     });
 
     describe('default strategy application', () => {
-      it('should NOT apply defaults for required arguments', () => {
+      it('should NOT apply defaults for required arguments', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {}, // loggerId is required, should not have default
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         // Should prompt for loggerId instead of applying default
         expect(result.flowStep).toBe(0);
         expect(result.messages).toHaveLength(1);
       });
 
-      it('should apply defaults only for optional arguments', () => {
+      it('should apply defaults only for optional arguments', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {
@@ -482,7 +600,11 @@ describe('ArgumentCheckNode', () => {
           },
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         // Should proceed and apply dateRange default
         expect(result.flowStep).toBe(1);
@@ -491,24 +613,28 @@ describe('ArgumentCheckNode', () => {
     });
 
     describe('edge cases', () => {
-      it('should return empty object when no activeFlow', () => {
+      it('should return empty object when no activeFlow', async () => {
         const state = createTestState({
           activeFlow: null,
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result).toEqual({});
       });
 
-      it('should handle empty availableLoggers array', () => {
+      it('should handle empty availableLoggers array', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, []);
+        const result = await argumentCheckNode(state, [], mockModel as never);
 
         // When no loggers are available, should return a helpful error message
         // instead of a selection prompt
@@ -517,7 +643,7 @@ describe('ArgumentCheckNode', () => {
         expect(result.flowContext?.noLoggersAvailable).toBe(true);
       });
 
-      it('should generate unique tool call IDs', () => {
+      it('should generate unique tool call IDs', async () => {
         const state1 = createTestState({
           activeFlow: 'health_check',
           flowContext: {},
@@ -527,8 +653,16 @@ describe('ArgumentCheckNode', () => {
           flowContext: {},
         });
 
-        const result1 = argumentCheckNode(state1, availableLoggers);
-        const result2 = argumentCheckNode(state2, availableLoggers);
+        const result1 = await argumentCheckNode(
+          state1,
+          availableLoggers,
+          mockModel as never,
+        );
+        const result2 = await argumentCheckNode(
+          state2,
+          availableLoggers,
+          mockModel as never,
+        );
 
         expect(result1.pendingUiActions![0].toolCallId).not.toBe(
           result2.pendingUiActions![0].toolCallId,
@@ -537,13 +671,17 @@ describe('ArgumentCheckNode', () => {
     });
 
     describe('tool call structure', () => {
-      it('should create valid tool call for single logger selection', () => {
+      it('should create valid tool call for single logger selection', async () => {
         const state = createTestState({
           activeFlow: 'health_check',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         const aiMessage = result.messages![0] as AIMessage;
         const toolCall = aiMessage.tool_calls![0];
@@ -553,13 +691,17 @@ describe('ArgumentCheckNode', () => {
         expect(toolCall.args).toBeDefined();
       });
 
-      it('should create valid tool call for multiple logger selection', () => {
+      it('should create valid tool call for multiple logger selection', async () => {
         const state = createTestState({
           activeFlow: 'performance_audit',
           flowContext: {},
         });
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         const aiMessage = result.messages![0] as AIMessage;
         const toolCall = aiMessage.tool_calls![0];
@@ -569,7 +711,7 @@ describe('ArgumentCheckNode', () => {
         expect(args.inputType).toBe('dropdown');
       });
 
-      it('should include date constraints for date selection', () => {
+      it('should include date constraints for date selection', async () => {
         // Create a state that would prompt for date (not dateRange)
         // Using a manually constructed state since performance_audit uses date
         const state: ExplicitFlowState = {
@@ -583,7 +725,11 @@ describe('ArgumentCheckNode', () => {
           },
         };
 
-        const result = argumentCheckNode(state, availableLoggers);
+        const result = await argumentCheckNode(
+          state,
+          availableLoggers,
+          mockModel as never,
+        );
 
         // Date defaults should be applied since it's optional
         expect(result.flowStep).toBe(1);

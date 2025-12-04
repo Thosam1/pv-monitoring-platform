@@ -55,7 +55,9 @@ describe('PerformanceAuditFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Compare my loggers');
+      const initialState = createStateWithUserMessage('Compare my loggers', {
+        activeFlow: 'performance_audit',
+      });
 
       await graph.invoke(initialState);
 
@@ -71,7 +73,9 @@ describe('PerformanceAuditFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Compare loggers');
+      const initialState = createStateWithUserMessage('Compare loggers', {
+        activeFlow: 'performance_audit',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -84,7 +88,9 @@ describe('PerformanceAuditFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Compare loggers');
+      const initialState = createStateWithUserMessage('Compare loggers', {
+        activeFlow: 'performance_audit',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -104,7 +110,9 @@ describe('PerformanceAuditFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Compare loggers');
+      const initialState = createStateWithUserMessage('Compare loggers', {
+        activeFlow: 'performance_audit',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -126,7 +134,9 @@ describe('PerformanceAuditFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Compare loggers');
+      const initialState = createStateWithUserMessage('Compare loggers', {
+        activeFlow: 'performance_audit',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -156,6 +166,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -176,7 +187,9 @@ describe('PerformanceAuditFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Compare loggers');
+      const initialState = createStateWithUserMessage('Compare loggers', {
+        activeFlow: 'performance_audit',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -200,7 +213,9 @@ describe('PerformanceAuditFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Compare loggers');
+      const initialState = createStateWithUserMessage('Compare loggers', {
+        activeFlow: 'performance_audit',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -225,6 +240,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926', 'MBMET-001'],
         },
@@ -249,6 +265,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925'], // Only 1 logger - not enough
         },
@@ -277,6 +294,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -299,6 +317,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -322,6 +341,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -349,6 +369,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -380,6 +401,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926', 'MBMET-001'],
         },
@@ -427,6 +449,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -462,6 +485,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -485,6 +509,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -511,6 +536,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -542,6 +568,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: [],
         },
@@ -565,6 +592,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {},
       });
 
@@ -587,7 +615,9 @@ describe('PerformanceAuditFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Compare loggers');
+      const initialState = createStateWithUserMessage('Compare loggers', {
+        activeFlow: 'performance_audit',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -617,6 +647,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -637,6 +668,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -665,6 +697,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -693,6 +726,7 @@ describe('PerformanceAuditFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'performance_audit',
         flowContext: {
           selectedLoggerIds: ['925', '926'],
         },
@@ -721,7 +755,9 @@ describe('PerformanceAuditFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Compare loggers');
+      const initialState = createStateWithUserMessage('Compare loggers', {
+        activeFlow: 'performance_audit',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -738,7 +774,7 @@ describe('PerformanceAuditFlow', () => {
           flowHint: { expectedNext: string };
         };
         expect(args.flowHint?.expectedNext).toBeDefined();
-        expect(args.flowHint?.expectedNext).toContain('power output');
+        expect(args.flowHint?.expectedNext).toContain('compare');
       }
     });
   });

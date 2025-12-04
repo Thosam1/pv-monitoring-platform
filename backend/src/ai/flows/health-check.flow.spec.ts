@@ -49,6 +49,7 @@ describe('HealthCheckFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'health_check',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -71,6 +72,7 @@ describe('HealthCheckFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'health_check',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -94,6 +96,7 @@ describe('HealthCheckFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'health_check',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -127,6 +130,7 @@ describe('HealthCheckFlow', () => {
 
       const initialState = createStateWithUserMessage(
         'Check health of my inverter',
+        { activeFlow: 'health_check' },
       );
 
       await graph.invoke(initialState);
@@ -144,7 +148,9 @@ describe('HealthCheckFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Check health');
+      const initialState = createStateWithUserMessage('Check health', {
+        activeFlow: 'health_check',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -162,7 +168,9 @@ describe('HealthCheckFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Check health');
+      const initialState = createStateWithUserMessage('Check health', {
+        activeFlow: 'health_check',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -192,6 +200,7 @@ describe('HealthCheckFlow', () => {
 
       const initialState = createStateWithUserMessage(
         'Check health of all devices',
+        { activeFlow: 'health_check' },
       );
 
       await graph.invoke(initialState);
@@ -216,7 +225,12 @@ describe('HealthCheckFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Check all my inverters');
+      const initialState = createStateWithUserMessage(
+        'Check all my inverters',
+        {
+          activeFlow: 'health_check',
+        },
+      );
 
       const result = await graph.invoke(initialState);
 
@@ -246,6 +260,7 @@ describe('HealthCheckFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'health_check',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -279,6 +294,7 @@ describe('HealthCheckFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'health_check',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -318,6 +334,7 @@ describe('HealthCheckFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'health_check',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -341,6 +358,7 @@ describe('HealthCheckFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'health_check',
         flowContext: {
           selectedLoggerId: '925',
         },
@@ -359,7 +377,9 @@ describe('HealthCheckFlow', () => {
         fakeModel as never,
       );
 
-      const initialState = createStateWithUserMessage('Check health');
+      const initialState = createStateWithUserMessage('Check health', {
+        activeFlow: 'health_check',
+      });
 
       const result = await graph.invoke(initialState);
 
@@ -382,7 +402,7 @@ describe('HealthCheckFlow', () => {
           flowHint: { expectedNext: string };
         };
         expect(args.flowHint).toBeDefined();
-        expect(args.flowHint.expectedNext).toContain('7 days');
+        expect(args.flowHint.expectedNext).toContain('health');
       }
     });
   });
@@ -396,6 +416,7 @@ describe('HealthCheckFlow', () => {
 
       const initialState = createTestState({
         messages: [],
+        activeFlow: 'health_check',
         flowContext: {
           selectedLoggerId: '925',
         },

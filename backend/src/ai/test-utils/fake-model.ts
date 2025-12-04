@@ -167,6 +167,18 @@ export function createTextWithToolMessage(
  * ]);
  * ```
  */
+/**
+ * Options for creating a classification response.
+ */
+export interface ClassificationResponseOptions {
+  /** If true, user is continuing a previous flow */
+  isContinuation?: boolean;
+  /** If true, user is providing a valid selection response */
+  isSelectionResponse?: boolean;
+  /** The selected value(s) when isSelectionResponse is true */
+  selectedValue?: string | string[];
+}
+
 export function createClassificationResponse(
   flow:
     | 'morning_briefing'
@@ -175,13 +187,27 @@ export function createClassificationResponse(
     | 'health_check'
     | 'free_chat',
   confidence: number,
-  extractedParams?: { loggerId?: string; loggerName?: string; date?: string },
-  isContinuation?: boolean,
+  extractedParams?: {
+    loggerId?: string;
+    loggerIds?: string[];
+    loggerName?: string;
+    date?: string;
+    dateRange?: { start: string; end: string };
+  },
+  isContinuationOrOptions?: boolean | ClassificationResponseOptions,
 ): AIMessage {
+  // Support both old signature (boolean) and new signature (options object)
+  const options: ClassificationResponseOptions =
+    typeof isContinuationOrOptions === 'boolean'
+      ? { isContinuation: isContinuationOrOptions }
+      : (isContinuationOrOptions ?? {});
+
   const response = {
     flow,
     confidence,
-    isContinuation: isContinuation ?? false,
+    isContinuation: options.isContinuation ?? false,
+    isSelectionResponse: options.isSelectionResponse ?? false,
+    selectedValue: options.selectedValue ?? null,
     extractedParams: extractedParams ?? {},
   };
   return new AIMessage({ content: JSON.stringify(response) });
