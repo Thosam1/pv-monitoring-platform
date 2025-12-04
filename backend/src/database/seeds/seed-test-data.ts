@@ -417,7 +417,7 @@ async function seedTestData(): Promise<void> {
 }
 
 // Run the seeder
-void (async () => {
+void (async () => { // NOSONAR - CommonJS module, top-level await not supported
   try {
     await seedTestData();
     console.log('\nSeed completed successfully!');

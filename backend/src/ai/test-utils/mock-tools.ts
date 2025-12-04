@@ -308,6 +308,19 @@ export const MOCK_ERROR = {
 };
 
 /**
+ * Mock response for health_check tool.
+ */
+export const MOCK_HEALTH_CHECK = {
+  status: 'ok' as ToolStatus,
+  result: {
+    status: 'healthy',
+    database: 'connected',
+    uptime: 86400,
+    timestamp: '2025-01-15T14:30:00Z',
+  },
+};
+
+/**
  * Map of tool names to their mock responses.
  */
 export const MOCK_TOOL_RESPONSES: Record<string, unknown> = {
@@ -320,6 +333,7 @@ export const MOCK_TOOL_RESPONSES: Record<string, unknown> = {
   calculate_performance_ratio: MOCK_PERFORMANCE_RATIO,
   forecast_production: MOCK_FORECAST,
   diagnose_error_codes: MOCK_DIAGNOSE_ERRORS,
+  health_check: MOCK_HEALTH_CHECK,
 };
 
 /**

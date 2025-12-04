@@ -19,4 +19,4 @@ async function bootstrap() {
   await app.listen(process.env.PORT ?? 3000);
 }
 
-void bootstrap();
+void bootstrap(); // NOSONAR - CommonJS module, top-level await not supported
