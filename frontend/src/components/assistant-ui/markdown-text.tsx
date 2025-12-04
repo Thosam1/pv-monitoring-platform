@@ -167,6 +167,7 @@ const defaultComponents = memoizeMarkdownComponents({
   table: ({ className, ...props }) => (
     <section className="my-4 w-full overflow-x-auto" aria-label="Data table">
       <table
+        role="table"
         className={cn('w-full border-collapse text-sm', className)}
         {...props}
       />

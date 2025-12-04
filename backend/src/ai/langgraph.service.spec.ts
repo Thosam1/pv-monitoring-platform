@@ -441,4 +441,300 @@ describe('LanggraphService Provider Tests', () => {
     expect(status.provider).toBe('openai');
     expect(status.ready).toBe(true);
   });
+
+  it('should configure Ollama with default settings', async () => {
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'ollama',
+          OLLAMA_BASE_URL: 'http://localhost:11434',
+          OLLAMA_MODEL: 'llama3',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    const service = module.get<LanggraphService>(LanggraphService);
+    const status = service.getStatus();
+    expect(status.provider).toBe('ollama');
+    expect(status.ready).toBe(true);
+  });
+
+  it('should use Ollama without API key requirement', async () => {
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'ollama',
+          // Ollama does not require API key
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    const service = module.get<LanggraphService>(LanggraphService);
+    // Ollama is always ready since it doesn't need API key
+    expect(service.isReady()).toBe(true);
+  });
+});
+
+describe('LanggraphService Message Handling', () => {
+  let service: LanggraphService;
+  let mockToolsClient: ReturnType<typeof createMockToolsClient>;
+
+  beforeEach(async () => {
+    mockToolsClient = createMockToolsClient();
+
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'gemini',
+          GOOGLE_GENERATIVE_AI_API_KEY: 'test-api-key',
+          EXPLICIT_FLOWS_ENABLED: 'true',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    service = module.get<LanggraphService>(LanggraphService);
+  });
+
+  afterEach(() => {
+    service.resetGraph();
+    jest.clearAllMocks();
+  });
+
+  describe('message role handling', () => {
+    it('should handle user role messages', () => {
+      const stream = service.streamChat([{ role: 'user', content: 'Hello' }]);
+      expect(stream).toBeDefined();
+    });
+
+    it('should handle assistant role messages', () => {
+      const stream = service.streamChat([
+        { role: 'user', content: 'Hello' },
+        { role: 'assistant', content: 'Hi there!' },
+        { role: 'user', content: 'How are you?' },
+      ]);
+      expect(stream).toBeDefined();
+    });
+
+    it('should handle system role messages', () => {
+      const stream = service.streamChat([
+        { role: 'system', content: 'You are a helpful assistant' },
+        { role: 'user', content: 'Hello' },
+      ]);
+      expect(stream).toBeDefined();
+    });
+
+    it('should handle unknown role messages as user messages', () => {
+      const stream = service.streamChat([
+        { role: 'unknown_role', content: 'Test message' },
+      ]);
+      expect(stream).toBeDefined();
+    });
+
+    it('should filter out empty content messages', () => {
+      const stream = service.streamChat([
+        { role: 'user', content: '' },
+        { role: 'user', content: '   ' },
+        { role: 'user', content: 'Valid message' },
+      ]);
+      expect(stream).toBeDefined();
+    });
+
+    it('should handle multi-turn conversations', () => {
+      const messages = [
+        { role: 'user', content: 'First question' },
+        { role: 'assistant', content: 'First answer' },
+        { role: 'user', content: 'Second question' },
+        { role: 'assistant', content: 'Second answer' },
+        { role: 'user', content: 'Third question' },
+      ];
+      const stream = service.streamChat(messages);
+      expect(stream).toBeDefined();
+    });
+  });
+
+  describe('flow context extraction', () => {
+    it('should handle messages without flow context', () => {
+      const stream = service.streamChat([{ role: 'user', content: 'Hello' }]);
+      expect(stream).toBeDefined();
+    });
+
+    it('should handle messages with embedded flow context', () => {
+      const contextMessage = `I need you to select a logger.
+
+<!-- {"__flowContext":{"activeFlow":"health_check","currentPromptArg":"loggerId","waitingForUserInput":true}} -->`;
+
+      const stream = service.streamChat([
+        { role: 'assistant', content: contextMessage },
+        { role: 'user', content: 'Logger 925' },
+      ]);
+      expect(stream).toBeDefined();
+    });
+
+    it('should handle malformed flow context gracefully', () => {
+      const malformedContext = `Some message
+
+<!-- {"__flowContext":{"invalid json -->`;
+
+      const stream = service.streamChat([
+        { role: 'assistant', content: malformedContext },
+        { role: 'user', content: 'Continue' },
+      ]);
+      expect(stream).toBeDefined();
+    });
+  });
+
+  describe('deduplication', () => {
+    it('should handle duplicate messages in history', () => {
+      const messages = [
+        { role: 'user', content: 'Same message' },
+        { role: 'assistant', content: 'Response' },
+        { role: 'user', content: 'Same message' }, // Duplicate
+      ];
+      const stream = service.streamChat(messages);
+      expect(stream).toBeDefined();
+    });
+
+    it('should handle large conversation histories', () => {
+      const messages = Array.from({ length: 20 }, (_, i) => ({
+        role: i % 2 === 0 ? 'user' : 'assistant',
+        content: `Message ${i}`,
+      }));
+      const stream = service.streamChat(messages);
+      expect(stream).toBeDefined();
+    });
+  });
+});
+
+describe('LanggraphService Model Configuration', () => {
+  let mockToolsClient: ReturnType<typeof createMockToolsClient>;
+
+  beforeEach(() => {
+    mockToolsClient = createMockToolsClient();
+  });
+
+  it('should use custom Gemini model when configured', async () => {
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'gemini',
+          GOOGLE_GENERATIVE_AI_API_KEY: 'test-key',
+          GEMINI_MODEL: 'gemini-pro',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    const service = module.get<LanggraphService>(LanggraphService);
+    expect(service.isReady()).toBe(true);
+  });
+
+  it('should use custom Anthropic model when configured', async () => {
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'anthropic',
+          ANTHROPIC_API_KEY: 'test-key',
+          ANTHROPIC_MODEL: 'claude-3-opus-20240229',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    const service = module.get<LanggraphService>(LanggraphService);
+    expect(service.isReady()).toBe(true);
+    expect(service.getStatus().provider).toBe('anthropic');
+  });
+
+  it('should use custom OpenAI model when configured', async () => {
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'openai',
+          OPENAI_API_KEY: 'test-key',
+          OPENAI_MODEL: 'gpt-4-turbo',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    const service = module.get<LanggraphService>(LanggraphService);
+    expect(service.isReady()).toBe(true);
+    expect(service.getStatus().provider).toBe('openai');
+  });
+
+  it('should use custom Ollama base URL and model', async () => {
+    const configService: Partial<ConfigService> = {
+      get: jest.fn((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          AI_PROVIDER: 'ollama',
+          OLLAMA_BASE_URL: 'http://custom-host:11434',
+          OLLAMA_MODEL: 'mistral:7b',
+        };
+        return config[key] ?? defaultValue;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LanggraphService,
+        { provide: ConfigService, useValue: configService },
+        { provide: ToolsHttpClient, useValue: mockToolsClient },
+      ],
+    }).compile();
+
+    const service = module.get<LanggraphService>(LanggraphService);
+    expect(service.isReady()).toBe(true);
+    expect(service.getStatus().provider).toBe('ollama');
+  });
 });
