@@ -1,8 +1,10 @@
 import { Logger } from '@nestjs/common';
 import {
+  AIMessage,
   BaseMessage,
   HumanMessage,
   SystemMessage,
+  ToolMessage,
 } from '@langchain/core/messages';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatAnthropic } from '@langchain/anthropic';
@@ -16,7 +18,9 @@ import {
   ExtractedArguments,
   LoggerTypePattern,
   FlowType,
+  createCleanFlowContext,
 } from '../types/flow-state';
+import { NarrativeEngine } from '../narrative';
 
 const logger = new Logger('RouterNode');
 
@@ -218,7 +222,7 @@ function parseClassificationResponse(response: string): FlowClassification {
       logger.warn(
         `[ROUTER PARSE] No JSON object found in response: ${cleaned.slice(0, 100)}...`,
       );
-      return { flow: 'free_chat', confidence: 0.5 };
+      return { flow: 'free_chat', confidence: 0.5, isSelectionResponse: false };
     }
 
     const parsed: unknown = JSON.parse(cleaned);
@@ -236,13 +240,13 @@ function parseClassificationResponse(response: string): FlowClassification {
     logger.warn(
       `[ROUTER PARSE] Zod validation failed: ${result.error.message}`,
     );
-    return { flow: 'free_chat', confidence: 0.5 };
+    return { flow: 'free_chat', confidence: 0.5, isSelectionResponse: false };
   } catch (error) {
     logger.warn(
       `[ROUTER PARSE] JSON parse failed (original ${originalLength} chars): ${error}`,
     );
     // Default to free_chat on parse failure
-    return { flow: 'free_chat', confidence: 0.5 };
+    return { flow: 'free_chat', confidence: 0.5, isSelectionResponse: false };
   }
 }
 
@@ -269,16 +273,19 @@ function getConversationContext(messages: BaseMessage[]): string {
 /**
  * Handle a valid selection response from the user.
  * Maps the selected value to the appropriate flowContext field and resumes the flow.
+ * Fix #4: Now emits an acknowledgment message before resuming.
  *
  * @param state - Current flow state
  * @param selectedValue - The value(s) selected by the user
  * @param waitingFor - The argument that was being waited for
+ * @param model - LLM model for generating acknowledgment (optional)
  * @returns Updated state to resume the flow
  */
 function handleSelectionResponse(
   state: ExplicitFlowState,
   selectedValue: string | string[],
   waitingFor: string,
+  model?: ChatGoogleGenerativeAI | ChatAnthropic | ChatOpenAI | ChatOllama,
 ): Partial<ExplicitFlowState> {
   // Normalize selectedValue to string for processing
   const valueStr = Array.isArray(selectedValue)
@@ -288,6 +295,38 @@ function handleSelectionResponse(
   logger.debug(
     `Router: Handling selection response: "${valueStr}" for arg: ${waitingFor}`,
   );
+
+  // Find the pending tool call to satisfy the LLM's tool call contract
+  // Must look for AI messages WITH tool_calls, not just any AI message
+  const lastAiMessage = state.messages.findLast(
+    (m) => m._getType() === 'ai' && (m as AIMessage).tool_calls?.length,
+  ) as AIMessage | undefined;
+  const pendingToolCall = lastAiMessage?.tool_calls?.find(
+    (tc) => tc.name === 'request_user_selection',
+  );
+
+  // STRICT ID MATCHING: Only create ToolMessage if we have a valid tool call ID
+  // Sending a made-up ID can cause "Invalid Tool Call ID" errors from OpenAI/Anthropic
+  let toolMessage: ToolMessage | null = null;
+  if (pendingToolCall?.id) {
+    toolMessage = new ToolMessage({
+      tool_call_id: pendingToolCall.id,
+      content: JSON.stringify({
+        selection: Array.isArray(selectedValue)
+          ? selectedValue
+          : [selectedValue],
+        selectedFor: waitingFor,
+      }),
+      name: 'request_user_selection',
+    });
+    logger.debug(
+      `[ROUTER] Created ToolMessage for tool_call_id: ${pendingToolCall.id}`,
+    );
+  } else {
+    logger.warn(
+      `[ROUTER] No pending request_user_selection tool call found - skipping ToolMessage`,
+    );
+  }
 
   // Build updated flowContext based on which argument was being prompted
   const updatedContext: FlowContext = {
@@ -335,8 +374,32 @@ function handleSelectionResponse(
     `User selection processed: ${waitingFor} = ${valueStr}, resuming flow: ${state.activeFlow}`,
   );
 
+  // Fix #4: Generate acknowledgment message for user feedback
+  const narrativeEngine = model ? new NarrativeEngine(model) : null;
+  const acknowledgment = narrativeEngine
+    ? narrativeEngine.generateTransitionMessage(
+        state.activeFlow,
+        state.activeFlow!,
+        {
+          reason: 'selection',
+          selectedValue,
+        },
+      )
+    : `Got it, analyzing ${valueStr}...`;
+
   // Return with same flow to continue where we left off
+  // CRITICAL: Include ToolMessage first (to satisfy the LLM's tool call contract),
+  // then acknowledgment message so user sees immediate feedback
+  const messages: BaseMessage[] = [];
+  if (toolMessage) {
+    messages.push(toolMessage);
+  }
+  if (acknowledgment) {
+    messages.push(new AIMessage({ content: acknowledgment }));
+  }
+
   return {
+    messages,
     activeFlow: state.activeFlow,
     flowStep: 1, // Advance past the check_args step
     flowContext: updatedContext,
@@ -387,10 +450,8 @@ export async function routerNode(
     return {
       activeFlow: 'greeting',
       flowStep: 0,
-      flowContext: {
-        // Preserve user timezone if already in context
-        userTimezone: state.flowContext?.userTimezone,
-      },
+      // Use clean context to preserve session-level settings (Fix #5)
+      flowContext: createCleanFlowContext(state.flowContext),
       recoveryAttempts: 0,
     };
   }
@@ -405,7 +466,7 @@ export async function routerNode(
   const activeFlow = state.activeFlow;
   const classificationPrompt = buildClassificationPrompt(
     waitingFor,
-    activeFlow,
+    activeFlow ?? undefined,
   );
 
   if (waitingFor) {
@@ -463,11 +524,13 @@ export async function routerNode(
         state,
         classification.selectedValue,
         waitingFor,
+        model,
       );
     }
 
     // Build flow context from extracted parameters
-    const flowContext: FlowContext = {};
+    // Start with clean context to preserve session-level settings (Fix #5)
+    const flowContext: FlowContext = createCleanFlowContext(state.flowContext);
     if (classification.extractedParams) {
       const params = classification.extractedParams;
 
@@ -533,7 +596,29 @@ export async function routerNode(
       JSON.stringify(flowContext, null, 2),
     );
 
+    // Fix #4: Generate transition message when switching flows
+    // This gives the user immediate feedback about what's happening
+    const isFlowSwitch = classification.flow !== state.activeFlow;
+    let transitionMessages: AIMessage[] = [];
+
+    if (isFlowSwitch && classification.flow !== 'greeting') {
+      const narrativeEngine = new NarrativeEngine(model);
+      const transitionMsg = narrativeEngine.generateTransitionMessage(
+        state.activeFlow,
+        classification.flow,
+        { reason: 'intent_change' },
+      );
+
+      if (transitionMsg) {
+        transitionMessages = [new AIMessage({ content: transitionMsg })];
+        logger.debug(
+          `[ROUTER] Emitting transition message: "${transitionMsg}"`,
+        );
+      }
+    }
+
     return {
+      messages: transitionMessages,
       activeFlow: classification.flow,
       flowStep: 0,
       flowContext,

@@ -423,3 +423,66 @@ export function isRecoverableError(response: ToolResponse): boolean {
 export function isSuccessResponse(response: ToolResponse): boolean {
   return response.status === 'ok' || response.status === 'success';
 }
+
+// ============================================================================
+// Context Cleanup Utilities
+// ============================================================================
+
+/**
+ * Fields that should be preserved across flow switches.
+ * These are session-level settings that apply regardless of which flow is active.
+ */
+const PERSISTENT_CONTEXT_FIELDS = [
+  'narrativePreferences',
+  'previousFleetStatus',
+  'userTimezone',
+  'electricityRate',
+] as const;
+
+/**
+ * Fields that are flow-specific and must be cleared on switch.
+ * These accumulate during a single flow execution and should not leak between flows.
+ */
+export const FLOW_SPECIFIC_FIELDS = [
+  'selectedLoggerId',
+  'selectedLoggerIds',
+  'selectedDate',
+  'dateRange',
+  'toolResults',
+  'extractedLoggerName',
+  'analyzeAllLoggers',
+  'extractedArgs',
+  'currentPromptArg',
+  'argumentSpec',
+  'waitingForUserInput',
+  'noLoggersAvailable',
+] as const;
+
+/**
+ * Create a clean flow context, preserving only session-level settings.
+ * Call this when switching flows to prevent state pollution.
+ *
+ * @param currentContext - The current flow context to clean
+ * @returns A new FlowContext with only persistent fields preserved
+ *
+ * @example
+ * // In router.node.ts when switching flows:
+ * return {
+ *   activeFlow: classification.flow,
+ *   flowContext: createCleanFlowContext(state.flowContext),
+ * };
+ */
+export function createCleanFlowContext(
+  currentContext: FlowContext,
+): FlowContext {
+  const cleanContext: FlowContext = {};
+
+  // Only preserve session-level settings
+  for (const field of PERSISTENT_CONTEXT_FIELDS) {
+    if (currentContext[field] !== undefined) {
+      (cleanContext as Record<string, unknown>)[field] = currentContext[field];
+    }
+  }
+
+  return cleanContext;
+}

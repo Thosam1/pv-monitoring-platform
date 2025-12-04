@@ -336,6 +336,20 @@ export class LanggraphService {
         (lastMessage as AIMessage).tool_calls &&
         (lastMessage as AIMessage).tool_calls!.length > 0
       ) {
+        // SAFETY CHECK: If the ONLY tool calls are virtual UI tools, do NOT go to 'tools' node
+        // (because they are handled via pendingUiActions and have no backend implementation)
+        const toolCalls = (lastMessage as AIMessage).tool_calls!;
+        const onlyVirtualTools = toolCalls.every(
+          (tc) =>
+            tc.name === 'render_ui_component' ||
+            tc.name === 'request_user_selection',
+        );
+
+        if (onlyVirtualTools) {
+          this.logger.debug('Skipping tools node for virtual UI tools');
+          return 'end';
+        }
+
         this.logger.debug('Routing to tools node');
         return 'tools';
       }
@@ -565,6 +579,20 @@ export class LanggraphService {
         (lastMessage as AIMessage).tool_calls &&
         (lastMessage as AIMessage).tool_calls!.length > 0
       ) {
+        // SAFETY CHECK: If the ONLY tool calls are virtual UI tools, do NOT go to 'tools' node
+        // (because they are handled via pendingUiActions and have no backend implementation)
+        const toolCalls = (lastMessage as AIMessage).tool_calls!;
+        const onlyVirtualTools = toolCalls.every(
+          (tc) =>
+            tc.name === 'render_ui_component' ||
+            tc.name === 'request_user_selection',
+        );
+
+        if (onlyVirtualTools) {
+          this.logger.debug('Legacy graph: Skipping tools node for virtual UI tools');
+          return 'end';
+        }
+
         return 'tools';
       }
 

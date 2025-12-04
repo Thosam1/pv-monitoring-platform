@@ -16,6 +16,7 @@ export interface SSEEvent {
     | 'text-delta'
     | 'tool-input-available'
     | 'tool-output-available'
+    | 'thinking' // Fix #7: Loading feedback during heavy operations
     | 'error';
   text?: string;
   toolId?: string;
@@ -51,6 +52,17 @@ export class SSEEmitter {
   /** Emit error event */
   emitError(message: string): void {
     this.emit({ type: 'error', text: message });
+  }
+
+  /**
+   * Emit a thinking/loading message for user feedback during heavy operations.
+   * Fix #7: Provides intermediate feedback while tools execute.
+   *
+   * @param message - The thinking message to display (e.g., "Checking your fleet status...")
+   */
+  emitThinking(message: string): void {
+    if (!message.trim()) return;
+    this.emit({ type: 'thinking', text: message });
   }
 
   /**

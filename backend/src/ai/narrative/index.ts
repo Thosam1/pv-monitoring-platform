@@ -20,6 +20,7 @@ export type {
   NarrativeResult,
   RequestPromptContext,
   RequestPromptResult,
+  TransitionContext,
 } from './narrative-engine';
 
 // Preferences

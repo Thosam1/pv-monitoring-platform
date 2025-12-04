@@ -271,7 +271,7 @@ Would you like me to explain what data formats I can work with?`,
       alerts: hasIssues
         ? [
             {
-              type: 'warning',
+              type: 'warning' as const,
               message: `${offlineCount} device(s) offline`,
             },
           ]

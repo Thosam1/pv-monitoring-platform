@@ -9,6 +9,7 @@ import {
   FlowContext,
   FlowArgumentSpec,
   FlowType,
+  createCleanFlowContext,
 } from '../types/flow-state';
 import { getFlowArgumentSpec } from '../flows/flow-argument-specs';
 import {
@@ -234,13 +235,26 @@ export async function argumentCheckNode(
     logger.log(
       `[ARG CHECK] Auto-switching to performance_audit: ${selectedCount} loggers selected for ${flowType}`,
     );
+
+    // Fix #4: Generate acknowledgment message for auto-switch
+    const narrativeEngine = new NarrativeEngine(model);
+    const acknowledgment = narrativeEngine.generateTransitionMessage(
+      flowType,
+      'performance_audit',
+      { reason: 'auto_switch', selectedCount },
+    );
+
     return {
+      messages: acknowledgment
+        ? [new AIMessage({ content: acknowledgment })]
+        : [],
       activeFlow: 'performance_audit',
       flowStep: 0,
+      // Fix #5: Use clean context to prevent state pollution
+      // Explicitly pass through selectedLoggerIds for the new flow
       flowContext: {
-        ...state.flowContext,
-        currentPromptArg: undefined,
-        waitingForUserInput: false,
+        ...createCleanFlowContext(state.flowContext),
+        selectedLoggerIds: state.flowContext.selectedLoggerIds,
       },
     };
   }

@@ -144,6 +144,18 @@ export interface RequestPromptResult {
 }
 
 /**
+ * Context for generating transition messages between flows.
+ */
+export interface TransitionContext {
+  /** The value(s) selected by the user, if any */
+  selectedValue?: string | string[];
+  /** Reason for the transition */
+  reason?: 'intent_change' | 'auto_switch' | 'selection' | 'cancel';
+  /** Number of items selected (for multi-select) */
+  selectedCount?: number;
+}
+
+/**
  * NarrativeEngine class for centralized narrative generation.
  */
 export class NarrativeEngine {
@@ -501,7 +513,12 @@ export class NarrativeEngine {
         new HumanMessage(llmPrompt),
       ]);
 
-      const content = response.content?.toString().trim();
+      // Handle both string and object content types
+      const rawContent = response.content;
+      const content =
+        typeof rawContent === 'string'
+          ? rawContent.trim()
+          : JSON.stringify(rawContent).trim();
 
       // Validate the response
       if (this.isValidRequestPrompt(content)) {
@@ -520,6 +537,60 @@ export class NarrativeEngine {
 
     // Fallback to static strings
     return this.generateFallbackRequestPrompt(spec, context);
+  }
+
+  /**
+   * Static transition messages for reliability and zero latency.
+   * Uses the Sunny persona for warmth and consistency.
+   */
+  private static readonly TRANSITION_MESSAGES: Record<FlowType, string> = {
+    morning_briefing: 'Let me check how your solar fleet is doing...',
+    financial_report: "I'll calculate your savings now...",
+    performance_audit: 'Let me compare those systems for you...',
+    health_check: "Checking on your system's health...",
+    free_chat: 'Sure, let me help with that...',
+    greeting: '', // No transition needed for greetings
+  };
+
+  /**
+   * Generate a brief transition message when switching flows.
+   * Uses static messages for reliability and instant response.
+   *
+   * @param fromFlow - The flow being switched from (null for initial)
+   * @param toFlow - The flow being switched to
+   * @param context - Optional context about the transition
+   * @returns Transition message (empty string if no message needed)
+   */
+  generateTransitionMessage(
+    fromFlow: FlowType | null,
+    toFlow: FlowType,
+    context: TransitionContext = {},
+  ): string {
+    // No transition for greetings - they have their own warm response
+    if (toFlow === 'greeting') {
+      return '';
+    }
+
+    // Handle auto-switch acknowledgment (e.g., single → multi-logger)
+    if (context.reason === 'auto_switch' && context.selectedCount) {
+      return `I see you've selected ${context.selectedCount} systems. Let me compare them for you instead of running individual reports.`;
+    }
+
+    // Handle selection confirmation
+    if (context.reason === 'selection' && context.selectedValue) {
+      const value = Array.isArray(context.selectedValue)
+        ? context.selectedValue.join(', ')
+        : context.selectedValue;
+      return `Got it, analyzing ${value}...`;
+    }
+
+    // Handle cancellation
+    if (context.reason === 'cancel') {
+      return 'No problem, let me know how else I can help!';
+    }
+
+    // Default: use static transition message
+    return NarrativeEngine.TRANSITION_MESSAGES[toFlow] || 'Working on that...';
   }
 
   /**
