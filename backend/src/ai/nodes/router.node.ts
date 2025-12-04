@@ -10,9 +10,12 @@ import { ChatOpenAI } from '@langchain/openai';
 import { ChatOllama } from '@langchain/ollama';
 import {
   ExplicitFlowState,
+  FlowClassification,
   FlowClassificationSchema,
-  FlowType,
   FlowContext,
+  ExtractedArguments,
+  LoggerTypePattern,
+  FlowType,
 } from '../types/flow-state';
 
 const logger = new Logger('RouterNode');
@@ -45,48 +48,126 @@ export function isGreeting(message: string): boolean {
 
 /**
  * Classification prompt for LLM-based intent detection.
+ * Extended to extract date ranges, multiple loggers, and type patterns.
  */
-const CLASSIFICATION_PROMPT = `You are a classification assistant. Analyze the user's message and classify their intent into one of these workflows:
+const CLASSIFICATION_PROMPT = `You are a classification assistant for a solar monitoring platform. Analyze the user's message and classify their intent.
 
 WORKFLOWS:
-- morning_briefing: Fleet overview, site status, "how is everything", daily summary, "morning briefing", "status report"
-- financial_report: Savings, ROI, money, cost, revenue, financial analysis, "how much did I save", "financial report"
-- performance_audit: Compare inverters, efficiency, performance ratio, audit, "compare loggers", "which performs best"
-- health_check: Anomalies, errors, health status, diagnostics, problems, "check health", "any issues", "problems"
-- free_chat: General questions, specific data queries, single logger power curves, anything that doesn't fit above
+- morning_briefing: Fleet overview, site status, "how is everything", daily summary, "status report"
+- financial_report: Savings, ROI, money, cost, revenue, financial analysis, "how much did I save"
+- performance_audit: Compare inverters, efficiency comparison, "compare loggers", "which performs best"
+- health_check: Anomalies, errors, health status, diagnostics, problems, "check health", "any issues"
+- free_chat: General questions, specific data queries, single logger power curves, anything else
 
-RULES:
-1. If the user mentions MULTIPLE loggers or wants to COMPARE, classify as performance_audit
-2. If the user asks about the whole SITE or FLEET, classify as morning_briefing
-3. If the user mentions MONEY, SAVINGS, or COST, classify as financial_report
-4. If the user mentions ERRORS, ANOMALIES, or HEALTH, classify as health_check
-5. If the user asks for a specific date's data for ONE logger, classify as free_chat
-6. When in doubt between flows, prefer free_chat
+CLASSIFICATION RULES (apply in order - first match wins):
+1. "power curve", "power output", "production chart" → free_chat (NOT morning_briefing)
+2. "diagnose", "diagnose issues", "offline devices" → health_check (NOT morning_briefing)
+3. "forecast", "predict", "projection" → free_chat
+4. MULTIPLE loggers or COMPARE → performance_audit
+5. Whole SITE or FLEET overview (generic status, NOT specific metrics) → morning_briefing
+6. MONEY, SAVINGS, or COST → financial_report
+7. ERRORS, ANOMALIES, or HEALTH → health_check
+8. When in doubt → free_chat
 
-SELECTION RESPONSE DETECTION:
-When the user's message looks like a RESPONSE to a selection prompt (rather than a new question), set isContinuation=true:
-- If message is JUST an ID like "925", "9250KHTU22BP0338", or "I selected: 925" → user is responding to logger selection
-- If message is JUST a date like "2025-01-15", "January 15", or "I selected: 2025-01-15" → user is responding to date selection
-- If message starts with "I selected:" or contains "selected" followed by an ID/date → extract the value
-- For selection responses, look at the PREVIOUS assistant message to determine which flow was active
+EXTRACTION RULES:
 
-EXTRACTION:
-- Extract logger ID if mentioned (e.g., "logger 925", "inverter ABC123", or just "925" if responding to selection)
-- Extract logger name/type if mentioned (e.g., "the GoodWe", "meteo station")
-- Extract date if mentioned (e.g., "yesterday", "October 15", "2025-01-10")
-- If user says "I selected: X" or similar, extract X as the appropriate parameter
+1. LOGGER IDs:
+   - Extract exact IDs like "925", "9250KHTU22BP0338"
+   - For "logger 925" or "inverter ABC" → extract the ID part as loggerId
+   - For "compare 925 and 926" or "check 925, 926, 927" → extract as loggerIds array
+   - For "the GoodWe" or "meteo station" → extract as loggerName pattern
+   - For "all inverters" → set loggerTypePattern to "inverter"
+   - For "all meteo stations" → set loggerTypePattern to "meteo"
+   - For "all devices" or "entire fleet" → set loggerTypePattern to "all"
+
+2. DATES (convert to YYYY-MM-DD format):
+   - "today" → today's date
+   - "yesterday" → yesterday's date
+   - "October 15" or "Oct 15" → current year date
+   - "2025-01-15" → use as-is
+
+3. DATE RANGES (set both start and end):
+   - "last 7 days" → dateRange.start = 7 days ago, dateRange.end = today
+   - "last week" → dateRange.start = 7 days ago, dateRange.end = today
+   - "last month" → dateRange.start = 30 days ago, dateRange.end = today
+   - "past 2 weeks" → dateRange.start = 14 days ago, dateRange.end = today
+   - "from Jan 1 to Jan 15" → dateRange.start = 2025-01-01, dateRange.end = 2025-01-15
+   - "between Oct 1 and Oct 10" → dateRange.start and end accordingly
+
+4. SELECTION RESPONSES (set isContinuation=true):
+   - Message is JUST an ID like "925" → user responding to logger selection
+   - Message is JUST a date → user responding to date selection
+   - "I selected: X" → extract X as appropriate parameter
 
 RESPONSE FORMAT (JSON only, no markdown):
 {
   "flow": "morning_briefing" | "financial_report" | "performance_audit" | "health_check" | "free_chat",
   "confidence": 0.0-1.0,
   "isContinuation": false,
+  "isSelectionResponse": false,
+  "selectedValue": null,
   "extractedParams": {
-    "loggerId": "optional string",
-    "loggerName": "optional string",
-    "date": "optional YYYY-MM-DD string"
+    "loggerId": "optional - single logger ID string",
+    "loggerIds": ["optional - array for multiple loggers"],
+    "loggerName": "optional - name pattern like 'GoodWe'",
+    "loggerTypePattern": "inverter" | "meteo" | "all" | null,
+    "date": "optional - YYYY-MM-DD",
+    "dateRange": { "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" } | null
   }
 }`;
+
+/**
+ * Context block injected into classification prompt when waiting for user selection.
+ * Enables LLM to recognize valid selections vs intent changes.
+ */
+const WAITING_FOR_CONTEXT = `
+PENDING SELECTION CONTEXT:
+The assistant is waiting for the user to select: {{WAITING_FOR}}
+Previous flow: {{ACTIVE_FLOW}}
+
+SELECTION HANDLING RULES:
+1. If user provides a VALID SELECTION for {{WAITING_FOR}}:
+   - Set isSelectionResponse=true
+   - Extract selectedValue (the ID, date, or values they selected)
+   - Keep flow={{ACTIVE_FLOW}}
+   - Examples: "925", "I selected: 925", "the first one", "925 and 926"
+
+2. If user wants to CANCEL or CHANGE INTENT:
+   - Phrases: "cancel", "never mind", "actually", "forget it", "different", "something else"
+   - Set isSelectionResponse=false
+   - Classify the NEW intent normally
+
+3. If user asks for HELP:
+   - Phrases: "help", "what are my options", "explain", "which one"
+   - Set flow="free_chat", isSelectionResponse=false
+`;
+
+/**
+ * Build the classification prompt, optionally injecting selection context.
+ * When waiting for user input, adds WAITING_FOR_CONTEXT to help LLM
+ * distinguish between valid selections and intent changes.
+ *
+ * @param waitingFor - The argument being waited for (e.g., 'loggerId', 'loggerIds')
+ * @param activeFlow - The currently active flow
+ * @returns The classification prompt with optional context injection
+ */
+function buildClassificationPrompt(
+  waitingFor?: string,
+  activeFlow?: FlowType,
+): string {
+  if (!waitingFor) return CLASSIFICATION_PROMPT;
+
+  const contextBlock = WAITING_FOR_CONTEXT.replace(
+    /\{\{WAITING_FOR\}\}/g,
+    waitingFor,
+  ).replace(/\{\{ACTIVE_FLOW\}\}/g, activeFlow || 'free_chat');
+
+  // Inject the context block before RESPONSE FORMAT
+  return CLASSIFICATION_PROMPT.replace(
+    'RESPONSE FORMAT',
+    contextBlock + '\n\nRESPONSE FORMAT',
+  );
+}
 
 /**
  * Get the last user message from the message history.
@@ -103,21 +184,63 @@ function getLastUserMessage(messages: BaseMessage[]): string {
 
 /**
  * Parse the classification response from the LLM.
+ * FIX #2: Enhanced with proactive logging for debugging weird LLM outputs.
  */
-function parseClassificationResponse(response: string): {
-  flow: FlowType;
-  confidence: number;
-  isContinuation?: boolean;
-  extractedParams?: { loggerId?: string; loggerName?: string; date?: string };
-} {
+function parseClassificationResponse(response: string): FlowClassification {
+  // Proactive logging for debugging weird LLM outputs
+  const originalLength = response.length;
+
   try {
-    // Remove markdown code blocks if present
-    const cleaned = response.replace(/```json\n?|\n?```/g, '').trim();
+    // Clean markdown fences and extra whitespace
+    let cleaned = response.replace(/```(?:json)?\n?|\n?```/g, '').trim();
+
+    // Detect and log hallucinated comments in JSON
+    if (cleaned.includes('//') || cleaned.includes('/*')) {
+      logger.warn(
+        `[ROUTER PARSE] LLM included comments in JSON: ${cleaned.slice(0, 100)}...`,
+      );
+      // Remove single-line and multi-line comments
+      cleaned = cleaned
+        .replace(/\/\/.*$/gm, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+    }
+
+    // Try to extract JSON from mixed content (LLM may include extra text)
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      if (jsonMatch[0].length < cleaned.length * 0.8) {
+        logger.warn(
+          `[ROUTER PARSE] Partial JSON detected: extracted ${jsonMatch[0].length}/${cleaned.length} chars`,
+        );
+      }
+      cleaned = jsonMatch[0];
+    } else {
+      logger.warn(
+        `[ROUTER PARSE] No JSON object found in response: ${cleaned.slice(0, 100)}...`,
+      );
+      return { flow: 'free_chat', confidence: 0.5 };
+    }
+
     const parsed: unknown = JSON.parse(cleaned);
-    const validated = FlowClassificationSchema.parse(parsed);
-    return validated;
+
+    // Use safeParse for better error handling
+    const result = FlowClassificationSchema.safeParse(parsed);
+    if (result.success) {
+      logger.debug(
+        `[ROUTER PARSE] Success: flow=${result.data.flow}, confidence=${result.data.confidence}`,
+      );
+      return result.data;
+    }
+
+    // Log specific Zod validation errors
+    logger.warn(
+      `[ROUTER PARSE] Zod validation failed: ${result.error.message}`,
+    );
+    return { flow: 'free_chat', confidence: 0.5 };
   } catch (error) {
-    logger.warn(`Failed to parse classification response: ${error}`);
+    logger.warn(
+      `[ROUTER PARSE] JSON parse failed (original ${originalLength} chars): ${error}`,
+    );
     // Default to free_chat on parse failure
     return { flow: 'free_chat', confidence: 0.5 };
   }
@@ -144,6 +267,84 @@ function getConversationContext(messages: BaseMessage[]): string {
 }
 
 /**
+ * Handle a valid selection response from the user.
+ * Maps the selected value to the appropriate flowContext field and resumes the flow.
+ *
+ * @param state - Current flow state
+ * @param selectedValue - The value(s) selected by the user
+ * @param waitingFor - The argument that was being waited for
+ * @returns Updated state to resume the flow
+ */
+function handleSelectionResponse(
+  state: ExplicitFlowState,
+  selectedValue: string | string[],
+  waitingFor: string,
+): Partial<ExplicitFlowState> {
+  // Normalize selectedValue to string for processing
+  const valueStr = Array.isArray(selectedValue)
+    ? selectedValue.join(', ')
+    : selectedValue;
+
+  logger.debug(
+    `Router: Handling selection response: "${valueStr}" for arg: ${waitingFor}`,
+  );
+
+  // Build updated flowContext based on which argument was being prompted
+  const updatedContext: FlowContext = {
+    ...state.flowContext,
+    currentPromptArg: undefined, // Clear the prompt arg
+    waitingForUserInput: false, // Clear waiting flag
+  };
+
+  // Map selection to appropriate flowContext field
+  if (waitingFor === 'loggerId') {
+    // For single logger, use first value if array
+    updatedContext.selectedLoggerId = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+  } else if (waitingFor === 'loggerIds') {
+    // Parse comma-separated values for multi-select
+    if (Array.isArray(selectedValue)) {
+      updatedContext.selectedLoggerIds = selectedValue;
+    } else {
+      updatedContext.selectedLoggerIds = selectedValue
+        .split(',')
+        .map((v) => v.trim())
+        .filter((v) => v.length > 0);
+    }
+  } else if (waitingFor === 'date') {
+    updatedContext.selectedDate = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+  } else if (waitingFor === 'dateRange') {
+    // Parse date range format "YYYY-MM-DD:YYYY-MM-DD" or array [start, end]
+    if (Array.isArray(selectedValue) && selectedValue.length === 2) {
+      updatedContext.dateRange = {
+        start: selectedValue[0],
+        end: selectedValue[1],
+      };
+    } else if (typeof selectedValue === 'string') {
+      const parts = selectedValue.split(':');
+      if (parts.length === 2) {
+        updatedContext.dateRange = { start: parts[0], end: parts[1] };
+      }
+    }
+  }
+
+  logger.log(
+    `User selection processed: ${waitingFor} = ${valueStr}, resuming flow: ${state.activeFlow}`,
+  );
+
+  // Return with same flow to continue where we left off
+  return {
+    activeFlow: state.activeFlow,
+    flowStep: 1, // Advance past the check_args step
+    flowContext: updatedContext,
+    recoveryAttempts: state.recoveryAttempts,
+  };
+}
+
+/**
  * Router node that classifies user intent and routes to appropriate flow.
  *
  * Uses LLM-based classification for flexibility in handling natural language variations.
@@ -153,7 +354,23 @@ export async function routerNode(
   state: ExplicitFlowState,
   model: ChatGoogleGenerativeAI | ChatAnthropic | ChatOpenAI | ChatOllama,
 ): Promise<Partial<ExplicitFlowState>> {
+  // TODO: DELETE - Debug logging
+  logger.debug('[DEBUG ROUTER] === NODE ENTRY ===');
+  logger.debug('[DEBUG ROUTER] Input messages count:', state.messages.length);
+  logger.debug(
+    '[DEBUG ROUTER] FlowContext:',
+    JSON.stringify(state.flowContext, null, 2),
+  );
+  logger.debug('[DEBUG ROUTER] ActiveFlow:', state.activeFlow);
+  logger.debug(
+    '[DEBUG ROUTER] WaitingForUserInput:',
+    state.flowContext?.waitingForUserInput,
+  );
+
   const userMessage = getLastUserMessage(state.messages);
+
+  // TODO: DELETE - Debug logging
+  logger.debug('[DEBUG ROUTER] Last user message:', userMessage?.slice(0, 200));
 
   if (!userMessage) {
     logger.warn('No user message found, defaulting to free_chat');
@@ -183,10 +400,24 @@ export async function routerNode(
   // Get conversation context to help detect selection responses
   const conversationContext = getConversationContext(state.messages);
 
+  // Build classification prompt with selection context if waiting for user input
+  const waitingFor = state.flowContext?.currentPromptArg;
+  const activeFlow = state.activeFlow;
+  const classificationPrompt = buildClassificationPrompt(
+    waitingFor,
+    activeFlow,
+  );
+
+  if (waitingFor) {
+    logger.debug(
+      `Router: Waiting for ${waitingFor} in flow ${activeFlow}, using context-aware prompt`,
+    );
+  }
+
   try {
     // Use the model for classification with conversation context
     const response = await model.invoke([
-      new SystemMessage(CLASSIFICATION_PROMPT),
+      new SystemMessage(classificationPrompt),
       new HumanMessage(
         `Recent conversation:\n${conversationContext}\n\nClassify the LAST user message.`,
       ),
@@ -199,24 +430,108 @@ export async function routerNode(
 
     const classification = parseClassificationResponse(content);
 
-    logger.log(
-      `Classified as: ${classification.flow} (confidence: ${classification.confidence}, continuation: ${classification.isContinuation || false})`,
+    // TODO: DELETE - Debug logging
+    logger.debug('[DEBUG ROUTER] === CLASSIFICATION RESULT ===');
+    logger.debug('[DEBUG ROUTER] Raw response:', content.slice(0, 500));
+    logger.debug('[DEBUG ROUTER] Flow type:', classification.flow);
+    logger.debug('[DEBUG ROUTER] Confidence:', classification.confidence);
+    logger.debug(
+      '[DEBUG ROUTER] isContinuation:',
+      classification.isContinuation,
     );
+    logger.debug(
+      '[DEBUG ROUTER] isSelectionResponse:',
+      classification.isSelectionResponse,
+    );
+    logger.debug('[DEBUG ROUTER] selectedValue:', classification.selectedValue);
+    logger.debug(
+      '[DEBUG ROUTER] Extracted params:',
+      JSON.stringify(classification.extractedParams, null, 2),
+    );
+
+    logger.log(
+      `Classified as: ${classification.flow} (confidence: ${classification.confidence}, selection: ${classification.isSelectionResponse || false})`,
+    );
+
+    // Handle selection response: user provided a valid selection for the waiting argument
+    if (
+      classification.isSelectionResponse &&
+      classification.selectedValue &&
+      waitingFor
+    ) {
+      return handleSelectionResponse(
+        state,
+        classification.selectedValue,
+        waitingFor,
+      );
+    }
 
     // Build flow context from extracted parameters
     const flowContext: FlowContext = {};
     if (classification.extractedParams) {
-      if (classification.extractedParams.loggerId) {
-        flowContext.selectedLoggerId = classification.extractedParams.loggerId;
+      const params = classification.extractedParams;
+
+      // Single logger ID
+      if (params.loggerId) {
+        flowContext.selectedLoggerId = params.loggerId;
       }
-      if (classification.extractedParams.loggerName) {
-        flowContext.extractedLoggerName =
-          classification.extractedParams.loggerName;
+
+      // Multiple logger IDs (for comparison flows)
+      if (params.loggerIds && params.loggerIds.length > 0) {
+        flowContext.selectedLoggerIds = params.loggerIds;
       }
-      if (classification.extractedParams.date) {
-        flowContext.selectedDate = classification.extractedParams.date;
+
+      // Logger name pattern (e.g., "the GoodWe")
+      if (params.loggerName) {
+        flowContext.extractedLoggerName = params.loggerName;
+      }
+
+      // Single date
+      if (params.date) {
+        flowContext.selectedDate = params.date;
+      }
+
+      // Date range
+      if (params.dateRange) {
+        flowContext.dateRange = params.dateRange;
+      }
+
+      // Build extractedArgs for the argument check node
+      const extractedArgs: ExtractedArguments = {};
+      if (params.loggerId) {
+        extractedArgs.loggerId = params.loggerId;
+      }
+      if (params.loggerIds && params.loggerIds.length > 0) {
+        extractedArgs.loggerIds = params.loggerIds;
+      }
+      if (params.loggerName) {
+        extractedArgs.loggerNamePattern = params.loggerName;
+      }
+      if (params.loggerTypePattern) {
+        extractedArgs.loggerTypePattern =
+          params.loggerTypePattern as LoggerTypePattern;
+      }
+      if (params.date) {
+        extractedArgs.date = params.date;
+      }
+      if (params.dateRange) {
+        extractedArgs.dateRange = params.dateRange;
+      }
+
+      // Only set extractedArgs if we have any extractions
+      if (Object.keys(extractedArgs).length > 0) {
+        flowContext.extractedArgs = extractedArgs;
+        logger.debug(`Extracted args: ${JSON.stringify(extractedArgs)}`);
       }
     }
+
+    // TODO: DELETE - Debug logging
+    logger.debug('[DEBUG ROUTER] === NODE EXIT ===');
+    logger.debug('[DEBUG ROUTER] Routing to flow:', classification.flow);
+    logger.debug(
+      '[DEBUG ROUTER] FlowContext being returned:',
+      JSON.stringify(flowContext, null, 2),
+    );
 
     return {
       activeFlow: classification.flow,
