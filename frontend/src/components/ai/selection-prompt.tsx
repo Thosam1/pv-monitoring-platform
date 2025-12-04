@@ -39,20 +39,37 @@ export interface SelectionPromptProps {
   maxDate?: string;
   onSelect: (values: string[]) => void;
   disabled?: boolean;
+  // NEW: Pre-fill support for proactive prompting
+  contextMessage?: string;
+  preSelectedValues?: string[];
+  preFilledDateRange?: { start: string; end: string };
+  requireConfirmation?: boolean;
+  // Multi-select count limits
+  minCount?: number;
+  maxCount?: number;
 }
 
 /**
  * Single-select dropdown using Radix Select with Portal.
+ * Supports pre-selection for proactive prompting.
  */
 function SingleSelectDropdown({
   prompt,
   options,
   onSelect,
   disabled = false,
-}: Omit<SelectionPromptProps, 'inputType' | 'minDate' | 'maxDate' | 'selectionType'>) {
+  contextMessage,
+  preSelectedValues,
+  requireConfirmation = false,
+}: Omit<SelectionPromptProps, 'inputType' | 'minDate' | 'maxDate' | 'selectionType' | 'preFilledDateRange'>) {
   const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [selectedValue, setSelectedValue] = useState<string | null>(null);
+  // Initialize with pre-selected value if provided
+  const [selectedValue, setSelectedValue] = useState<string | null>(
+    preSelectedValues?.[0] || null
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Track if confirmation is needed (when pre-selected)
+  const needsConfirmation = requireConfirmation || (preSelectedValues && preSelectedValues.length > 0);
 
   // Group options by their group property
   const groupedOptions = useMemo(() => {
@@ -82,6 +99,10 @@ function SingleSelectDropdown({
     if (hasSubmitted || disabled || isSubmitting) return;
 
     setSelectedValue(value);
+
+    // If confirmation is needed, don't auto-submit
+    if (needsConfirmation) return;
+
     setIsSubmitting(true);
 
     // Small delay for visual feedback
@@ -90,7 +111,20 @@ function SingleSelectDropdown({
       setIsSubmitting(false);
       onSelect([value]);
     }, 300);
-  }, [hasSubmitted, disabled, isSubmitting, onSelect]);
+  }, [hasSubmitted, disabled, isSubmitting, onSelect, needsConfirmation]);
+
+  // Handle explicit confirmation
+  const handleConfirm = useCallback(() => {
+    if (!selectedValue || hasSubmitted || disabled || isSubmitting) return;
+
+    setIsSubmitting(true);
+
+    setTimeout(() => {
+      setHasSubmitted(true);
+      setIsSubmitting(false);
+      onSelect([selectedValue]);
+    }, 300);
+  }, [selectedValue, hasSubmitted, disabled, isSubmitting, onSelect]);
 
   const getDisplayValue = useCallback(() => {
     if (!selectedValue) return null;
@@ -105,6 +139,10 @@ function SingleSelectDropdown({
       transition={{ duration: 0.2 }}
       className="my-3 rounded-lg border border-border bg-card p-4 shadow-sm"
     >
+      {/* Context message (shows detected value info) */}
+      {contextMessage && !hasSubmitted && (
+        <p className="mb-2 text-sm text-muted-foreground">{contextMessage}</p>
+      )}
       <p className="mb-3 text-sm font-medium text-foreground">{prompt}</p>
 
       {hasSubmitted ? (
@@ -135,38 +173,51 @@ function SingleSelectDropdown({
           <span className="text-blue-700 dark:text-blue-300">{getDisplayValue()}</span>
         </div>
       ) : (
-        <Select onValueChange={handleValueChange} disabled={disabled}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select an option..." />
-          </SelectTrigger>
-          <SelectContent>
-            {Array.from(groupedOptions.entries()).map(([groupName, groupOptions]) => (
-              <SelectGroup key={groupName}>
-                <SelectLabel>{groupName}</SelectLabel>
-                {groupOptions.map((option) => {
-                  const colorClass = getLoggerColor(option.group);
-                  return (
-                    <SelectItem key={option.value} value={option.value}>
-                      <div className="flex items-center gap-2">
-                        {colorClass && (
-                          <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', colorClass)} />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <span className="font-medium">{option.label}</span>
-                          {option.subtitle && (
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              {option.subtitle}
-                            </span>
+        <div className="space-y-3">
+          <Select
+            onValueChange={handleValueChange}
+            disabled={disabled}
+            defaultValue={preSelectedValues?.[0]}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select an option..." />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from(groupedOptions.entries()).map(([groupName, groupOptions]) => (
+                <SelectGroup key={groupName}>
+                  <SelectLabel>{groupName}</SelectLabel>
+                  {groupOptions.map((option) => {
+                    const colorClass = getLoggerColor(option.group);
+                    return (
+                      <SelectItem key={option.value} value={option.value}>
+                        <div className="flex items-center gap-2">
+                          {colorClass && (
+                            <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', colorClass)} />
                           )}
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium">{option.label}</span>
+                            {option.subtitle && (
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                {option.subtitle}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </SelectItem>
-                  );
-                })}
-              </SelectGroup>
-            ))}
-          </SelectContent>
-        </Select>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Confirm button for pre-selected values */}
+          {needsConfirmation && selectedValue && (
+            <Button onClick={handleConfirm} className="w-full" size="sm">
+              Confirm Selection
+            </Button>
+          )}
+        </div>
       )}
     </motion.div>
   );
@@ -174,15 +225,22 @@ function SingleSelectDropdown({
 
 /**
  * Multi-select dropdown using Radix Popover with Portal.
+ * Supports pre-selection for proactive prompting.
+ * Enforces minCount/maxCount selection limits.
  */
 function MultiSelectDropdown({
   prompt,
   options,
   onSelect,
   disabled = false,
-}: Omit<SelectionPromptProps, 'inputType' | 'minDate' | 'maxDate' | 'selectionType'>) {
+  contextMessage,
+  preSelectedValues,
+  minCount = 1,
+  maxCount,
+}: Omit<SelectionPromptProps, 'inputType' | 'minDate' | 'maxDate' | 'selectionType' | 'preFilledDateRange' | 'requireConfirmation'>) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedValues, setSelectedValues] = useState<string[]>([]);
+  // Initialize with pre-selected values if provided
+  const [selectedValues, setSelectedValues] = useState<string[]>(preSelectedValues || []);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -214,15 +272,23 @@ function MultiSelectDropdown({
     if (hasSubmitted || disabled || isSubmitting) return;
 
     setSelectedValues((prev) => {
+      // Always allow deselection
       if (prev.includes(value)) {
         return prev.filter((v) => v !== value);
       }
+      // Block new selection if max reached
+      if (maxCount !== undefined && prev.length >= maxCount) {
+        return prev;
+      }
       return [...prev, value];
     });
-  }, [hasSubmitted, disabled, isSubmitting]);
+  }, [hasSubmitted, disabled, isSubmitting, maxCount]);
+
+  // Check if minimum selections met (can submit)
+  const hasMinSelections = selectedValues.length >= minCount;
 
   const handleSubmit = useCallback(() => {
-    if (selectedValues.length > 0 && !hasSubmitted && !isSubmitting) {
+    if (hasMinSelections && !hasSubmitted && !isSubmitting) {
       setIsSubmitting(true);
       setIsOpen(false);
 
@@ -232,7 +298,7 @@ function MultiSelectDropdown({
         onSelect(selectedValues);
       }, 300);
     }
-  }, [selectedValues, hasSubmitted, isSubmitting, onSelect]);
+  }, [selectedValues, hasSubmitted, isSubmitting, onSelect, hasMinSelections]);
 
   const getDisplayText = useCallback(() => {
     if (hasSubmitted) {
@@ -254,6 +320,10 @@ function MultiSelectDropdown({
       transition={{ duration: 0.2 }}
       className="my-3 rounded-lg border border-border bg-card p-4 shadow-sm"
     >
+      {/* Context message (shows detected value info) */}
+      {contextMessage && !hasSubmitted && (
+        <p className="mb-2 text-sm text-muted-foreground">{contextMessage}</p>
+      )}
       <p className="mb-3 text-sm font-medium text-foreground">{prompt}</p>
 
       {hasSubmitted ? (
@@ -308,21 +378,28 @@ function MultiSelectDropdown({
                   {groupOptions.map((option) => {
                     const isSelected = selectedValues.includes(option.value);
                     const colorClass = getLoggerColor(option.group);
+                    // Disable unselected items when max is reached
+                    const isMaxReached = maxCount !== undefined && selectedValues.length >= maxCount;
+                    const isOptionDisabled = !isSelected && isMaxReached;
 
                     return (
                       <button
                         key={option.value}
                         type="button"
                         onClick={() => handleOptionToggle(option.value)}
+                        disabled={isOptionDisabled}
                         className={cn(
                           'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
                           isSelected
                             ? 'bg-accent text-accent-foreground'
-                            : 'text-foreground hover:bg-accent/50'
+                            : isOptionDisabled
+                              ? 'text-muted-foreground cursor-not-allowed opacity-50'
+                              : 'text-foreground hover:bg-accent/50'
                         )}
                       >
                         <Checkbox
                           checked={isSelected}
+                          disabled={isOptionDisabled}
                           className="pointer-events-none"
                         />
                         {colorClass && (
@@ -343,17 +420,29 @@ function MultiSelectDropdown({
               ))}
             </div>
 
-            {selectedValues.length > 0 && (
-              <div className="border-t border-border p-2">
-                <Button
-                  onClick={handleSubmit}
-                  className="w-full"
-                  size="sm"
-                >
-                  Confirm Selection ({selectedValues.length})
-                </Button>
-              </div>
-            )}
+            <div className="border-t border-border p-2 space-y-2">
+              {/* Validation feedback */}
+              {selectedValues.length > 0 && !hasMinSelections && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
+                  Select at least {minCount} logger{minCount > 1 ? 's' : ''}
+                </p>
+              )}
+              {maxCount !== undefined && selectedValues.length >= maxCount && (
+                <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
+                  Maximum of {maxCount} selected
+                </p>
+              )}
+              <Button
+                onClick={handleSubmit}
+                className="w-full"
+                size="sm"
+                disabled={!hasMinSelections}
+              >
+                {hasMinSelections
+                  ? `Confirm Selection (${selectedValues.length})`
+                  : `Select ${minCount - selectedValues.length} more`}
+              </Button>
+            </div>
           </PopoverContent>
         </Popover>
       )}
@@ -375,7 +464,15 @@ export function SelectionPrompt({
   maxDate,
   onSelect,
   disabled = false,
+  contextMessage,
+  preSelectedValues,
+  preFilledDateRange: _preFilledDateRange,
+  requireConfirmation,
+  minCount,
+  maxCount,
 }: SelectionPromptProps) {
+  // Note: _preFilledDateRange is reserved for future DateRangePicker pre-fill support
+  void _preFilledDateRange;
   // Handle date selection callback
   const handleDateSelect = useCallback((value: string | { start: string; end: string }) => {
     // Convert to string array format for consistency
@@ -410,6 +507,10 @@ export function SelectionPrompt({
         options={options}
         onSelect={onSelect}
         disabled={disabled}
+        contextMessage={contextMessage}
+        preSelectedValues={preSelectedValues}
+        minCount={minCount}
+        maxCount={maxCount}
       />
     );
   }
@@ -420,6 +521,9 @@ export function SelectionPrompt({
       options={options}
       onSelect={onSelect}
       disabled={disabled}
+      contextMessage={contextMessage}
+      preSelectedValues={preSelectedValues}
+      requireConfirmation={requireConfirmation}
     />
   );
 }

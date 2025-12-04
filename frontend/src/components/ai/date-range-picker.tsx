@@ -5,6 +5,7 @@ import { Calendar as CalendarIcon, Check, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay, subDays, isSameDay, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatDateUTC } from '@/lib/date-utils';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -227,9 +228,9 @@ export function DateRangePicker({
         <div className="mb-3 flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
           <CalendarIcon className="h-3.5 w-3.5" />
           <span>
-            Data available from <span className="font-medium text-foreground">{format(minDateParsed, 'MMM d, yyyy')}</span>
+            Data available from <span className="font-medium text-foreground">{formatDateUTC(minDateParsed)}</span>
             {' to '}
-            <span className="font-medium text-foreground">{format(maxDateParsed, 'MMM d, yyyy')}</span>
+            <span className="font-medium text-foreground">{formatDateUTC(maxDateParsed)}</span>
             {' '}({dataSpanDays} {dataSpanDays === 1 ? 'day' : 'days'})
           </span>
         </div>

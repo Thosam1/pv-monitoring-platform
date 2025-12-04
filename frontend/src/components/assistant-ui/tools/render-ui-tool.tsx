@@ -7,6 +7,7 @@ import { StatusBadge, type StatusType } from '@/components/ai/status-badge';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
+import { useSuggestionClick } from '../hooks/use-suggestion-click';
 import {
   Zap,
   DollarSign,
@@ -109,6 +110,7 @@ function FlowSuggestions({
 function FleetOverview({
   props,
   suggestions,
+  onSuggestionClick,
 }: {
   props: {
     totalPower?: number;
@@ -119,6 +121,7 @@ function FleetOverview({
     alerts?: Array<{ type: string; message: string }>;
   };
   suggestions?: SuggestionItem[];
+  onSuggestionClick?: (action: string) => void;
 }) {
   const health: StatusType =
     (props.percentOnline ?? 100) >= 100
@@ -186,7 +189,7 @@ function FleetOverview({
           </div>
         )}
       </div>
-      <FlowSuggestions suggestions={suggestions || []} />
+      <FlowSuggestions suggestions={suggestions || []} onSuggestionClick={onSuggestionClick} />
     </motion.div>
   );
 }
@@ -197,6 +200,7 @@ function FleetOverview({
 function FinancialReport({
   props,
   suggestions,
+  onSuggestionClick,
 }: {
   props: {
     energyGenerated?: number;
@@ -207,6 +211,7 @@ function FinancialReport({
     forecast?: { totalPredicted: number; days: Array<{ date: string; predictedEnergy: number }> };
   };
   suggestions?: SuggestionItem[];
+  onSuggestionClick?: (action: string) => void;
 }) {
   return (
     <motion.div
@@ -265,7 +270,7 @@ function FinancialReport({
           </div>
         )}
       </div>
-      <FlowSuggestions suggestions={suggestions || []} />
+      <FlowSuggestions suggestions={suggestions || []} onSuggestionClick={onSuggestionClick} />
     </motion.div>
   );
 }
@@ -276,6 +281,7 @@ function FinancialReport({
 function HealthReport({
   props,
   suggestions,
+  onSuggestionClick,
 }: {
   props: {
     loggerId?: string;
@@ -291,6 +297,7 @@ function HealthReport({
     }>;
   };
   suggestions?: SuggestionItem[];
+  onSuggestionClick?: (action: string) => void;
 }) {
   const anomalyCount = props.anomalies?.length ?? 0;
   const status: StatusType =
@@ -359,7 +366,7 @@ function HealthReport({
           </div>
         )}
       </div>
-      <FlowSuggestions suggestions={suggestions || []} />
+      <FlowSuggestions suggestions={suggestions || []} onSuggestionClick={onSuggestionClick} />
     </motion.div>
   );
 }
@@ -371,6 +378,9 @@ function HealthReport({
 export const RenderUITool = makeAssistantToolUI<RenderUIToolArgs, RenderUIToolResult>({
   toolName: 'render_ui_component',
   render: function RenderUIToolUI({ args, result, status }) {
+    // Hook to handle suggestion clicks - sends action as new user message
+    const handleSuggestionClick = useSuggestionClick();
+
     // Show loading state while tool is running
     if (status.type === 'running') {
       return <RenderUILoading />;
@@ -405,7 +415,7 @@ export const RenderUITool = makeAssistantToolUI<RenderUIToolArgs, RenderUIToolRe
             className="my-4 w-full"
           >
             <DynamicChart {...(data.props as unknown as DynamicChartProps)} />
-            <FlowSuggestions suggestions={suggestions || []} />
+            <FlowSuggestions suggestions={suggestions || []} onSuggestionClick={handleSuggestionClick} />
           </motion.div>
         );
 
@@ -417,7 +427,7 @@ export const RenderUITool = makeAssistantToolUI<RenderUIToolArgs, RenderUIToolRe
             className="my-4 w-full"
           >
             <DynamicChart {...(data.props as unknown as DynamicChartProps)} />
-            <FlowSuggestions suggestions={suggestions || []} />
+            <FlowSuggestions suggestions={suggestions || []} onSuggestionClick={handleSuggestionClick} />
           </motion.div>
         );
 
@@ -426,6 +436,7 @@ export const RenderUITool = makeAssistantToolUI<RenderUIToolArgs, RenderUIToolRe
           <FleetOverview
             props={data.props as Parameters<typeof FleetOverview>[0]['props']}
             suggestions={suggestions}
+            onSuggestionClick={handleSuggestionClick}
           />
         );
 
@@ -434,6 +445,7 @@ export const RenderUITool = makeAssistantToolUI<RenderUIToolArgs, RenderUIToolRe
           <FinancialReport
             props={data.props as Parameters<typeof FinancialReport>[0]['props']}
             suggestions={suggestions}
+            onSuggestionClick={handleSuggestionClick}
           />
         );
 
@@ -442,6 +454,7 @@ export const RenderUITool = makeAssistantToolUI<RenderUIToolArgs, RenderUIToolRe
           <HealthReport
             props={data.props as Parameters<typeof HealthReport>[0]['props']}
             suggestions={suggestions}
+            onSuggestionClick={handleSuggestionClick}
           />
         );
 

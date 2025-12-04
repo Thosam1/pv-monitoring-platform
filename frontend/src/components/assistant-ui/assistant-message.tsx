@@ -6,6 +6,15 @@ import { MarkdownText } from './markdown-text';
 import { Sun } from 'lucide-react';
 
 /**
+ * Fallback component for tool calls.
+ * Returns null since tool UIs are rendered by makeAssistantToolUI components.
+ * This prevents React from trying to render raw tool call objects.
+ */
+function ToolCallFallback() {
+  return null;
+}
+
+/**
  * Assistant message component for the chat thread.
  * Displays assistant messages with solar analyst branding on the left.
  */
@@ -22,6 +31,9 @@ export function AssistantMessage() {
           <MessagePrimitive.Parts
             components={{
               Text: MarkdownText,
+              tools: {
+                Fallback: ToolCallFallback,
+              },
             }}
           />
         </div>

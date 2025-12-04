@@ -25,6 +25,12 @@ import { createAssistantStream } from 'assistant-stream';
 
 const STORAGE_KEY = 'solar-analyst-threads';
 
+/**
+ * Module-level ref to store the current thread ID for the model adapter.
+ * This is updated by the thread provider when the thread changes.
+ */
+let currentThreadId: string | null = null;
+
 interface StoredThread {
   id: string;
   title: string;
@@ -54,13 +60,14 @@ const SolarAnalystModelAdapter: ChatModelAdapter = {
       };
     });
 
-    // Make the API request
+    // Make the API request with thread ID for checkpointing
+    const threadId = currentThreadId;
     const response = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ messages: apiMessages }),
+      body: JSON.stringify({ messages: apiMessages, threadId }),
       signal: abortSignal,
     });
 
@@ -302,6 +309,13 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const threadListItem = useThreadListItem();
     const remoteId = threadListItem.remoteId;
+
+    // Update module-level thread ID for the model adapter to access
+    // This enables LangGraph checkpointing for multi-turn flows
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useEffect(() => {
+      currentThreadId = remoteId ?? null;
+    }, [remoteId]);
 
     // Queue for messages that arrive before remoteId is available
     // eslint-disable-next-line react-hooks/rules-of-hooks
