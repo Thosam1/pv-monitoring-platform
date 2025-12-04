@@ -30,7 +30,7 @@ function ThreadListItem() {
 
     const handleRename = () => {
         const newTitle = globalThis.window.prompt('Enter new name:', threadListItem.title || 'New Conversation');
-        if (newTitle && newTitle.trim()) {
+        if (newTitle?.trim()) {
             try {
                 threadListItemRuntime.rename(newTitle.trim());
             } catch (error) {

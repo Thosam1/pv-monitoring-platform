@@ -42,7 +42,13 @@ export function MetricCard({
   color = 'default',
   className,
 }: Readonly<MetricCardProps>) {
-  const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
+  // Map trend to icon component to avoid nested ternary
+  const trendIconMap = {
+    up: TrendingUp,
+    down: TrendingDown,
+    neutral: Minus,
+  } as const;
+  const TrendIcon = trendIconMap[trend || 'neutral'] || Minus;
 
   return (
     <motion.div

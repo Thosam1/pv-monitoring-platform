@@ -36,7 +36,7 @@ interface ToolResponse<T = unknown> {
 @Injectable()
 export class ToolsHttpClient implements OnModuleInit {
   private readonly logger = new Logger(ToolsHttpClient.name);
-  private baseUrl: string;
+  private readonly baseUrl: string;
   private toolSchemas: Record<string, ToolSchema> = {};
 
   constructor(private readonly configService: ConfigService) {

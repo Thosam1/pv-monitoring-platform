@@ -30,6 +30,13 @@ interface SuggestionItem {
   priority: 'primary' | 'secondary';
 }
 
+/** Map health status to metric card color to avoid nested ternary */
+function getHealthColor(health: StatusType): 'green' | 'yellow' | 'red' {
+  if (health === 'healthy') return 'green';
+  if (health === 'warning') return 'yellow';
+  return 'red';
+}
+
 /**
  * Arguments for the render_ui_component tool
  */
@@ -89,9 +96,9 @@ function FlowSuggestions({
         <Sparkles className="h-3 w-3" />
         Suggestions:
       </span>
-      {suggestions.map((suggestion, index) => (
+      {suggestions.map((suggestion) => (
         <Button
-          key={index}
+          key={`${suggestion.label}-${suggestion.action}`}
           variant={suggestion.priority === 'primary' ? 'default' : 'outline'}
           size="sm"
           onClick={() => onSuggestionClick?.(suggestion.action)}
@@ -123,12 +130,13 @@ function FleetOverview({
   suggestions?: SuggestionItem[];
   onSuggestionClick?: (action: string) => void;
 }>) {
-  const health: StatusType =
-    (props.percentOnline ?? 100) >= 100
-      ? 'healthy'
-      : (props.percentOnline ?? 100) >= 80
-        ? 'warning'
-        : 'critical';
+  // Determine health status from online percentage to avoid nested ternary
+  const getHealthFromPercent = (percent: number): StatusType => {
+    if (percent >= 100) return 'healthy';
+    if (percent >= 80) return 'warning';
+    return 'critical';
+  };
+  const health: StatusType = getHealthFromPercent(props.percentOnline ?? 100);
 
   return (
     <motion.div
@@ -171,15 +179,15 @@ function FleetOverview({
             value={(props.percentOnline ?? 100).toFixed(0)}
             unit="%"
             icon={<Gauge className="h-4 w-4 text-green-500" />}
-            color={health === 'healthy' ? 'green' : health === 'warning' ? 'yellow' : 'red'}
+            color={getHealthColor(health)}
           />
         </MetricCardGrid>
 
         {props.alerts && props.alerts.length > 0 && (
           <div className="mt-3 space-y-1">
-            {props.alerts.map((alert, i) => (
+            {props.alerts.map((alert) => (
               <div
-                key={i}
+                key={`${alert.type}-${alert.message}`}
                 className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400"
               >
                 <AlertTriangle className="h-3 w-3" />
@@ -300,8 +308,13 @@ function HealthReport({
   onSuggestionClick?: (action: string) => void;
 }>) {
   const anomalyCount = props.anomalies?.length ?? 0;
-  const status: StatusType =
-    anomalyCount === 0 ? 'healthy' : anomalyCount < 5 ? 'warning' : 'critical';
+  // Determine status from anomaly count to avoid nested ternary
+  const getStatusFromAnomalies = (count: number): StatusType => {
+    if (count === 0) return 'healthy';
+    if (count < 5) return 'warning';
+    return 'critical';
+  };
+  const status: StatusType = getStatusFromAnomalies(anomalyCount);
 
   return (
     <motion.div
@@ -345,8 +358,8 @@ function HealthReport({
                 </tr>
               </thead>
               <tbody>
-                {props.anomalies.slice(0, 10).map((anomaly, i) => (
-                  <tr key={i} className="border-t border-border">
+                {props.anomalies.slice(0, 10).map((anomaly) => (
+                  <tr key={anomaly.timestamp} className="border-t border-border">
                     <td className="px-2 py-1.5 text-muted-foreground">
                       {new Date(anomaly.timestamp).toLocaleString()}
                     </td>
@@ -408,18 +421,8 @@ export const RenderUITool = makeAssistantToolUI<RenderUIToolArgs, RenderUIToolRe
     // Render based on component type
     switch (data.component) {
       case 'DynamicChart':
-        return (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="my-4 w-full"
-          >
-            <DynamicChart {...(data.props as unknown as DynamicChartProps)} />
-            <FlowSuggestions suggestions={suggestions || []} onSuggestionClick={handleSuggestionClick} />
-          </motion.div>
-        );
-
       case 'ComparisonChart':
+        // Both DynamicChart and ComparisonChart use the same DynamicChart component
         return (
           <motion.div
             initial={{ opacity: 0, y: 10 }}

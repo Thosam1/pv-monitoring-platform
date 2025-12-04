@@ -118,8 +118,10 @@ export function formatExamplesForBranch(branch: NarrativeBranch): string {
   const examples = EXAMPLE_OUTPUTS[branch];
   if (!examples || examples.length === 0) return '';
 
-  return `STYLE EXAMPLES (for reference, adapt to fit the data):
-${examples.map((ex, i) => `${i + 1}. "${ex}"`).join('\n')}`;
+  const formattedExamples = examples
+    .map((ex, i) => `${i + 1}. "${ex}"`)
+    .join('\n');
+  return `STYLE EXAMPLES (for reference, adapt to fit the data):\n${formattedExamples}`;
 }
 
 /**

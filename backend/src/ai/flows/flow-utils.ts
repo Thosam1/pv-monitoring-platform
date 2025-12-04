@@ -252,11 +252,34 @@ export function getLastUserMessage(messages: BaseMessage[]): string {
 }
 
 /**
+ * Simplified patterns to detect "all devices" intent in user messages.
+ * Split into multiple simpler patterns to reduce regex complexity.
+ */
+const ALL_DEVICES_SIMPLE_PATTERNS = [
+  /\ball\s+(?:devices?|loggers?|inverters?)\b/i,
+  /\b(?:fleet|everything)\b/i,
+  /\bevery\s+(?:device|logger|inverter)\b/i,
+  /\beach\s+(?:device|logger|inverter)\b/i,
+  /\b(?:full|whole)\s+(?:fleet|system)\b/i,
+  /\bthe\s+entire\s+(?:fleet|plant|system)\b/i,
+  /\ball\s+of\s+them\b/i,
+];
+
+/**
+ * Check if text matches "all devices" intent.
+ * @param text - User message text to check
+ * @returns True if text indicates user wants all devices
+ */
+export function matchesAllDevicesIntent(text: string): boolean {
+  return ALL_DEVICES_SIMPLE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/**
  * Pattern to detect "all devices" intent in user messages.
- * Matches variations like: "all devices", "fleet", "everything", "full fleet", "entire plant", etc.
+ * @deprecated Use matchesAllDevicesIntent() for better performance
  */
 export const ALL_DEVICES_PATTERN =
-  /\ball\s+(devices?|loggers?|inverters?)\b|\bfleet\b|\bevery\s+(device|logger|inverter)\b|\beach\s+(device|logger|inverter)\b|\bfull\s+fleet\b|\bthe\s+entire\s+(fleet|plant|system)\b|\beverything\b|\ball\s+of\s+them\b|\bwhole\s+(fleet|system)\b/i;
+  /\ball\s+(?:devices?|loggers?|inverters?)\b|\b(?:fleet|everything)\b|\bevery\s+(?:device|logger|inverter)\b|\beach\s+(?:device|logger|inverter)\b|\b(?:full|whole)\s+(?:fleet|system)\b|\bthe\s+entire\s+(?:fleet|plant|system)\b|\ball\s+of\s+them\b/i;
 
 /**
  * Common suggestions for different flow outcomes.
@@ -1032,7 +1055,8 @@ export function getOverallDataRange(
 
   if (dates.length === 0) return undefined;
 
-  const sorted = dates.sort((a, b) => a.localeCompare(b));
+  // Create sorted copy to avoid mutating original array
+  const sorted = [...dates].sort((a, b) => a.localeCompare(b));
   return {
     start: sorted[0],
     end: sorted.at(-1),

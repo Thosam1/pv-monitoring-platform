@@ -198,9 +198,9 @@ export const FleetOverviewTool = makeAssistantToolUI<FleetOverviewArgs, FleetOve
                   <Sparkles className="h-3 w-3" />
                   Suggestions:
                 </span>
-                {data.context.next_steps.map((step, index) => (
+                {data.context.next_steps.map((step) => (
                   <Button
-                    key={index}
+                    key={`${step.action}-${step.priority}`}
                     variant={step.priority === 'urgent' ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => handleSuggestionClick(step.action)}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -29,6 +29,62 @@ export interface SelectionOption {
   group?: string;
   subtitle?: string;
 }
+
+/**
+ * Multi-select option button - extracted to reduce nesting depth.
+ */
+interface MultiSelectOptionProps {
+  option: SelectionOption;
+  isSelected: boolean;
+  colorClass: string | null;
+  isOptionDisabled: boolean;
+  onToggle: (value: string) => void;
+}
+
+const MultiSelectOption = memo(function MultiSelectOption({
+  option,
+  isSelected,
+  colorClass,
+  isOptionDisabled,
+  onToggle,
+}: Readonly<MultiSelectOptionProps>) {
+  const handleClick = useCallback(() => {
+    onToggle(option.value);
+  }, [onToggle, option.value]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={isOptionDisabled}
+      className={cn(
+        'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
+        isSelected
+          ? 'bg-accent text-accent-foreground'
+          : isOptionDisabled
+            ? 'text-muted-foreground cursor-not-allowed opacity-50'
+            : 'text-foreground hover:bg-accent/50'
+      )}
+    >
+      <Checkbox
+        checked={isSelected}
+        disabled={isOptionDisabled}
+        className="pointer-events-none"
+      />
+      {colorClass && (
+        <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', colorClass)} />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="truncate font-medium">{option.label}</div>
+        {option.subtitle && (
+          <div className="truncate text-xs text-muted-foreground">
+            {option.subtitle}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+});
 
 export interface SelectionPromptProps {
   prompt: string;
@@ -391,37 +447,14 @@ function MultiSelectDropdown({
                   const isOptionDisabled = !isSelected && isMaxReached;
 
                   return (
-                    <button
+                    <MultiSelectOption
                       key={option.value}
-                      type="button"
-                      onClick={() => handleOptionToggle(option.value)}
-                      disabled={isOptionDisabled}
-                      className={cn(
-                        'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
-                        isSelected
-                          ? 'bg-accent text-accent-foreground'
-                          : isOptionDisabled
-                            ? 'text-muted-foreground cursor-not-allowed opacity-50'
-                            : 'text-foreground hover:bg-accent/50'
-                      )}
-                    >
-                      <Checkbox
-                        checked={isSelected}
-                        disabled={isOptionDisabled}
-                        className="pointer-events-none"
-                      />
-                      {colorClass && (
-                        <span className={cn('h-2 w-2 flex-shrink-0 rounded-full', colorClass)} />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="truncate font-medium">{option.label}</div>
-                        {option.subtitle && (
-                          <div className="truncate text-xs text-muted-foreground">
-                            {option.subtitle}
-                          </div>
-                        )}
-                      </div>
-                    </button>
+                      option={option}
+                      isSelected={isSelected}
+                      colorClass={colorClass}
+                      isOptionDisabled={isOptionDisabled}
+                      onToggle={handleOptionToggle}
+                    />
                   );
                 })}
               </div>

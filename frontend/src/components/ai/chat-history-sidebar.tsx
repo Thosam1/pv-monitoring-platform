@@ -115,23 +115,16 @@ export function ChatHistorySidebar({
               </h3>
               <div className="space-y-1">
                 {group.conversations.map((conv) => (
-                  <div
+                  <button
+                    type="button"
                     key={conv.id}
                     className={cn(
-                      'group flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition-colors cursor-pointer',
+                      'group flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-left transition-colors',
                       conv.id === currentChatId
                         ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                         : 'hover:bg-sidebar-accent/50 text-sidebar-foreground'
                     )}
                     onClick={() => onSelectChat(conv.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onSelectChat(conv.id);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
                     aria-label={`Select conversation: ${conv.title}`}
                   >
                     <MessageSquare className="size-4 shrink-0" />
@@ -148,7 +141,7 @@ export function ChatHistorySidebar({
                     >
                       <Trash2 className="size-3" />
                     </Button>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>

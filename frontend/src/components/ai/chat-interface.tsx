@@ -144,6 +144,124 @@ function assembleMessageParts(fullText: string, toolCalls: Map<string, ChatPart>
 }
 
 /**
+ * Parse error message from HTTP response.
+ */
+async function parseErrorMessage(response: Response): Promise<string> {
+  let errorMsg = `HTTP error! status: ${response.status}`;
+  try {
+    const errorData = await response.json();
+    if (errorData.message) {
+      errorMsg = errorData.message;
+    }
+  } catch {
+    // If parsing fails, use status code message
+    if (response.status === 503) {
+      errorMsg = 'AI service is unavailable. Please try again later.';
+    } else if (response.status === 500) {
+      errorMsg = 'Server error. Please try again.';
+    } else if (response.status === 400) {
+      errorMsg = 'Invalid request. Please try rephrasing your question.';
+    }
+  }
+  return errorMsg;
+}
+
+/**
+ * Determine error type and message from an error.
+ */
+function classifyError(error: Error & { status?: number }): { type: ErrorType; message: string } {
+  if (!navigator.onLine) {
+    return { type: 'network', message: 'Unable to connect. Please check your internet connection.' };
+  }
+  if (error.message?.includes('fetch') || error.message?.includes('NetworkError')) {
+    return { type: 'network', message: 'Network error. Please check your connection and try again.' };
+  }
+  if (error.status === 400) {
+    return { type: 'api', message: error.message || 'Invalid request. Please try rephrasing your question.' };
+  }
+  if (error.status === 503) {
+    return { type: 'api', message: error.message || 'The AI service is temporarily unavailable.' };
+  }
+  if (error.status === 500) {
+    return { type: 'api', message: error.message || 'Server error. Please try again.' };
+  }
+  return { type: 'unknown', message: error.message || 'An unexpected error occurred. Please try again.' };
+}
+
+/**
+ * Process SSE event data and update state.
+ */
+function processSSEEvent(
+  parsed: { type: string; delta?: string; toolCallId?: string; toolName?: string; input?: unknown; output?: unknown },
+  fullText: { value: string },
+  toolCalls: Map<string, ChatPart>,
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
+): void {
+  // Handle text chunk
+  if (parsed.type === 'text-delta') {
+    fullText.value += parsed.delta || '';
+    const sanitizedText = sanitizeLLMOutput(fullText.value);
+
+    setMessages((prev) => {
+      const updated = [...prev];
+      const lastIdx = updated.length - 1;
+      if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+        updated[lastIdx] = {
+          ...updated[lastIdx],
+          content: sanitizedText,
+          parts: assembleMessageParts(sanitizedText, toolCalls),
+        };
+      }
+      return updated;
+    });
+  }
+
+  // Handle tool call
+  if (parsed.type === 'tool-input-available' && parsed.toolCallId) {
+    const toolPart: ChatPart = {
+      type: 'tool-call',
+      toolCallId: parsed.toolCallId,
+      toolName: parsed.toolName,
+      args: parsed.input as Record<string, unknown>,
+      state: 'call',
+    };
+    toolCalls.set(parsed.toolCallId, toolPart);
+    setMessages((prev) => {
+      const updated = [...prev];
+      const lastIdx = updated.length - 1;
+      if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+        updated[lastIdx] = {
+          ...updated[lastIdx],
+          parts: assembleMessageParts(fullText.value, toolCalls),
+        };
+      }
+      return updated;
+    });
+  }
+
+  // Handle tool result
+  if (parsed.type === 'tool-output-available' && parsed.toolCallId) {
+    const existing = toolCalls.get(parsed.toolCallId);
+    if (existing) {
+      existing.state = 'result';
+      existing.result = parsed.output;
+      toolCalls.set(parsed.toolCallId, existing);
+      setMessages((prev) => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+          updated[lastIdx] = {
+            ...updated[lastIdx],
+            parts: assembleMessageParts(fullText.value, toolCalls),
+          };
+        }
+        return updated;
+      });
+    }
+  }
+}
+
+/**
  * Main chat interface component.
  * Handles message streaming via SSE to the backend.
  */
@@ -188,18 +306,28 @@ export function ChatInterface({
     };
   }, []);
 
+  // Helper to remove empty assistant message
+  const removeEmptyAssistantMessage = useCallback(() => {
+    setMessages((prev) => {
+      const updated = [...prev];
+      const lastIdx = updated.length - 1;
+      if (lastIdx >= 0 && updated[lastIdx].role === 'assistant' && updated[lastIdx].parts.length === 0) {
+        return updated.slice(0, -1);
+      }
+      return updated;
+    });
+  }, []);
+
   // Send message to backend
   const sendMessage = useCallback(async (userMessage: string) => {
     if (!userMessage.trim()) return;
 
-    // Store for retry
+    // Store for retry and clear previous errors
     setLastUserMessage(userMessage);
-
-    // Clear any previous error
     setStatus('idle');
     setErrorMessage(undefined);
 
-    // Create user message
+    // Create messages
     const userMsg: Message = {
       id: generateId(),
       role: 'user',
@@ -207,7 +335,6 @@ export function ChatInterface({
       parts: [{ type: 'text', text: userMessage }],
     };
 
-    // Create placeholder assistant message
     const assistantMsg: Message = {
       id: generateId(),
       role: 'assistant',
@@ -219,40 +346,22 @@ export function ChatInterface({
     setInput('');
     setStatus('submitted');
 
-    // Clear any existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-
-    // Abort any existing request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    // Cleanup and setup abort controller
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (abortControllerRef.current) abortControllerRef.current.abort();
     abortControllerRef.current = new AbortController();
 
-    // Set up 30-second timeout that aborts the request
+    // Set up timeout
     timeoutRef.current = setTimeout(() => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      abortControllerRef.current?.abort();
       setStatus('error');
       setErrorType('timeout');
       setErrorMessage('The request took too long. Please try again.');
-      // Remove the empty assistant message on timeout
-      setMessages((prev) => {
-        const updated = [...prev];
-        const lastIdx = updated.length - 1;
-        if (lastIdx >= 0 && updated[lastIdx].role === 'assistant' && updated[lastIdx].parts.length === 0) {
-          return updated.slice(0, -1);
-        }
-        return updated;
-      });
+      removeEmptyAssistantMessage();
       timeoutRef.current = null;
-    }, 30000); // 30 second timeout
+    }, 30000);
 
     try {
-      // Build messages array for the API
       const apiMessages = [...messages, userMsg].map((m) => ({
         role: m.role,
         content: m.content,
@@ -260,31 +369,13 @@ export function ChatInterface({
 
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: apiMessages }),
         signal: abortControllerRef.current.signal,
       });
 
       if (!response.ok) {
-        // Try to parse error message from response
-        let errorMsg = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          if (errorData.message) {
-            errorMsg = errorData.message;
-          }
-        } catch {
-          // If parsing fails, use status code message
-          if (response.status === 503) {
-            errorMsg = 'AI service is unavailable. Please try again later.';
-          } else if (response.status === 500) {
-            errorMsg = 'Server error. Please try again.';
-          } else if (response.status === 400) {
-            errorMsg = 'Invalid request. Please try rephrasing your question.';
-          }
-        }
+        const errorMsg = await parseErrorMessage(response);
         const error = new Error(errorMsg) as Error & { status: number };
         error.status = response.status;
         throw error;
@@ -292,13 +383,12 @@ export function ChatInterface({
 
       setStatus('streaming');
 
-      // Read the SSE stream
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
 
       const decoder = new TextDecoder();
       let buffer = '';
-      let fullText = '';
+      const fullText = { value: '' };
       const toolCalls: Map<string, ChatPart> = new Map();
 
       while (true) {
@@ -311,148 +401,42 @@ export function ChatInterface({
 
         for (const line of lines) {
           if (!line.trim() || !line.startsWith('data: ')) continue;
-
           const data = line.slice(6);
           if (data === '[DONE]') continue;
 
           try {
             const parsed = JSON.parse(data);
-
-            // Handle text chunk (Vercel AI SDK v5 uses 'delta' not 'textDelta')
-            if (parsed.type === 'text-delta') {
-              // Append raw delta to accumulate full text
-              fullText += parsed.delta || '';
-
-              // Sanitize the accumulated text before displaying
-              const sanitizedText = sanitizeLLMOutput(fullText);
-
-              setMessages((prev) => {
-                const updated = [...prev];
-                const lastIdx = updated.length - 1;
-                if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-                  updated[lastIdx] = {
-                    ...updated[lastIdx],
-                    content: sanitizedText,
-                    parts: assembleMessageParts(sanitizedText, toolCalls),
-                  };
-                }
-                return updated;
-              });
-            }
-
-            // Handle tool call (Vercel AI SDK v5 uses 'tool-input-available' and 'input')
-            if (parsed.type === 'tool-input-available') {
-              const toolPart: ChatPart = {
-                type: 'tool-call',
-                toolCallId: parsed.toolCallId,
-                toolName: parsed.toolName,
-                args: parsed.input,
-                state: 'call',
-              };
-              toolCalls.set(parsed.toolCallId, toolPart);
-              setMessages((prev) => {
-                const updated = [...prev];
-                const lastIdx = updated.length - 1;
-                if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-                  updated[lastIdx] = {
-                    ...updated[lastIdx],
-                    parts: assembleMessageParts(fullText, toolCalls),
-                  };
-                }
-                return updated;
-              });
-            }
-
-            // Handle tool result (Vercel AI SDK v5 uses 'tool-output-available' and 'output')
-            if (parsed.type === 'tool-output-available') {
-              const existing = toolCalls.get(parsed.toolCallId);
-              if (existing) {
-                existing.state = 'result';
-                existing.result = parsed.output;
-                toolCalls.set(parsed.toolCallId, existing);
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const lastIdx = updated.length - 1;
-                  if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-                    updated[lastIdx] = {
-                      ...updated[lastIdx],
-                      parts: assembleMessageParts(fullText, toolCalls),
-                    };
-                  }
-                  return updated;
-                });
-              }
-            }
+            processSSEEvent(parsed, fullText, toolCalls, setMessages);
           } catch {
             // Ignore parse errors for incomplete chunks
           }
         }
       }
 
-      // Clear timeout on successful completion
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
-
       setStatus('idle');
     } catch (error) {
-      // Clear timeout on error
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
 
       if ((error as Error).name === 'AbortError') {
-        // Don't show error if it was a user-initiated stop or timeout
-        // (timeout already set error state)
-        if (status !== 'error') {
-          setStatus('idle');
-        }
+        if (status !== 'error') setStatus('idle');
         return;
       }
+
       console.error('Chat error:', error);
-
-      // Determine error type
-      const err = error as Error & { status?: number };
-      let type: ErrorType = 'unknown';
-      let msg: string;
-
-      if (!navigator.onLine) {
-        type = 'network';
-        msg = 'Unable to connect. Please check your internet connection.';
-      } else if (err.message?.includes('fetch') || err.message?.includes('NetworkError')) {
-        type = 'network';
-        msg = 'Network error. Please check your connection and try again.';
-      } else if (err.status === 400) {
-        type = 'api';
-        msg = err.message || 'Invalid request. Please try rephrasing your question.';
-      } else if (err.status === 503) {
-        type = 'api';
-        msg = err.message || 'The AI service is temporarily unavailable.';
-      } else if (err.status === 500) {
-        type = 'api';
-        msg = err.message || 'Server error. Please try again.';
-      } else {
-        type = 'unknown';
-        msg = err.message || 'An unexpected error occurred. Please try again.';
-      }
-
+      const { type, message } = classifyError(error as Error & { status?: number });
       setStatus('error');
       setErrorType(type);
-      setErrorMessage(msg);
-
-      // Remove the empty assistant message on error
-      setMessages((prev) => {
-        const updated = [...prev];
-        const lastIdx = updated.length - 1;
-        if (lastIdx >= 0 && updated[lastIdx].role === 'assistant' && updated[lastIdx].parts.length === 0) {
-          return updated.slice(0, -1);
-        }
-        return updated;
-      });
+      setErrorMessage(message);
+      removeEmptyAssistantMessage();
     }
-  }, [messages, status]);
+  }, [messages, status, removeEmptyAssistantMessage]);
 
   // Handle suggestion click with debouncing
   const handleSuggestionClick = useCallback(

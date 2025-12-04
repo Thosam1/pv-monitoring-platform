@@ -50,9 +50,12 @@ export function sanitizeLLMOutput(text: string): string {
     .replaceAll(/```python\s+(?:import\s+|from\s+|def\s+|class\s+)[\s\S]*?```/g, '')
     .replaceAll(/```\s+(?:import\s+|from\s+|def\s+|class\s+)[\s\S]*?```/g, '')
 
-    // Remove inline Python code patterns (import, def, class keywords)
-    .replaceAll(/(?:^|\n)(?:import|from)\s+\w+(?:\.\w+)*(?:\s+import\s+\w+(?:,\s*\w+)*)?[\s\S]*?(?=\n\n|\n#|\n[A-Z]|$)/g, '')
-    .replaceAll(/(?:^|\n)(?:def|class)\s+\w+\s*\([^)]*\)[\s\S]*?(?=\n\n|\n#|\n[A-Z]|$)/g, '')
+    // Remove inline Python import statements (simplified regex)
+    .replaceAll(/^import\s+\w+[\w.]*$/gm, '')
+    .replaceAll(/^from\s+\w+[\w.]*\s+import\s+[\w,\s]+$/gm, '')
+    // Remove Python def/class declarations (simplified regex)
+    .replaceAll(/^def\s+\w+\([^)]*\):.*$/gm, '')
+    .replaceAll(/^class\s+\w+\([^)]*\):.*$/gm, '')
 
     // Remove system prompt headers and sections
     .replaceAll(/^#+\s*(?:Tool Selection|Output Formatting|Input Processing|Response Generation|Error Handling)\s+Rules?\s*$/gm, '')

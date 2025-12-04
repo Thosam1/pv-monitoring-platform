@@ -177,11 +177,12 @@ export const Response = memo(
   }: ResponseProps) => {
     // Guard against non-string children (prevents React child errors)
     // This can happen when LLM outputs tool call args as text
-    const safeChildren = typeof children === 'string'
-      ? children
-      : typeof children === 'object' && children !== null
-        ? JSON.stringify(children)
-        : String(children ?? '');
+    const getSafeChildren = (content: React.ReactNode): string => {
+      if (typeof content === 'string') return content;
+      if (typeof content === 'object' && content !== null) return JSON.stringify(content);
+      return String(content ?? '');
+    };
+    const safeChildren = getSafeChildren(children);
 
     // Skip rendering if content looks like tool call args that leaked through
     if (safeChildren.includes('"prompt"') && safeChildren.includes('"options"')) {

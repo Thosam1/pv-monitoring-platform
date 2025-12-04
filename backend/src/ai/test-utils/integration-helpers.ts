@@ -34,6 +34,36 @@ export interface ConversationResult {
 }
 
 /**
+ * Process a single conversation turn.
+ */
+async function processTurn(
+  service: LanggraphService,
+  messages: Array<{ role: string; content: string }>,
+  allEvents: ReturnType<typeof createEventCapture>,
+  maxEventsPerTurn: number,
+  timeoutPerTurnMs: number,
+): Promise<string> {
+  const turnStart = Date.now();
+  let eventCount = 0;
+  let assistantContent = '';
+
+  for await (const event of service.streamChat(messages)) {
+    allEvents.addEvent(event);
+    eventCount++;
+
+    if (event.type === 'text-delta' && event.delta) {
+      assistantContent += event.delta;
+    }
+
+    const limitReached = eventCount >= maxEventsPerTurn;
+    const timedOut = Date.now() - turnStart > timeoutPerTurnMs;
+    if (limitReached || timedOut) break;
+  }
+
+  return assistantContent;
+}
+
+/**
  * Simulate a complete multi-turn conversation.
  *
  * @param service - The LanggraphService instance
@@ -74,35 +104,21 @@ export async function simulateConversation(
 
   try {
     for (const userMessage of userMessages) {
-      // Add user message to history
       messageHistory.push({ role: 'user', content: userMessage });
 
-      // Convert history to API format
       const messages = messageHistory.map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
-      // Stream response
-      const turnStart = Date.now();
-      let eventCount = 0;
-      let assistantContent = '';
+      const assistantContent = await processTurn(
+        service,
+        messages,
+        allEvents,
+        maxEventsPerTurn,
+        timeoutPerTurnMs,
+      );
 
-      for await (const event of service.streamChat(messages)) {
-        allEvents.addEvent(event);
-        eventCount++;
-
-        // Collect assistant text content
-        if (event.type === 'text-delta' && event.delta) {
-          assistantContent += event.delta;
-        }
-
-        // Safety limits
-        if (eventCount >= maxEventsPerTurn) break;
-        if (Date.now() - turnStart > timeoutPerTurnMs) break;
-      }
-
-      // Add assistant response to history if we collected content
       if (includeAssistantResponses && assistantContent.trim()) {
         messageHistory.push({ role: 'assistant', content: assistantContent });
       }

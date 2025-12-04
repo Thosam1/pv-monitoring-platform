@@ -27,8 +27,8 @@ export interface SSEEvent {
 }
 
 export class SSEEmitter {
-  private encoder = new TextEncoder();
-  private controller: ReadableStreamDefaultController<Uint8Array>;
+  private readonly encoder = new TextEncoder();
+  private readonly controller: ReadableStreamDefaultController<Uint8Array>;
 
   constructor(controller: ReadableStreamDefaultController<Uint8Array>) {
     this.controller = controller;

@@ -57,9 +57,9 @@ export function TypingIndicator({
       <div className="flex items-center gap-1.5">
         <span className="text-sm text-muted-foreground">{message}</span>
         <div className="flex gap-1">
-          {[0, 1, 2].map((i) => (
+          {[0, 1, 2].map((dotIndex) => (
             <motion.span
-              key={i}
+              key={`dot-${dotIndex}`}
               animate={{
                 y: [0, -4, 0],
                 opacity: [0.4, 1, 0.4],
@@ -67,7 +67,7 @@ export function TypingIndicator({
               transition={{
                 duration: 0.6,
                 repeat: Infinity,
-                delay: i * 0.15,
+                delay: dotIndex * 0.15,
                 ease: 'easeInOut',
               }}
               className={cn(

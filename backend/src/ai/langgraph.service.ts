@@ -74,7 +74,7 @@ export class LanggraphService {
 
   private graph: CompiledStateGraph<any, any, any> | null = null;
   private model: ModelType | null = null;
-  private checkpointer = new MemorySaver();
+  private readonly checkpointer = new MemorySaver();
 
   constructor(
     private readonly configService: ConfigService,
@@ -798,6 +798,387 @@ export class LanggraphService {
     return nodeName ? INTERNAL_NODES.has(nodeName) : false;
   }
 
+  // ============================================================================
+  // Stream Event Handlers - Extracted to reduce cognitive complexity
+  // ============================================================================
+
+  /** Event type for stream emissions */
+  private readonly StreamEvent = {} as {
+    type: string;
+    delta?: string;
+    toolCallId?: string;
+    toolName?: string;
+    input?: unknown;
+    output?: unknown;
+  };
+
+  /**
+   * Process text content from on_chat_model_stream event.
+   * Returns event array to emit, or empty array to skip.
+   */
+  private processStreamChunk(
+    nodeName: string | undefined,
+    content: string | unknown[] | undefined,
+  ): Array<typeof this.StreamEvent> {
+    if (this.isInternalNode(nodeName) || !content) return [];
+    const cleanContent = this.extractTextFromContent(content);
+    if (!cleanContent) return [];
+    return [{ type: 'text-delta', delta: cleanContent }];
+  }
+
+  /**
+   * Process tool calls from on_chat_model_end event.
+   * Returns event array to emit, modifies reportedToolCalls set.
+   */
+  private processToolCalls(
+    toolCalls: Array<{ id?: string; name: string; args: unknown }>,
+    reportedToolCalls: Set<string>,
+  ): Array<typeof this.StreamEvent> {
+    const events: Array<typeof this.StreamEvent> = [];
+    for (const toolCall of toolCalls) {
+      const toolCallId = toolCall.id ?? `tool_${Date.now()}`;
+      if (reportedToolCalls.has(toolCallId)) continue;
+
+      reportedToolCalls.add(toolCallId);
+      events.push({
+        type: 'tool-input-available',
+        toolCallId,
+        toolName: toolCall.name,
+        input: toolCall.args,
+      });
+
+      if (toolCall.name === 'render_ui_component') {
+        events.push({
+          type: 'tool-output-available',
+          toolCallId,
+          output: toolCall.args,
+        });
+      }
+    }
+    return events;
+  }
+
+  /**
+   * Process tool result from on_tool_end event.
+   * Returns event array to emit, modifies reportedToolResults set.
+   */
+  private processToolResult(
+    runId: string | undefined,
+    output: unknown,
+    tags: string[] | undefined,
+    reportedToolResults: Set<string>,
+  ): Array<typeof this.StreamEvent> {
+    const toolCallId = runId ?? `tool_result_${Date.now()}`;
+    if (reportedToolResults.has(toolCallId)) return [];
+
+    reportedToolResults.add(toolCallId);
+    let parsedOutput = output;
+    if (typeof parsedOutput === 'string') {
+      try {
+        parsedOutput = JSON.parse(parsedOutput) as unknown;
+      } catch {
+        // Keep as string
+      }
+    }
+    return [
+      {
+        type: 'tool-output-available',
+        toolCallId: tags?.[0] ?? toolCallId,
+        output: parsedOutput,
+      },
+    ];
+  }
+
+  /**
+   * Process pending UI actions from chain output.
+   * Returns event array to emit, modifies reportedToolCalls set.
+   */
+  private processPendingUiActions(
+    actions: PendingUiAction[],
+    reportedToolCalls: Set<string>,
+  ): Array<typeof this.StreamEvent> {
+    const events: Array<typeof this.StreamEvent> = [];
+    for (const action of actions) {
+      if (reportedToolCalls.has(action.toolCallId)) continue;
+
+      reportedToolCalls.add(action.toolCallId);
+      events.push({
+        type: 'tool-input-available',
+        toolCallId: action.toolCallId,
+        toolName: action.toolName,
+        input: action.args,
+      });
+
+      if (action.toolName === 'render_ui_component') {
+        events.push({
+          type: 'tool-output-available',
+          toolCallId: action.toolCallId,
+          output: action.args,
+        });
+      }
+    }
+    return events;
+  }
+
+  /**
+   * Process tool_calls embedded in AIMessages.
+   * Returns event array to emit, modifies reportedToolCalls set.
+   */
+  private processAiMessageToolCalls(
+    messages: BaseMessage[],
+    reportedToolCalls: Set<string>,
+  ): Array<typeof this.StreamEvent> {
+    const events: Array<typeof this.StreamEvent> = [];
+    for (const msg of messages) {
+      if (!isAiMessage(msg)) continue;
+      const aiMsg = msg;
+      if (!aiMsg.tool_calls?.length) continue;
+
+      for (const toolCall of aiMsg.tool_calls) {
+        const toolCallId = toolCall.id ?? `tool_${Date.now()}`;
+        if (reportedToolCalls.has(toolCallId)) continue;
+
+        reportedToolCalls.add(toolCallId);
+        events.push({
+          type: 'tool-input-available',
+          toolCallId,
+          toolName: toolCall.name,
+          input: toolCall.args,
+        });
+
+        if (toolCall.name === 'render_ui_component') {
+          events.push({
+            type: 'tool-output-available',
+            toolCallId,
+            output: toolCall.args,
+          });
+        }
+      }
+    }
+    return events;
+  }
+
+  /**
+   * Strip hidden flow metadata from message content.
+   */
+  private stripFlowMetadata(text: string): string {
+    return text.replace(/\n?\n?<!-- \{"__flowContext":.+?\} -->/s, '');
+  }
+
+  /**
+   * Process flow messages (text content from AIMessages).
+   * Returns event array to emit, modifies reportedFlowMessages set.
+   */
+  private processFlowMessages(
+    messages: BaseMessage[],
+    reportedFlowMessages: Set<string>,
+  ): Array<typeof this.StreamEvent> {
+    const events: Array<typeof this.StreamEvent> = [];
+
+    for (const msg of messages) {
+      if (!isAiMessage(msg)) continue;
+      const textEvents = this.extractTextFromAiMessage(
+        msg,
+        reportedFlowMessages,
+      );
+      events.push(...textEvents);
+    }
+    return events;
+  }
+
+  /**
+   * Extract text events from an AIMessage.
+   */
+  private extractTextFromAiMessage(
+    msg: BaseMessage,
+    reportedFlowMessages: Set<string>,
+  ): Array<typeof this.StreamEvent> {
+    const events: Array<typeof this.StreamEvent> = [];
+
+    if (typeof msg.content === 'string' && msg.content.trim()) {
+      const cleanContent = this.stripFlowMetadata(msg.content);
+      if (cleanContent.trim()) {
+        const msgKey = cleanContent.trim();
+        if (!reportedFlowMessages.has(msgKey)) {
+          reportedFlowMessages.add(msgKey);
+          events.push({ type: 'text-delta', delta: cleanContent });
+        }
+      }
+    } else if (Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        const textEvent = this.extractTextFromContentPart(
+          part,
+          reportedFlowMessages,
+        );
+        if (textEvent) events.push(textEvent);
+      }
+    }
+    return events;
+  }
+
+  /**
+   * Extract text event from a content part.
+   */
+  private extractTextFromContentPart(
+    part: unknown,
+    reportedFlowMessages: Set<string>,
+  ): typeof this.StreamEvent | null {
+    if (
+      typeof part !== 'object' ||
+      part === null ||
+      !('type' in part) ||
+      part.type !== 'text' ||
+      !('text' in part) ||
+      typeof part.text !== 'string' ||
+      !part.text.trim()
+    ) {
+      return null;
+    }
+
+    const cleanContent = this.stripFlowMetadata(part.text);
+    if (!cleanContent.trim()) return null;
+
+    const partKey = cleanContent.trim();
+    if (reportedFlowMessages.has(partKey)) return null;
+
+    reportedFlowMessages.add(partKey);
+    return { type: 'text-delta', delta: cleanContent };
+  }
+
+  /**
+   * Process a single stream event and return events to emit.
+   * Central dispatcher that reduces cognitive complexity of streamChat.
+   */
+  private processStreamEvent(
+    event: {
+      event: string;
+      data?: unknown;
+      metadata?: unknown;
+      run_id?: string;
+      tags?: string[];
+    },
+    reportedToolCalls: Set<string>,
+    reportedToolResults: Set<string>,
+    reportedFlowMessages: Set<string>,
+  ): Array<typeof this.StreamEvent> {
+    const metadata = event.metadata as { langgraph_node?: string } | undefined;
+    const nodeName = metadata?.langgraph_node;
+
+    switch (event.event) {
+      case 'on_chat_model_stream':
+        return this.handleModelStream(event, nodeName);
+
+      case 'on_chat_model_end':
+        return this.handleModelEnd(event, nodeName, reportedToolCalls);
+
+      case 'on_tool_end': {
+        const toolData = event.data as { output?: unknown } | undefined;
+        return this.processToolResult(
+          event.run_id,
+          toolData?.output,
+          event.tags,
+          reportedToolResults,
+        );
+      }
+
+      case 'on_chain_end':
+        return this.handleChainEnd(
+          event,
+          reportedToolCalls,
+          reportedFlowMessages,
+        );
+
+      default:
+        return [];
+    }
+  }
+
+  /**
+   * Handle on_chat_model_stream event.
+   */
+  private handleModelStream(
+    event: { data?: unknown },
+    nodeName: string | undefined,
+  ): Array<typeof this.StreamEvent> {
+    if (this.isInternalNode(nodeName)) return [];
+
+    const data = event.data as
+      | { chunk?: { content?: string | unknown[] } }
+      | undefined;
+    return this.processStreamChunk(nodeName, data?.chunk?.content);
+  }
+
+  /**
+   * Handle on_chat_model_end event.
+   */
+  private handleModelEnd(
+    event: { data?: unknown },
+    nodeName: string | undefined,
+    reportedToolCalls: Set<string>,
+  ): Array<typeof this.StreamEvent> {
+    if (this.isInternalNode(nodeName)) return [];
+
+    const data = event.data as
+      | {
+          output?: {
+            tool_calls?: Array<{ id?: string; name: string; args: unknown }>;
+          };
+        }
+      | undefined;
+    const toolCalls = data?.output?.tool_calls;
+    if (!toolCalls?.length) return [];
+
+    return this.processToolCalls(toolCalls, reportedToolCalls);
+  }
+
+  /**
+   * Handle on_chain_end event.
+   */
+  private handleChainEnd(
+    event: { data?: unknown },
+    reportedToolCalls: Set<string>,
+    reportedFlowMessages: Set<string>,
+  ): Array<typeof this.StreamEvent> {
+    const data = event.data as
+      | {
+          output?: {
+            pendingUiActions?: PendingUiAction[];
+            messages?: BaseMessage[];
+          };
+        }
+      | undefined;
+    const output = data?.output;
+    if (!output) return [];
+
+    const events: Array<typeof this.StreamEvent> = [];
+
+    // Process pending UI actions
+    if (output.pendingUiActions?.length) {
+      events.push(
+        ...this.processPendingUiActions(
+          output.pendingUiActions,
+          reportedToolCalls,
+        ),
+      );
+    }
+
+    // Process AIMessage tool calls
+    if (output.messages?.length) {
+      events.push(
+        ...this.processAiMessageToolCalls(output.messages, reportedToolCalls),
+      );
+    }
+
+    // Process flow messages (only if no pendingUiActions to avoid duplicates)
+    if (output.messages?.length && !output.pendingUiActions?.length) {
+      events.push(
+        ...this.processFlowMessages(output.messages, reportedFlowMessages),
+      );
+    }
+
+    return events;
+  }
+
   /**
    * Stream chat responses using an async generator.
    *
@@ -927,317 +1308,14 @@ export class LanggraphService {
       });
 
       for await (const event of stream) {
-        // Handle different event types from LangGraph
-        if (event.event === 'on_chat_model_stream') {
-          // Filter out internal node output (e.g., router classification JSON)
-          const nodeName = (event.metadata as { langgraph_node?: string })
-            ?.langgraph_node;
-          if (this.isInternalNode(nodeName)) {
-            continue; // Skip internal node output
-          }
-
-          // Streaming text from the model using helper method
-          const chunk = event.data?.chunk as
-            | { content?: string | unknown[] }
-            | null
-            | undefined;
-
-          if (chunk?.content) {
-            const cleanContent = this.extractTextFromContent(chunk.content);
-            if (cleanContent) {
-              debugCounters.textEmissions++;
-              this.logger.debug(
-                `[DEBUG EMIT] text-delta from node: ${nodeName}, length: ${cleanContent.length}`,
-              );
-              yield { type: 'text-delta', delta: cleanContent };
-            }
-          }
-        } else if (event.event === 'on_chat_model_end') {
-          // Filter out internal node output (e.g., router classification JSON)
-          const nodeName = (event.metadata as { langgraph_node?: string })
-            ?.langgraph_node;
-          if (this.isInternalNode(nodeName)) {
-            continue; // Skip internal node output
-          }
-
-          // Model finished - check for tool calls
-          const output = event.data?.output as
-            | {
-                tool_calls?: Array<{
-                  id?: string;
-                  name: string;
-                  args: unknown;
-                }>;
-              }
-            | null
-            | undefined;
-          if (output?.tool_calls && Array.isArray(output.tool_calls)) {
-            for (const toolCall of output.tool_calls) {
-              const toolCallId = toolCall.id ?? `tool_${Date.now()}`;
-              if (reportedToolCalls.has(toolCallId)) {
-                // TODO: DELETE - Debug logging dedup skip
-                debugCounters.dedupSkips.toolCalls++;
-                this.logger.debug(
-                  `[DEBUG DEDUP SKIP] toolCall already reported: ${toolCallId}`,
-                );
-              } else {
-                reportedToolCalls.add(toolCallId);
-                // TODO: DELETE - Debug logging
-                debugCounters.toolInputEmissions++;
-                this.logger.debug(
-                  `[DEBUG EMIT] tool-input-available: ${toolCallId}, ${toolCall.name}`,
-                );
-                this.logger.debug(
-                  `[DEBUG EMIT] tool args: ${JSON.stringify(toolCall.args, null, 2).slice(0, 500)}`,
-                );
-                this.logger.debug(
-                  `[DEBUG DEDUP] Adding to reportedToolCalls: ${toolCallId}, size: ${reportedToolCalls.size}`,
-                );
-                yield {
-                  type: 'tool-input-available',
-                  toolCallId,
-                  toolName: toolCall.name,
-                  input: toolCall.args,
-                };
-
-                // For non-interactive UI tools, emit tool-output-available immediately
-                // since these don't go through tool execution - the args ARE the result
-                // NOTE: request_user_selection is INTERACTIVE - it waits for user input
-                if (toolCall.name === 'render_ui_component') {
-                  debugCounters.toolOutputEmissions++;
-                  this.logger.debug(
-                    `[DEBUG EMIT] tool-output-available (immediate): ${toolCallId}`,
-                  );
-                  yield {
-                    type: 'tool-output-available',
-                    toolCallId,
-                    output: toolCall.args,
-                  };
-                }
-              }
-            }
-          }
-        } else if (event.event === 'on_tool_end') {
-          // Tool execution finished
-          const toolCallId = event.run_id ?? `tool_result_${Date.now()}`;
-          if (reportedToolResults.has(toolCallId)) {
-            // TODO: DELETE - Debug logging dedup skip
-            debugCounters.dedupSkips.toolResults++;
-            this.logger.debug(
-              `[DEBUG DEDUP SKIP] toolResult already reported: ${toolCallId}`,
-            );
-          } else {
-            reportedToolResults.add(toolCallId);
-
-            // Parse the output - tools return JSON strings
-            let output: unknown = event.data?.output;
-            if (typeof output === 'string') {
-              try {
-                output = JSON.parse(output) as unknown;
-              } catch {
-                // Keep as string if not valid JSON
-              }
-            }
-
-            // TODO: DELETE - Debug logging
-            debugCounters.toolOutputEmissions++;
-            this.logger.debug(
-              `[DEBUG EMIT] tool-output-available (on_tool_end): ${event.tags?.[0] ?? toolCallId}`,
-            );
-            this.logger.debug(
-              `[DEBUG DEDUP] Adding to reportedToolResults: ${toolCallId}, size: ${reportedToolResults.size}`,
-            );
-
-            yield {
-              type: 'tool-output-available',
-              toolCallId: event.tags?.[0] ?? toolCallId,
-              output,
-            };
-          }
-        } else if (event.event === 'on_chain_end') {
-          // Handle subgraph completion - check for pendingUiActions and messages
-          // This catches UI actions and text from flows that don't go through LLM
-          const output = event.data?.output as
-            | {
-                pendingUiActions?: PendingUiAction[];
-                messages?: BaseMessage[];
-              }
-            | null
-            | undefined;
-
-          if (output?.pendingUiActions && output.pendingUiActions.length > 0) {
-            // TODO: DELETE - Debug logging
-            this.logger.debug(
-              `[DEBUG CHAIN_END] pendingUiActions count: ${output.pendingUiActions.length}`,
-            );
-            for (const action of output.pendingUiActions) {
-              if (reportedToolCalls.has(action.toolCallId)) {
-                // TODO: DELETE - Debug logging dedup skip
-                debugCounters.dedupSkips.toolCalls++;
-                this.logger.debug(
-                  `[DEBUG DEDUP SKIP] pendingUiAction already reported: ${action.toolCallId}`,
-                );
-              } else {
-                reportedToolCalls.add(action.toolCallId);
-                // TODO: DELETE - Debug logging
-                debugCounters.toolInputEmissions++;
-                this.logger.debug(
-                  `[DEBUG EMIT] pendingUiAction: ${action.toolCallId}, ${action.toolName}`,
-                );
-                this.logger.debug(
-                  `[DEBUG EMIT] pendingUiAction args: ${JSON.stringify(action.args, null, 2).slice(0, 500)}`,
-                );
-                // Emit tool-input-available for the tool call
-                yield {
-                  type: 'tool-input-available',
-                  toolCallId: action.toolCallId,
-                  toolName: action.toolName,
-                  input: action.args,
-                };
-
-                // For non-interactive UI tools, emit tool-output-available immediately
-                // NOTE: request_user_selection is INTERACTIVE - waits for user selection
-                if (action.toolName === 'render_ui_component') {
-                  debugCounters.toolOutputEmissions++;
-                  this.logger.debug(
-                    `[DEBUG EMIT] tool-output-available (pendingUiAction): ${action.toolCallId}`,
-                  );
-                  yield {
-                    type: 'tool-output-available',
-                    toolCallId: action.toolCallId,
-                    output: action.args,
-                  };
-                }
-              }
-            }
-          }
-
-          // Handle tool_calls embedded in AIMessages from explicit flows
-          // These flows construct AIMessage directly without calling LLM,
-          // so on_chat_model_end never fires. We must emit events here.
-          if (output?.messages && output.messages.length > 0) {
-            for (const msg of output.messages) {
-              // Check if this is an AIMessage with tool_calls
-              if (isAiMessage(msg)) {
-                const aiMsg = msg;
-                if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
-                  for (const toolCall of aiMsg.tool_calls) {
-                    const toolCallId = toolCall.id ?? `tool_${Date.now()}`;
-
-                    // Skip if already reported (deduplication)
-                    if (reportedToolCalls.has(toolCallId)) {
-                      this.logger.debug(
-                        `[DEBUG DEDUP SKIP] AIMessage tool_call already reported: ${toolCallId}`,
-                      );
-                      continue;
-                    }
-                    reportedToolCalls.add(toolCallId);
-
-                    this.logger.debug(
-                      `[DEBUG EMIT] tool-input-available (from AIMessage): ${toolCallId}, ${toolCall.name}`,
-                    );
-
-                    yield {
-                      type: 'tool-input-available',
-                      toolCallId,
-                      toolName: toolCall.name,
-                      input: toolCall.args,
-                    };
-
-                    // For render_ui_component, emit output immediately
-                    // (these are pass-through tools, args ARE the result)
-                    if (toolCall.name === 'render_ui_component') {
-                      this.logger.debug(
-                        `[DEBUG EMIT] tool-output-available (from AIMessage): ${toolCallId}`,
-                      );
-                      yield {
-                        type: 'tool-output-available',
-                        toolCallId,
-                        output: toolCall.args,
-                      };
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          // Handle messages from flows (e.g., greeting flow returns AIMessage)
-          // Only emit if no pendingUiActions (to avoid duplicate content)
-          if (
-            output?.messages &&
-            output.messages.length > 0 &&
-            !output.pendingUiActions?.length
-          ) {
-            // TODO: DELETE - Debug logging
-            this.logger.debug(
-              `[DEBUG CHAIN_END] Flow messages count: ${output.messages.length}`,
-            );
-            // Helper to strip hidden flow metadata from content
-            const stripFlowMetadata = (text: string): string =>
-              text.replace(/\n?\n?<!-- \{"__flowContext":.+?\} -->/s, '');
-
-            for (const msg of output.messages) {
-              if (!isAiMessage(msg)) continue;
-
-              // Handle plain string content
-              if (typeof msg.content === 'string' && msg.content.trim()) {
-                const cleanContent = stripFlowMetadata(msg.content);
-                if (!cleanContent.trim()) continue;
-
-                const msgKey = cleanContent.trim();
-                if (reportedFlowMessages.has(msgKey)) {
-                  // TODO: DELETE - Debug logging dedup skip
-                  debugCounters.dedupSkips.flowMessages++;
-                  this.logger.debug(
-                    `[DEBUG DEDUP SKIP] flow message already reported: ${msgKey.substring(0, 50)}...`,
-                  );
-                } else {
-                  reportedFlowMessages.add(msgKey);
-                  // TODO: DELETE - Debug logging
-                  debugCounters.flowMessages++;
-                  this.logger.debug(
-                    `[DEBUG EMIT] flow message: ${cleanContent.substring(0, 100)}...`,
-                  );
-                  yield { type: 'text-delta', delta: cleanContent };
-                }
-              }
-              // Handle multi-part content: [{ type: 'text', text: '...' }]
-              else if (Array.isArray(msg.content)) {
-                for (const part of msg.content) {
-                  if (
-                    typeof part === 'object' &&
-                    part !== null &&
-                    'type' in part &&
-                    part.type === 'text' &&
-                    'text' in part &&
-                    typeof part.text === 'string' &&
-                    part.text.trim()
-                  ) {
-                    const cleanContent = stripFlowMetadata(part.text);
-                    if (!cleanContent.trim()) continue;
-
-                    const partKey = cleanContent.trim();
-                    if (reportedFlowMessages.has(partKey)) {
-                      // TODO: DELETE - Debug logging dedup skip
-                      debugCounters.dedupSkips.flowMessages++;
-                      this.logger.debug(
-                        `[DEBUG DEDUP SKIP] flow message part already reported: ${partKey.substring(0, 50)}...`,
-                      );
-                    } else {
-                      reportedFlowMessages.add(partKey);
-                      // TODO: DELETE - Debug logging
-                      debugCounters.flowMessages++;
-                      this.logger.debug(
-                        `[DEBUG EMIT] flow message part: ${cleanContent.substring(0, 100)}...`,
-                      );
-                      yield { type: 'text-delta', delta: cleanContent };
-                    }
-                  }
-                }
-              }
-            }
-          }
+        const events = this.processStreamEvent(
+          event,
+          reportedToolCalls,
+          reportedToolResults,
+          reportedFlowMessages,
+        );
+        for (const e of events) {
+          yield e;
         }
       }
 

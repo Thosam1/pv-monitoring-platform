@@ -122,14 +122,16 @@ export function StatusIndicator({
 }>) {
   const config = statusConfig[status];
 
+  // Map status to dot color to avoid nested ternary
+  const getDotColor = (s: StatusType): string => {
+    if (s === 'healthy' || s === 'normal' || s === 'active') return 'bg-green-500';
+    if (s === 'warning' || s === 'low') return 'bg-amber-500';
+    return 'bg-red-500';
+  };
+
   return (
     <span className={cn('inline-flex items-center gap-1.5 text-sm', className)}>
-      <span className={cn(
-        'h-2 w-2 rounded-full',
-        status === 'healthy' || status === 'normal' || status === 'active' ? 'bg-green-500' :
-        status === 'warning' || status === 'low' ? 'bg-amber-500' :
-        'bg-red-500'
-      )} />
+      <span className={cn('h-2 w-2 rounded-full', getDotColor(status))} />
       <span className="text-muted-foreground">{label || config.label}</span>
     </span>
   );

@@ -162,7 +162,7 @@ export interface TransitionContext {
  * NarrativeEngine class for centralized narrative generation.
  */
 export class NarrativeEngine {
-  private model: ModelType;
+  private readonly model: ModelType;
 
   constructor(model: ModelType) {
     this.model = model;
@@ -292,6 +292,186 @@ export class NarrativeEngine {
   }
 
   /**
+   * Add data quality suggestions when data is incomplete or stale.
+   */
+  private addDataQualitySuggestions(suggestions: EnhancedSuggestion[]): void {
+    suggestions.push({
+      label: 'Try different date',
+      action: 'Show me data from the most recent available date',
+      priority: 'suggested',
+      reason: 'Data may be available for other dates',
+      icon: 'chart',
+    });
+  }
+
+  /**
+   * Add action-required suggestions for critical or warning branches.
+   */
+  private addActionRequiredSuggestions(
+    suggestions: EnhancedSuggestion[],
+    context: NarrativeContext,
+  ): void {
+    const anomalies = extractAnomalies(context.data);
+    const hasHighSeverity = anomalies.some((a) => a.severity === 'high');
+
+    if (hasHighSeverity) {
+      suggestions.push({
+        label: 'Diagnose issues',
+        action: `Diagnose the issues found for ${context.subject}`,
+        priority: 'urgent',
+        reason: 'High-severity anomalies detected',
+        badge: '!',
+        icon: 'alert',
+      });
+    }
+
+    suggestions.push({
+      label: 'View power curve',
+      action: `Show me the power curve for ${context.subject}`,
+      priority: 'recommended',
+      reason: 'See when issues occurred',
+      badge: '*',
+      icon: 'chart',
+    });
+  }
+
+  /**
+   * Add health check flow specific suggestions.
+   */
+  private addHealthCheckSuggestions(
+    suggestions: EnhancedSuggestion[],
+    context: NarrativeContext,
+    actionRequired: boolean,
+  ): void {
+    if (!actionRequired) {
+      suggestions.push({
+        label: 'Check savings',
+        action: `How much have I saved with ${context.subject}?`,
+        priority: 'suggested',
+        reason: 'System is healthy - check financial impact',
+        badge: '>',
+        icon: 'dollar',
+      });
+    }
+
+    if (!context.isFleetAnalysis) {
+      suggestions.push({
+        label: 'Compare devices',
+        action: 'Compare all my inverters',
+        priority: 'optional',
+        reason: 'See how this device compares to others',
+        icon: 'chart',
+      });
+    }
+  }
+
+  /**
+   * Add morning briefing flow specific suggestions.
+   */
+  private addMorningBriefingSuggestions(
+    suggestions: EnhancedSuggestion[],
+    actionRequired: boolean,
+  ): void {
+    if (actionRequired) {
+      suggestions.push({
+        label: 'Diagnose issues',
+        action: 'Diagnose the offline devices',
+        priority: 'urgent',
+        reason: 'Some devices need attention',
+        badge: '!',
+        icon: 'alert',
+      });
+    } else {
+      suggestions.push({
+        label: 'Check efficiency',
+        action: 'Show me the efficiency breakdown',
+        priority: 'suggested',
+        reason: 'System is healthy - optimize performance',
+        badge: '>',
+        icon: 'chart',
+      });
+    }
+
+    suggestions.push({
+      label: 'View power curve',
+      action: 'Show me the power curve for today',
+      priority: 'optional',
+      reason: 'See production throughout the day',
+      icon: 'chart',
+    });
+  }
+
+  /**
+   * Add financial report flow specific suggestions.
+   */
+  private addFinancialReportSuggestions(
+    suggestions: EnhancedSuggestion[],
+  ): void {
+    suggestions.push({
+      label: 'Monthly trend',
+      action: 'Show me the monthly savings trend',
+      priority: 'suggested',
+      reason: 'Compare with previous months',
+      badge: '>',
+      icon: 'chart',
+    });
+
+    suggestions.push({
+      label: 'Forecast next month',
+      action: 'What are my projected savings for next month?',
+      priority: 'optional',
+      reason: 'Plan ahead with forecasting',
+      icon: 'lightbulb',
+    });
+  }
+
+  /**
+   * Add performance audit flow specific suggestions.
+   */
+  private addPerformanceAuditSuggestions(
+    suggestions: EnhancedSuggestion[],
+    context: NarrativeContext,
+  ): void {
+    const severity = extractComparisonSeverity(context.data);
+    const worstPerformer = context.data.worstPerformer as
+      | { loggerId: string }
+      | undefined;
+    const bestPerformer = context.data.bestPerformer as
+      | { loggerId: string }
+      | undefined;
+
+    if (severity === 'large_difference' && worstPerformer) {
+      suggestions.push({
+        label: 'Diagnose underperformer',
+        action: `Check health of ${worstPerformer.loggerId}`,
+        priority: 'recommended',
+        reason: 'Large performance gap detected',
+        badge: '*',
+        icon: 'alert',
+      });
+    }
+
+    if (bestPerformer) {
+      suggestions.push({
+        label: 'Analyze top performer',
+        action: `Show detailed metrics for ${bestPerformer.loggerId}`,
+        priority: 'suggested',
+        reason: 'Understand what makes it perform better',
+        badge: '>',
+        icon: 'chart',
+      });
+    }
+
+    suggestions.push({
+      label: 'Compare on energy',
+      action: 'Compare total energy production instead of power',
+      priority: 'optional',
+      reason: 'See if the pattern holds for daily totals',
+      icon: 'chart',
+    });
+  }
+
+  /**
    * Generate contextual suggestions based on narrative context.
    * Replaces static COMMON_SUGGESTIONS with context-aware recommendations.
    */
@@ -300,167 +480,32 @@ export class NarrativeEngine {
     maxSuggestions: number = 3,
   ): EnhancedSuggestion[] {
     const branch = selectBranch(context);
-    // Note: getSuggestionPriority is available for future use to set default priority
     const suggestions: EnhancedSuggestion[] = [];
+    const actionRequired = isActionRequired(branch);
 
     // Add branch-specific suggestions
     if (isDataQualityBranch(branch)) {
-      suggestions.push({
-        label: 'Try different date',
-        action: 'Show me data from the most recent available date',
-        priority: 'suggested',
-        reason: 'Data may be available for other dates',
-        icon: 'chart',
-      });
+      this.addDataQualitySuggestions(suggestions);
     }
 
-    if (isActionRequired(branch)) {
-      // Critical or warning branches
-      const anomalies = extractAnomalies(context.data);
-      const hasHighSeverity = anomalies.some((a) => a.severity === 'high');
-
-      if (hasHighSeverity) {
-        suggestions.push({
-          label: 'Diagnose issues',
-          action: `Diagnose the issues found for ${context.subject}`,
-          priority: 'urgent',
-          reason: 'High-severity anomalies detected',
-          badge: '!',
-          icon: 'alert',
-        });
-      }
-
-      suggestions.push({
-        label: 'View power curve',
-        action: `Show me the power curve for ${context.subject}`,
-        priority: 'recommended',
-        reason: 'See when issues occurred',
-        badge: '*',
-        icon: 'chart',
-      });
+    if (actionRequired) {
+      this.addActionRequiredSuggestions(suggestions, context);
     }
 
     // Add flow-specific suggestions
-    if (context.flowType === 'health_check') {
-      if (isActionRequired(branch)) {
-        // No additional suggestion when action is required - diagnostics already added
-      } else {
-        suggestions.push({
-          label: 'Check savings',
-          action: `How much have I saved with ${context.subject}?`,
-          priority: 'suggested',
-          reason: 'System is healthy - check financial impact',
-          badge: '>',
-          icon: 'dollar',
-        });
-      }
-
-      if (context.isFleetAnalysis) {
-        // No compare suggestion for fleet analysis
-      } else {
-        suggestions.push({
-          label: 'Compare devices',
-          action: 'Compare all my inverters',
-          priority: 'optional',
-          reason: 'See how this device compares to others',
-          icon: 'chart',
-        });
-      }
-    }
-
-    // Morning briefing suggestions
-    if (context.flowType === 'morning_briefing') {
-      if (isActionRequired(branch)) {
-        suggestions.push({
-          label: 'Diagnose issues',
-          action: 'Diagnose the offline devices',
-          priority: 'urgent',
-          reason: 'Some devices need attention',
-          badge: '!',
-          icon: 'alert',
-        });
-      } else {
-        suggestions.push({
-          label: 'Check efficiency',
-          action: 'Show me the efficiency breakdown',
-          priority: 'suggested',
-          reason: 'System is healthy - optimize performance',
-          badge: '>',
-          icon: 'chart',
-        });
-      }
-
-      suggestions.push({
-        label: 'View power curve',
-        action: 'Show me the power curve for today',
-        priority: 'optional',
-        reason: 'See production throughout the day',
-        icon: 'chart',
-      });
-    }
-
-    // Financial report suggestions
-    if (context.flowType === 'financial_report') {
-      suggestions.push({
-        label: 'Monthly trend',
-        action: 'Show me the monthly savings trend',
-        priority: 'suggested',
-        reason: 'Compare with previous months',
-        badge: '>',
-        icon: 'chart',
-      });
-
-      suggestions.push({
-        label: 'Forecast next month',
-        action: 'What are my projected savings for next month?',
-        priority: 'optional',
-        reason: 'Plan ahead with forecasting',
-        icon: 'lightbulb',
-      });
-    }
-
-    // Performance audit suggestions - context-aware based on severity
-    if (context.flowType === 'performance_audit') {
-      const severity = extractComparisonSeverity(context.data);
-      const worstPerformer = context.data.worstPerformer as
-        | { loggerId: string }
-        | undefined;
-      const bestPerformer = context.data.bestPerformer as
-        | { loggerId: string }
-        | undefined;
-
-      // For significant differences, prioritize investigating underperformer
-      if (severity === 'large_difference' && worstPerformer) {
-        suggestions.push({
-          label: 'Diagnose underperformer',
-          action: `Check health of ${worstPerformer.loggerId}`,
-          priority: 'recommended',
-          reason: 'Large performance gap detected',
-          badge: '*',
-          icon: 'alert',
-        });
-      }
-
-      // Always offer to analyze best performer
-      if (bestPerformer) {
-        suggestions.push({
-          label: 'Analyze top performer',
-          action: `Show detailed metrics for ${bestPerformer.loggerId}`,
-          priority: 'suggested',
-          reason: 'Understand what makes it perform better',
-          badge: '>',
-          icon: 'chart',
-        });
-      }
-
-      // Offer to compare on different metric
-      suggestions.push({
-        label: 'Compare on energy',
-        action: 'Compare total energy production instead of power',
-        priority: 'optional',
-        reason: 'See if the pattern holds for daily totals',
-        icon: 'chart',
-      });
+    switch (context.flowType) {
+      case 'health_check':
+        this.addHealthCheckSuggestions(suggestions, context, actionRequired);
+        break;
+      case 'morning_briefing':
+        this.addMorningBriefingSuggestions(suggestions, actionRequired);
+        break;
+      case 'financial_report':
+        this.addFinancialReportSuggestions(suggestions);
+        break;
+      case 'performance_audit':
+        this.addPerformanceAuditSuggestions(suggestions, context);
+        break;
     }
 
     // Always offer to check another device if single logger
@@ -474,15 +519,13 @@ export class NarrativeEngine {
       });
     }
 
-    // Sort by priority and limit
+    // Sort by priority, deduplicate, and limit
     const priorityOrder = {
       urgent: 0,
       recommended: 1,
       suggested: 2,
       optional: 3,
     };
-
-    // Deduplicate by label (keep first occurrence - higher priority wins after sort)
     const sortedSuggestions = suggestions.sort(
       (a, b) => priorityOrder[a.priority] - priorityOrder[b.priority],
     );

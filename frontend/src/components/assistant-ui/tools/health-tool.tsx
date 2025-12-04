@@ -77,7 +77,13 @@ export const HealthTool = makeAssistantToolUI<HealthArgs, HealthResult>({
 
     const data = result.result;
     const anomalyCount = data.anomalyCount ?? 0;
-    const healthStatus: StatusType = anomalyCount === 0 ? 'healthy' : anomalyCount < 5 ? 'warning' : 'critical';
+    // Determine health status from anomaly count to avoid nested ternary
+    const getHealthStatus = (count: number): StatusType => {
+      if (count === 0) return 'healthy';
+      if (count < 5) return 'warning';
+      return 'critical';
+    };
+    const healthStatus: StatusType = getHealthStatus(anomalyCount);
 
     return (
       <motion.div

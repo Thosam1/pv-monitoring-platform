@@ -36,8 +36,9 @@ export class AiController {
     @Body() body: ChatRequestDto,
     @Res() res: Response,
   ): Promise<void> {
+    const threadIdSuffix = body.threadId ? `, threadId: ${body.threadId}` : '';
     this.logger.log(
-      `Chat request received with ${body.messages.length} messages${body.threadId ? `, threadId: ${body.threadId}` : ''}`,
+      `Chat request received with ${body.messages.length} messages${threadIdSuffix}`,
     );
 
     // Validate that AI service is ready

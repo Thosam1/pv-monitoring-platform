@@ -40,6 +40,98 @@ export type NarrativeBranch =
  */
 
 /**
+ * Check data quality and return branch if there are issues.
+ */
+function checkDataQuality(
+  dataQuality: NarrativeContext['dataQuality'],
+): NarrativeBranch | null {
+  if (dataQuality.completeness < 50) {
+    return 'data_incomplete';
+  }
+  if (!dataQuality.isExpectedWindow) {
+    return 'data_stale';
+  }
+  return null;
+}
+
+/**
+ * Check performance audit comparison severity.
+ */
+function checkComparisonSeverity(
+  data: NarrativeContext['data'],
+): NarrativeBranch | null {
+  const severity = data.comparisonSeverity as
+    | 'similar'
+    | 'moderate_difference'
+    | 'large_difference'
+    | undefined;
+
+  if (severity === 'similar') return 'comparison_consistent';
+  if (severity === 'moderate_difference') return 'comparison_moderate';
+  if (severity === 'large_difference') return 'comparison_significant';
+  return null;
+}
+
+/**
+ * Check historical patterns for recurrent or degrading issues.
+ */
+function checkHistoricalPatterns(
+  historicalContext: NarrativeContext['historicalContext'],
+): NarrativeBranch | null {
+  if (historicalContext?.isRecurrent) {
+    return 'recurrent_issue';
+  }
+  if (historicalContext?.trend === 'degrading') {
+    return 'trend_degrading';
+  }
+  return null;
+}
+
+/**
+ * Check for fleet-wide issues.
+ */
+function checkFleetIssues(
+  data: NarrativeContext['data'],
+  isFleetAnalysis: boolean | undefined,
+  fleetSize: number | undefined,
+  anomalyCount: number,
+): NarrativeBranch | null {
+  if (!isFleetAnalysis || !fleetSize) return null;
+
+  const loggersWithIssues = (data.loggersWithIssues as number) || 0;
+  const affectedRatio = loggersWithIssues / fleetSize;
+  if (affectedRatio > 0.3 && anomalyCount > 0) {
+    return 'critical_fleet_wide';
+  }
+  return null;
+}
+
+/**
+ * Determine warning or healthy branch based on anomaly count.
+ */
+function determineAnomalyBranch(
+  anomalyCount: number,
+  severityCounts: Record<string, number>,
+  healthScore: number,
+): NarrativeBranch {
+  if (anomalyCount > 3) {
+    return 'warning_multiple_anomalies';
+  }
+
+  if (anomalyCount >= 1 && anomalyCount <= 3) {
+    return severityCounts.medium > 0
+      ? 'warning_multiple_anomalies'
+      : 'warning_single_anomaly';
+  }
+
+  if (healthScore >= 95) {
+    return 'healthy_all_clear';
+  }
+
+  return 'healthy_minor_notes';
+}
+
+/**
  * Select the appropriate narrative branch based on context.
  * Uses priority-ordered evaluation to select the most relevant branch.
  *
@@ -55,74 +147,35 @@ export function selectBranch(context: NarrativeContext): NarrativeBranch {
   const severityCounts = countBySeverity(anomalies);
 
   // Data quality checks (highest priority)
-  if (dataQuality.completeness < 50) {
-    return 'data_incomplete';
-  }
+  const dataQualityBranch = checkDataQuality(dataQuality);
+  if (dataQualityBranch) return dataQualityBranch;
 
-  if (!dataQuality.isExpectedWindow) {
-    return 'data_stale';
-  }
-
-  // Performance audit comparison branches (flow-specific)
-  // Check before other branches since comparison has its own severity logic
+  // Performance audit comparison branches
   if (context.flowType === 'performance_audit') {
-    const severity = data.comparisonSeverity as
-      | 'similar'
-      | 'moderate_difference'
-      | 'large_difference'
-      | undefined;
-
-    if (severity === 'similar') {
-      return 'comparison_consistent';
-    } else if (severity === 'moderate_difference') {
-      return 'comparison_moderate';
-    } else if (severity === 'large_difference') {
-      return 'comparison_significant';
-    }
-    // Fall through to generic branches if no severity set
+    const comparisonBranch = checkComparisonSeverity(data);
+    if (comparisonBranch) return comparisonBranch;
   }
 
   // Historical pattern detection
-  if (historicalContext?.isRecurrent) {
-    return 'recurrent_issue';
-  }
-
-  if (historicalContext?.trend === 'degrading') {
-    return 'trend_degrading';
-  }
+  const historicalBranch = checkHistoricalPatterns(historicalContext);
+  if (historicalBranch) return historicalBranch;
 
   // Critical issues - high severity anomalies
   if (severityCounts.high > 0) {
     return 'critical_high_severity';
   }
 
-  // Fleet-wide issues - multiple loggers affected
-  if (isFleetAnalysis && fleetSize) {
-    const loggersWithIssues = (data.loggersWithIssues as number) || 0;
-    const affectedRatio = loggersWithIssues / fleetSize;
-    if (affectedRatio > 0.3 && anomalies.length > 0) {
-      return 'critical_fleet_wide';
-    }
-  }
+  // Fleet-wide issues
+  const fleetBranch = checkFleetIssues(
+    data,
+    isFleetAnalysis,
+    fleetSize,
+    anomalies.length,
+  );
+  if (fleetBranch) return fleetBranch;
 
-  // Warning states - multiple anomalies
-  if (anomalies.length > 3) {
-    return 'warning_multiple_anomalies';
-  }
-
-  if (anomalies.length >= 1 && anomalies.length <= 3) {
-    return severityCounts.medium > 0
-      ? 'warning_multiple_anomalies'
-      : 'warning_single_anomaly';
-  }
-
-  // Healthy states
-  if (healthScore >= 95) {
-    return 'healthy_all_clear';
-  }
-
-  // Minor observations - healthy but not perfect
-  return 'healthy_minor_notes';
+  // Determine warning or healthy branch based on anomalies
+  return determineAnomalyBranch(anomalies.length, severityCounts, healthScore);
 }
 
 /**

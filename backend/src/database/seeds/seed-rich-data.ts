@@ -95,7 +95,7 @@ const LOGGERS: LoggerConfig[] = [
 ];
 
 // Problem Child: Days with zero power drops (1-indexed)
-const PROBLEM_CHILD_OUTAGE_DAYS = [3, 5, 7, 12, 18, 25];
+const PROBLEM_CHILD_OUTAGE_DAYS = new Set([3, 5, 7, 12, 18, 25]);
 const PROBLEM_CHILD_OUTAGE_START_HOUR = 10;
 const PROBLEM_CHILD_OUTAGE_END_HOUR = 14;
 const PROBLEM_CHILD_ERROR_CODE = 'E-501';
@@ -140,7 +140,7 @@ function getIrradiance(hour: number, variation: number): number {
  * Check if this is a Problem Child outage window.
  */
 function isProblemChildOutage(dayNumber: number, hour: number): boolean {
-  if (!PROBLEM_CHILD_OUTAGE_DAYS.includes(dayNumber)) return false;
+  if (!PROBLEM_CHILD_OUTAGE_DAYS.has(dayNumber)) return false;
   return (
     hour >= PROBLEM_CHILD_OUTAGE_START_HOUR &&
     hour < PROBLEM_CHILD_OUTAGE_END_HOUR
