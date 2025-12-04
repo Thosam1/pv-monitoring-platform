@@ -5,6 +5,7 @@ import {
   START,
   END,
   CompiledStateGraph,
+  MemorySaver,
 } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import {
@@ -69,6 +70,7 @@ export class LanggraphService {
 
   private graph: CompiledStateGraph<any, any, any> | null = null;
   private model: ModelType | null = null;
+  private checkpointer = new MemorySaver();
 
   constructor(
     private readonly configService: ConfigService,
@@ -342,8 +344,40 @@ export class LanggraphService {
       return 'end';
     };
 
-    // Routing: should trigger recovery?
-    const shouldRecover = (state: ExplicitFlowState): 'recovery' | 'llm' => {
+    /**
+     * Determines if the loop should continue, recover, or end after tool execution.
+     *
+     * CRITICAL: UI rendering tools (render_ui_component, request_user_selection)
+     * are TERMINAL actions - the turn ends after they execute.
+     */
+    const shouldRecover = (
+      state: ExplicitFlowState,
+    ): 'recovery' | 'llm' | 'end' => {
+      const messages = state.messages;
+
+      // Check if last AIMessage called a terminal UI tool
+      // We need to look at the most recent AIMessage (before the ToolMessage)
+      const lastAiMessageIndex = messages.findLastIndex(
+        (m) => m._getType() === 'ai',
+      );
+      if (lastAiMessageIndex >= 0) {
+        const lastAiMessage = messages[lastAiMessageIndex] as AIMessage;
+        const toolCalls = lastAiMessage.tool_calls || [];
+
+        const hasTerminalUiTool = toolCalls.some(
+          (tc) =>
+            tc.name === 'render_ui_component' ||
+            tc.name === 'request_user_selection',
+        );
+
+        if (hasTerminalUiTool) {
+          // UI has been rendered - STOP THE LOOP
+          this.logger.debug('Terminal UI tool detected, ending free chat loop');
+          return 'end';
+        }
+      }
+
+      // Check for recovery (existing logic)
       const needsRecovery = state.flowContext.toolResults?.needsRecovery;
       const attempts = state.recoveryAttempts || 0;
 
@@ -422,14 +456,15 @@ export class LanggraphService {
       .addConditionalEdges('check_results', shouldRecover, {
         recovery: 'recovery',
         llm: 'free_chat',
+        end: END, // Terminal route for UI tools (breaks recursion loop)
       })
 
       // Edges: Recovery completion
       .addEdge('recovery', END)
 
-      .compile();
+      .compile({ checkpointer: this.checkpointer });
 
-    this.logger.log('Explicit flow graph compiled successfully');
+    this.logger.log('Explicit flow graph compiled with checkpointer');
     return graph;
   }
 
@@ -536,6 +571,40 @@ export class LanggraphService {
       return 'end';
     };
 
+    /**
+     * Legacy graph: Check if we should continue or end after tool execution.
+     * Terminal UI tools (render_ui_component, request_user_selection) end the loop.
+     */
+    const shouldContinueAfterTools = (
+      state: ExplicitFlowState,
+    ): 'llm' | 'end' => {
+      const messages = state.messages;
+
+      // Check if last AIMessage called a terminal UI tool
+      const lastAiMessageIndex = messages.findLastIndex(
+        (m) => m._getType() === 'ai',
+      );
+      if (lastAiMessageIndex >= 0) {
+        const lastAiMessage = messages[lastAiMessageIndex] as AIMessage;
+        const toolCalls = lastAiMessage.tool_calls || [];
+
+        const hasTerminalUiTool = toolCalls.some(
+          (tc) =>
+            tc.name === 'render_ui_component' ||
+            tc.name === 'request_user_selection',
+        );
+
+        if (hasTerminalUiTool) {
+          this.logger.debug(
+            'Legacy graph: Terminal UI tool detected, ending loop',
+          );
+          return 'end';
+        }
+      }
+
+      return 'llm';
+    };
+
     const graph = new StateGraph(ExplicitFlowStateAnnotation)
       .addNode('llm', callModel)
       .addNode('tools', toolNode)
@@ -546,7 +615,10 @@ export class LanggraphService {
         end: END,
       })
       .addEdge('tools', 'check_results')
-      .addEdge('check_results', 'llm')
+      .addConditionalEdges('check_results', shouldContinueAfterTools, {
+        llm: 'llm',
+        end: END,
+      })
       .compile();
 
     this.logger.log('Legacy graph compiled successfully');
@@ -596,6 +668,52 @@ export class LanggraphService {
   }
 
   /**
+   * Extract flow context from message history.
+   * Looks for hidden metadata in assistant messages that was embedded
+   * when waiting for user selection input.
+   */
+  private extractFlowContextFromMessages(
+    messages: BaseMessage[],
+  ): Partial<ExplicitFlowState> | undefined {
+    // Look for flow metadata in recent assistant messages (search backwards)
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg._getType() === 'ai') {
+        const content = typeof msg.content === 'string' ? msg.content : '';
+        const match = content.match(/<!-- (\{"__flowContext":.+?\}) -->/s);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]) as {
+              __flowContext: {
+                activeFlow?: string;
+                currentPromptArg?: string;
+                waitingForUserInput?: boolean;
+                extractedArgs?: Record<string, unknown>;
+              };
+            };
+            const ctx = parsed.__flowContext;
+            this.logger.debug(
+              `[FLOW CONTEXT] Restored from message: activeFlow=${ctx.activeFlow}, waitingForUserInput=${ctx.waitingForUserInput}`,
+            );
+            return {
+              activeFlow: ctx.activeFlow as ExplicitFlowState['activeFlow'],
+              flowStep: 0,
+              flowContext: {
+                currentPromptArg: ctx.currentPromptArg,
+                waitingForUserInput: ctx.waitingForUserInput,
+                extractedArgs: ctx.extractedArgs,
+              },
+            };
+          } catch (e) {
+            this.logger.warn(`[FLOW CONTEXT] Failed to parse metadata: ${e}`);
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Stream chat responses using an async generator.
    *
    * Yields events in a format compatible with the frontend SSE handler:
@@ -605,6 +723,7 @@ export class LanggraphService {
    */
   async *streamChat(
     messages: Array<{ role: string; content: string }>,
+    threadId?: string,
   ): AsyncGenerator<{
     type: string;
     delta?: string;
@@ -618,20 +737,108 @@ export class LanggraphService {
 
     this.logger.log(`Streaming chat with ${langchainMessages.length} messages`);
 
-    // Track tool calls we've already reported
+    // Debug logging counters
+    const debugCounters = {
+      routerCalls: 0,
+      greetingFlowCalls: 0,
+      freeChatCalls: 0,
+      toolInputEmissions: 0,
+      toolOutputEmissions: 0,
+      textEmissions: 0,
+      flowMessages: 0,
+      dedupSkips: {
+        toolCalls: 0,
+        toolResults: 0,
+        flowMessages: 0,
+      },
+      eventsProcessed: 0,
+    };
+
+    // Debug logging entry point
+    this.logger.debug('[DEBUG ENTRY] === NEW REQUEST ===');
+    this.logger.debug(
+      '[DEBUG ENTRY] Incoming messages count:',
+      messages.length,
+    );
+    this.logger.debug(
+      '[DEBUG ENTRY] Last user message:',
+      messages[messages.length - 1]?.content?.slice(0, 100),
+    );
+
+    // Track tool calls and flow messages we've already reported (for deduplication)
     const reportedToolCalls = new Set<string>();
     const reportedToolResults = new Set<string>();
+    const reportedFlowMessages = new Set<string>();
+
+    // PRE-FILL: Mark all incoming messages as "already reported"
+    // This prevents re-emitting historical messages from checkpointed state
+    for (const msg of langchainMessages) {
+      // Generate consistent key for message deduplication
+      const msgId = msg.id;
+      const msgContent =
+        typeof msg.content === 'string'
+          ? msg.content
+          : JSON.stringify(msg.content);
+
+      // Use ID if available, otherwise use content hash
+      const msgKey = msgId || msgContent;
+      if (msgKey) {
+        reportedFlowMessages.add(msgKey);
+      }
+
+      // Also pre-fill tool calls from historical AIMessages
+      if (msg._getType() === 'ai') {
+        const aiMsg = msg as AIMessage;
+        if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
+          for (const tc of aiMsg.tool_calls) {
+            if (tc.id) {
+              reportedToolCalls.add(tc.id);
+            }
+          }
+        }
+      }
+    }
+
+    this.logger.debug(
+      `[DEDUP PREFILL] Pre-filled ${reportedFlowMessages.size} messages, ${reportedToolCalls.size} tool calls`,
+    );
 
     if (!graph) {
       throw new Error('Failed to build chat graph');
     }
 
     try {
+      // Check for preserved flow context from previous selection prompt
+      const preservedContext =
+        this.extractFlowContextFromMessages(langchainMessages);
+
+      // Build initial state - include preserved context if available
+      const initialState: Partial<ExplicitFlowState> = {
+        messages: langchainMessages,
+      };
+
+      if (preservedContext) {
+        this.logger.debug(
+          `[FLOW CONTEXT] Passing preserved context: activeFlow=${preservedContext.activeFlow}`,
+        );
+        initialState.activeFlow = preservedContext.activeFlow;
+        initialState.flowStep = preservedContext.flowStep;
+        initialState.flowContext = preservedContext.flowContext;
+      }
+
       // Stream events from the graph
-      const stream = graph.streamEvents(
-        { messages: langchainMessages },
-        { version: 'v2' },
+      // Generate fallback thread_id if not provided - MemorySaver ALWAYS requires one
+      const effectiveThreadId =
+        threadId ||
+        `thread_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      this.logger.debug(
+        `[CHECKPOINTING] Using thread_id: ${effectiveThreadId}${!threadId ? ' (auto-generated)' : ''}`,
       );
+
+      const stream = graph.streamEvents(initialState, {
+        version: 'v2',
+        configurable: { thread_id: effectiveThreadId },
+      });
 
       // Internal nodes that should NOT emit text to the frontend
       // These produce JSON classification or internal state, not user-facing content
@@ -659,9 +866,20 @@ export class LanggraphService {
             | undefined;
 
           if (chunk?.content) {
+            // Helper to strip hidden flow metadata from content
+            const stripFlowMetadata = (text: string): string =>
+              text.replace(/\n?\n?<!-- \{"__flowContext":.+?\} -->/s, '');
+
             // Handle string content directly
             if (typeof chunk.content === 'string') {
-              yield { type: 'text-delta', delta: chunk.content };
+              const cleanContent = stripFlowMetadata(chunk.content);
+              if (cleanContent) {
+                debugCounters.textEmissions++;
+                this.logger.debug(
+                  `[DEBUG EMIT] text-delta from node: ${nodeName}, length: ${cleanContent.length}`,
+                );
+                yield { type: 'text-delta', delta: cleanContent };
+              }
             }
             // Handle array content (e.g., [{ type: 'text', text: '...' }])
             else if (Array.isArray(chunk.content)) {
@@ -674,7 +892,14 @@ export class LanggraphService {
                   'text' in part &&
                   typeof part.text === 'string'
                 ) {
-                  yield { type: 'text-delta', delta: part.text };
+                  const cleanContent = stripFlowMetadata(part.text);
+                  if (cleanContent) {
+                    debugCounters.textEmissions++;
+                    this.logger.debug(
+                      `[DEBUG EMIT] text-delta (array) from node: ${nodeName}, length: ${cleanContent.length}`,
+                    );
+                    yield { type: 'text-delta', delta: cleanContent };
+                  }
                 }
               }
             }
@@ -704,6 +929,17 @@ export class LanggraphService {
               const toolCallId = toolCall.id ?? `tool_${Date.now()}`;
               if (!reportedToolCalls.has(toolCallId)) {
                 reportedToolCalls.add(toolCallId);
+                // TODO: DELETE - Debug logging
+                debugCounters.toolInputEmissions++;
+                this.logger.debug(
+                  `[DEBUG EMIT] tool-input-available: ${toolCallId}, ${toolCall.name}`,
+                );
+                this.logger.debug(
+                  `[DEBUG EMIT] tool args: ${JSON.stringify(toolCall.args, null, 2).slice(0, 500)}`,
+                );
+                this.logger.debug(
+                  `[DEBUG DEDUP] Adding to reportedToolCalls: ${toolCallId}, size: ${reportedToolCalls.size}`,
+                );
                 yield {
                   type: 'tool-input-available',
                   toolCallId,
@@ -711,14 +947,13 @@ export class LanggraphService {
                   input: toolCall.args,
                 };
 
-                // For UI pass-through tools, also emit tool-output-available immediately
+                // For non-interactive UI tools, emit tool-output-available immediately
                 // since these don't go through tool execution - the args ARE the result
-                if (
-                  toolCall.name === 'render_ui_component' ||
-                  toolCall.name === 'request_user_selection'
-                ) {
+                // NOTE: request_user_selection is INTERACTIVE - it waits for user input
+                if (toolCall.name === 'render_ui_component') {
+                  debugCounters.toolOutputEmissions++;
                   this.logger.debug(
-                    `Emitting immediate tool-output-available for UI pass-through: ${toolCall.name}`,
+                    `[DEBUG EMIT] tool-output-available (immediate): ${toolCallId}`,
                   );
                   yield {
                     type: 'tool-output-available',
@@ -726,13 +961,25 @@ export class LanggraphService {
                     output: toolCall.args,
                   };
                 }
+              } else {
+                // TODO: DELETE - Debug logging dedup skip
+                debugCounters.dedupSkips.toolCalls++;
+                this.logger.debug(
+                  `[DEBUG DEDUP SKIP] toolCall already reported: ${toolCallId}`,
+                );
               }
             }
           }
         } else if (event.event === 'on_tool_end') {
           // Tool execution finished
           const toolCallId = event.run_id ?? `tool_result_${Date.now()}`;
-          if (!reportedToolResults.has(toolCallId)) {
+          if (reportedToolResults.has(toolCallId)) {
+            // TODO: DELETE - Debug logging dedup skip
+            debugCounters.dedupSkips.toolResults++;
+            this.logger.debug(
+              `[DEBUG DEDUP SKIP] toolResult already reported: ${toolCallId}`,
+            );
+          } else {
             reportedToolResults.add(toolCallId);
 
             // Parse the output - tools return JSON strings
@@ -745,6 +992,15 @@ export class LanggraphService {
               }
             }
 
+            // TODO: DELETE - Debug logging
+            debugCounters.toolOutputEmissions++;
+            this.logger.debug(
+              `[DEBUG EMIT] tool-output-available (on_tool_end): ${event.tags?.[0] ?? toolCallId}`,
+            );
+            this.logger.debug(
+              `[DEBUG DEDUP] Adding to reportedToolResults: ${toolCallId}, size: ${reportedToolResults.size}`,
+            );
+
             yield {
               type: 'tool-output-available',
               toolCallId: event.tags?.[0] ?? toolCallId,
@@ -752,19 +1008,31 @@ export class LanggraphService {
             };
           }
         } else if (event.event === 'on_chain_end') {
-          // Handle subgraph completion - check for pendingUiActions
-          // This catches UI actions created by subgraph nodes that don't go through LLM
+          // Handle subgraph completion - check for pendingUiActions and messages
+          // This catches UI actions and text from flows that don't go through LLM
           const output = event.data?.output as
-            | { pendingUiActions?: PendingUiAction[] }
+            | {
+                pendingUiActions?: PendingUiAction[];
+                messages?: BaseMessage[];
+              }
             | null
             | undefined;
 
           if (output?.pendingUiActions && output.pendingUiActions.length > 0) {
+            // TODO: DELETE - Debug logging
+            this.logger.debug(
+              `[DEBUG CHAIN_END] pendingUiActions count: ${output.pendingUiActions.length}`,
+            );
             for (const action of output.pendingUiActions) {
               if (!reportedToolCalls.has(action.toolCallId)) {
                 reportedToolCalls.add(action.toolCallId);
+                // TODO: DELETE - Debug logging
+                debugCounters.toolInputEmissions++;
                 this.logger.debug(
-                  `Emitting pendingUiAction from subgraph: ${action.toolName}`,
+                  `[DEBUG EMIT] pendingUiAction: ${action.toolCallId}, ${action.toolName}`,
+                );
+                this.logger.debug(
+                  `[DEBUG EMIT] pendingUiAction args: ${JSON.stringify(action.args, null, 2).slice(0, 500)}`,
                 );
                 // Emit tool-input-available for the tool call
                 yield {
@@ -774,14 +1042,12 @@ export class LanggraphService {
                   input: action.args,
                 };
 
-                // For UI pass-through tools (render_ui_component, request_user_selection),
-                // also emit tool-output-available with the args as result so frontend can render
-                if (
-                  action.toolName === 'render_ui_component' ||
-                  action.toolName === 'request_user_selection'
-                ) {
+                // For non-interactive UI tools, emit tool-output-available immediately
+                // NOTE: request_user_selection is INTERACTIVE - waits for user selection
+                if (action.toolName === 'render_ui_component') {
+                  debugCounters.toolOutputEmissions++;
                   this.logger.debug(
-                    `Emitting tool-output-available for UI pass-through: ${action.toolName}`,
+                    `[DEBUG EMIT] tool-output-available (pendingUiAction): ${action.toolCallId}`,
                   );
                   yield {
                     type: 'tool-output-available',
@@ -789,11 +1055,161 @@ export class LanggraphService {
                     output: action.args,
                   };
                 }
+              } else {
+                // TODO: DELETE - Debug logging dedup skip
+                debugCounters.dedupSkips.toolCalls++;
+                this.logger.debug(
+                  `[DEBUG DEDUP SKIP] pendingUiAction already reported: ${action.toolCallId}`,
+                );
+              }
+            }
+          }
+
+          // Handle tool_calls embedded in AIMessages from explicit flows
+          // These flows construct AIMessage directly without calling LLM,
+          // so on_chat_model_end never fires. We must emit events here.
+          if (output?.messages && output.messages.length > 0) {
+            for (const msg of output.messages) {
+              // Check if this is an AIMessage with tool_calls
+              if (msg._getType() === 'ai') {
+                const aiMsg = msg as AIMessage;
+                if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
+                  for (const toolCall of aiMsg.tool_calls) {
+                    const toolCallId = toolCall.id ?? `tool_${Date.now()}`;
+
+                    // Skip if already reported (deduplication)
+                    if (reportedToolCalls.has(toolCallId)) {
+                      this.logger.debug(
+                        `[DEBUG DEDUP SKIP] AIMessage tool_call already reported: ${toolCallId}`,
+                      );
+                      continue;
+                    }
+                    reportedToolCalls.add(toolCallId);
+
+                    this.logger.debug(
+                      `[DEBUG EMIT] tool-input-available (from AIMessage): ${toolCallId}, ${toolCall.name}`,
+                    );
+
+                    yield {
+                      type: 'tool-input-available',
+                      toolCallId,
+                      toolName: toolCall.name,
+                      input: toolCall.args,
+                    };
+
+                    // For render_ui_component, emit output immediately
+                    // (these are pass-through tools, args ARE the result)
+                    if (toolCall.name === 'render_ui_component') {
+                      this.logger.debug(
+                        `[DEBUG EMIT] tool-output-available (from AIMessage): ${toolCallId}`,
+                      );
+                      yield {
+                        type: 'tool-output-available',
+                        toolCallId,
+                        output: toolCall.args,
+                      };
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          // Handle messages from flows (e.g., greeting flow returns AIMessage)
+          // Only emit if no pendingUiActions (to avoid duplicate content)
+          if (
+            output?.messages &&
+            output.messages.length > 0 &&
+            !output.pendingUiActions?.length
+          ) {
+            // TODO: DELETE - Debug logging
+            this.logger.debug(
+              `[DEBUG CHAIN_END] Flow messages count: ${output.messages.length}`,
+            );
+            // Helper to strip hidden flow metadata from content
+            const stripFlowMetadata = (text: string): string =>
+              text.replace(/\n?\n?<!-- \{"__flowContext":.+?\} -->/s, '');
+
+            for (const msg of output.messages) {
+              if (msg._getType() !== 'ai') continue;
+
+              // Handle plain string content
+              if (typeof msg.content === 'string' && msg.content.trim()) {
+                const cleanContent = stripFlowMetadata(msg.content);
+                if (!cleanContent.trim()) continue;
+
+                const msgKey = cleanContent.trim();
+                if (!reportedFlowMessages.has(msgKey)) {
+                  reportedFlowMessages.add(msgKey);
+                  // TODO: DELETE - Debug logging
+                  debugCounters.flowMessages++;
+                  this.logger.debug(
+                    `[DEBUG EMIT] flow message: ${cleanContent.substring(0, 100)}...`,
+                  );
+                  yield { type: 'text-delta', delta: cleanContent };
+                } else {
+                  // TODO: DELETE - Debug logging dedup skip
+                  debugCounters.dedupSkips.flowMessages++;
+                  this.logger.debug(
+                    `[DEBUG DEDUP SKIP] flow message already reported: ${msgKey.substring(0, 50)}...`,
+                  );
+                }
+              }
+              // Handle multi-part content: [{ type: 'text', text: '...' }]
+              else if (Array.isArray(msg.content)) {
+                for (const part of msg.content) {
+                  if (
+                    typeof part === 'object' &&
+                    part !== null &&
+                    'type' in part &&
+                    part.type === 'text' &&
+                    'text' in part &&
+                    typeof part.text === 'string' &&
+                    part.text.trim()
+                  ) {
+                    const cleanContent = stripFlowMetadata(part.text);
+                    if (!cleanContent.trim()) continue;
+
+                    const partKey = cleanContent.trim();
+                    if (!reportedFlowMessages.has(partKey)) {
+                      reportedFlowMessages.add(partKey);
+                      // TODO: DELETE - Debug logging
+                      debugCounters.flowMessages++;
+                      this.logger.debug(
+                        `[DEBUG EMIT] flow message part: ${cleanContent.substring(0, 100)}...`,
+                      );
+                      yield { type: 'text-delta', delta: cleanContent };
+                    } else {
+                      // TODO: DELETE - Debug logging dedup skip
+                      debugCounters.dedupSkips.flowMessages++;
+                      this.logger.debug(
+                        `[DEBUG DEDUP SKIP] flow message part already reported: ${partKey.substring(0, 50)}...`,
+                      );
+                    }
+                  }
+                }
               }
             }
           }
         }
       }
+
+      // TODO: DELETE - Debug logging summary
+      this.logger.debug('[DEBUG SUMMARY] === REQUEST COMPLETE ===');
+      this.logger.debug(
+        '[DEBUG SUMMARY] Counters:',
+        JSON.stringify(debugCounters, null, 2),
+      );
+      this.logger.debug('[DEBUG SUMMARY] reportedToolCalls:', [
+        ...reportedToolCalls,
+      ]);
+      this.logger.debug('[DEBUG SUMMARY] reportedToolResults:', [
+        ...reportedToolResults,
+      ]);
+      this.logger.debug(
+        '[DEBUG SUMMARY] reportedFlowMessages:',
+        [...reportedFlowMessages].map((m) => m.slice(0, 50)),
+      );
     } catch (error) {
       this.logger.error(`Stream error: ${error}`);
       throw error;
@@ -803,9 +1219,12 @@ export class LanggraphService {
   /**
    * Process a chat request and return a streaming response.
    * Returns an object with methods compatible with the existing controller.
+   *
+   * @param messages - Chat message history
+   * @param threadId - Optional thread ID for checkpointing (state persistence)
    */
-  chat(messages: Array<{ role: string; content: string }>) {
-    const generator = this.streamChat(messages);
+  chat(messages: Array<{ role: string; content: string }>, threadId?: string) {
+    const generator = this.streamChat(messages, threadId);
 
     return {
       // Provide an async iterable for streaming

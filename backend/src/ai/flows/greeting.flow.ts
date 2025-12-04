@@ -18,6 +18,28 @@ import {
 const logger = new Logger('GreetingFlow');
 
 /**
+ * FIX #6: Random solar tips to make greetings more dynamic.
+ * Displayed when fleet summary is unavailable.
+ */
+const SOLAR_TIPS = [
+  '💡 Tip: Solar panels are most efficient at cooler temperatures!',
+  '💡 Did you know? Cleaning your panels twice a year can boost output by 5%.',
+  '💡 Tip: Morning dew can actually help clean your panels naturally.',
+  '💡 Fun fact: A single solar panel can offset about 1 ton of CO2 over its lifetime.',
+  '💡 Tip: Check your inverter logs monthly for optimal performance.',
+  '💡 Did you know? Solar panels can still generate power on cloudy days, just at reduced efficiency.',
+  '💡 Tip: Shade from a single tree branch can reduce panel output significantly.',
+  '💡 Fun fact: The Earth receives more energy from the sun in one hour than humanity uses in a year.',
+];
+
+/**
+ * Get a random solar tip for the greeting.
+ */
+function getRandomTip(): string {
+  return SOLAR_TIPS[Math.floor(Math.random() * SOLAR_TIPS.length)];
+}
+
+/**
  * Fleet overview response structure (subset for greeting).
  */
 interface FleetOverviewResult {
@@ -47,6 +69,9 @@ function buildFleetSummary(
   if (!fleetData) return null;
 
   const { site, health } = fleetData;
+
+  // Ensure site and health exist before accessing properties
+  if (!site || !health) return null;
 
   // No loggers means no data to report
   if (site.totalLoggers === 0) return null;
@@ -95,8 +120,11 @@ function buildGreetingMessage(
     capabilities,
   ];
 
+  // FIX #6: Add fleet summary OR random solar tip
   if (fleetSummary) {
     sections.push('', fleetSummary);
+  } else {
+    sections.push('', getRandomTip());
   }
 
   sections.push('', 'What would you like to explore?');
@@ -119,6 +147,15 @@ export function createGreetingFlow(httpClient: ToolsHttpClient) {
   const greetingNode = async (
     state: ExplicitFlowState,
   ): Promise<Partial<ExplicitFlowState>> => {
+    // TODO: DELETE - Debug logging
+    logger.debug('[DEBUG GREETING] === FLOW ENTRY ===');
+    logger.debug('[DEBUG GREETING] Messages count:', state.messages.length);
+    logger.debug(
+      '[DEBUG GREETING] FlowContext:',
+      JSON.stringify(state.flowContext, null, 2),
+    );
+    logger.debug('[DEBUG GREETING] FlowStep:', state.flowStep);
+
     logger.debug('Greeting Flow: Generating greeting');
 
     // Determine time of day
@@ -159,6 +196,14 @@ export function createGreetingFlow(httpClient: ToolsHttpClient) {
     const aiMessage = new AIMessage({
       content: greetingMessage,
     });
+
+    // TODO: DELETE - Debug logging
+    logger.debug('[DEBUG GREETING] === FLOW EXIT ===');
+    logger.debug('[DEBUG GREETING] Returning 1 AIMessage');
+    logger.debug(
+      '[DEBUG GREETING] Message content:',
+      greetingMessage.slice(0, 200) + '...',
+    );
 
     return {
       messages: [aiMessage],

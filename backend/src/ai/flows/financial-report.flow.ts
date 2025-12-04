@@ -15,18 +15,27 @@ import {
   executeTool,
   generateToolCallId,
   createRenderArgs,
-  createSelectionArgs,
-  formatLoggerOptions,
   getDateDaysAgo,
   getLatestDateString,
+  LoggerInfo,
 } from './flow-utils';
 import {
   NarrativeEngine,
   NarrativeContext,
   DEFAULT_NARRATIVE_PREFERENCES,
 } from '../narrative';
+import {
+  argumentCheckNode,
+  hasRequiredArgs,
+} from '../nodes/argument-check.node';
 
 const logger = new Logger('FinancialReportFlow');
+
+/**
+ * Default electricity rate in €/kWh (or $/kWh).
+ * Can be overridden via flowContext.electricityRate for user-specific pricing.
+ */
+const DEFAULT_ELECTRICITY_RATE = 0.2;
 
 /**
  * Logger list response structure.
@@ -65,32 +74,34 @@ interface ForecastResult {
  * Financial Report Flow
  *
  * Steps:
- * 1. check_context: Check if logger is already selected
- * 2. select_logger (conditional): If no logger, prompt selection
+ * 1. fetch_loggers: Fetch available loggers
+ * 2. check_args: Validate required args, prompt if missing (with pre-fill from extraction)
  * 3. calculate_savings: Call calculate_financial_savings for past 30 days
  * 4. forecast: Call forecast_production for next 7 days
  * 5. render_report: Render FinancialReport component
+ *
+ * Supports proactive argument collection with context-aware prompts.
+ * If router extracted a logger pattern (e.g., "the GoodWe"), it will be pre-selected.
  */
 export function createFinancialReportFlow(
   httpClient: ToolsHttpClient,
   model: ChatGoogleGenerativeAI | ChatAnthropic | ChatOpenAI | ChatOllama,
 ) {
-  // Step 1: Check if logger context exists
-  const checkContextNode = async (
+  // Step 1: Fetch available loggers
+  const fetchLoggersNode = async (
     state: ExplicitFlowState,
   ): Promise<Partial<ExplicitFlowState>> => {
-    logger.debug('Financial Report: Checking context');
+    // TODO: DELETE - Debug logging
+    logger.debug('[DEBUG FINANCIAL] === FLOW ENTRY (fetchLoggers) ===');
+    logger.debug('[DEBUG FINANCIAL] Messages count:', state.messages.length);
+    logger.debug(
+      '[DEBUG FINANCIAL] FlowContext:',
+      JSON.stringify(state.flowContext, null, 2),
+    );
+    logger.debug('[DEBUG FINANCIAL] FlowStep:', state.flowStep);
 
-    // If we have a logger ID from routing extraction, we can proceed
-    if (state.flowContext.selectedLoggerId) {
-      logger.debug(
-        `Logger already selected: ${state.flowContext.selectedLoggerId}`,
-      );
-      return { flowStep: 1 };
-    }
+    logger.debug('Financial Report: Fetching available loggers');
 
-    // Need to fetch loggers for selection
-    logger.debug('No logger selected, fetching list');
     const result = await executeTool<LoggersResult>(
       httpClient,
       'list_loggers',
@@ -98,7 +109,6 @@ export function createFinancialReportFlow(
     );
 
     return {
-      flowStep: 1,
       flowContext: {
         ...state.flowContext,
         toolResults: {
@@ -109,59 +119,20 @@ export function createFinancialReportFlow(
     };
   };
 
-  // Step 2 (conditional): Prompt logger selection
-  const selectLoggerNode = (
+  // Step 2: Check and collect required arguments with proactive prompting
+  const checkArgsNode = async (
     state: ExplicitFlowState,
-  ): Partial<ExplicitFlowState> => {
-    logger.debug('Financial Report: Prompting logger selection');
+  ): Promise<Partial<ExplicitFlowState>> => {
+    logger.debug('Financial Report: Checking arguments');
 
+    // Get available loggers for pattern resolution and selection
     const loggersResult = state.flowContext.toolResults?.loggers as
       | ToolResponse<LoggersResult>
       | undefined;
-    const options = formatLoggerOptions(
-      loggersResult?.result || { loggers: [] },
-    );
+    const availableLoggers: LoggerInfo[] = loggersResult?.result?.loggers || [];
 
-    const toolCallId = generateToolCallId();
-
-    // Create selection message
-    const aiMessage = new AIMessage({
-      content:
-        "I'll help you create a financial report. First, please select which logger you'd like to analyze:",
-      tool_calls: [
-        {
-          id: toolCallId,
-          name: 'request_user_selection',
-          args: createSelectionArgs({
-            prompt: 'Select a logger for financial analysis:',
-            options,
-            selectionType: 'single',
-            inputType: 'dropdown',
-            flowHint: {
-              expectedNext:
-                'Will calculate financial savings for the past 30 days',
-            },
-          }),
-        },
-      ],
-    });
-
-    return {
-      messages: [aiMessage],
-      flowStep: 2,
-      pendingUiActions: [
-        {
-          toolCallId,
-          toolName: 'request_user_selection',
-          args: createSelectionArgs({
-            prompt: 'Select a logger for financial analysis:',
-            options,
-            selectionType: 'single',
-            inputType: 'dropdown',
-          }),
-        },
-      ],
-    };
+    // Use the reusable argument check node with model for persona-aware prompts
+    return argumentCheckNode(state, availableLoggers, model);
   };
 
   // Step 3: Calculate financial savings
@@ -190,6 +161,10 @@ export function createFinancialReportFlow(
     const startDate = getDateDaysAgo(30);
     const endDate = getLatestDateString();
 
+    // FIX #4: Get rate from flow context (user-provided) or use default
+    const electricityRate =
+      state.flowContext.electricityRate ?? DEFAULT_ELECTRICITY_RATE;
+
     const result = await executeTool<FinancialResult>(
       httpClient,
       'calculate_financial_savings',
@@ -197,7 +172,7 @@ export function createFinancialReportFlow(
         logger_id: loggerId,
         start_date: startDate,
         end_date: endDate,
-        electricity_rate: 0.2,
+        electricity_rate: electricityRate,
       },
     );
 
@@ -410,11 +385,6 @@ export function createFinancialReportFlow(
     };
   };
 
-  // Routing function: has logger selected?
-  const hasLogger = (state: ExplicitFlowState): 'proceed' | 'select' => {
-    return state.flowContext.selectedLoggerId ? 'proceed' : 'select';
-  };
-
   // Routing function: needs recovery?
   const needsRecovery = (state: ExplicitFlowState): 'recovery' | 'continue' => {
     return state.flowContext.toolResults?.needsRecovery
@@ -423,18 +393,19 @@ export function createFinancialReportFlow(
   };
 
   // Build the subgraph
+  // Flow: fetch_loggers → check_args → [wait|proceed] → calculate_savings → forecast → render_report
   const graph = new StateGraph(ExplicitFlowStateAnnotation)
-    .addNode('check_context', checkContextNode)
-    .addNode('select_logger', selectLoggerNode)
+    .addNode('fetch_loggers', fetchLoggersNode)
+    .addNode('check_args', checkArgsNode)
     .addNode('calculate_savings', calculateSavingsNode)
     .addNode('forecast', forecastNode)
     .addNode('render_report', renderReportNode)
-    .addEdge(START, 'check_context')
-    .addConditionalEdges('check_context', hasLogger, {
+    .addEdge(START, 'fetch_loggers')
+    .addEdge('fetch_loggers', 'check_args')
+    .addConditionalEdges('check_args', hasRequiredArgs, {
       proceed: 'calculate_savings',
-      select: 'select_logger',
+      wait: END, // Pause for user input - next turn will re-enter with selection
     })
-    .addEdge('select_logger', END) // Pause for user input - next turn will re-enter with selection
     .addConditionalEdges('calculate_savings', needsRecovery, {
       recovery: END, // Trigger recovery subgraph
       continue: 'forecast',

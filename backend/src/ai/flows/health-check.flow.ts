@@ -15,10 +15,9 @@ import {
   executeTool,
   generateToolCallId,
   createRenderArgs,
-  createSelectionArgs,
-  formatLoggerOptions,
   getLastUserMessage,
   ALL_DEVICES_PATTERN,
+  LoggerInfo,
 } from './flow-utils';
 import {
   NarrativeEngine,
@@ -26,6 +25,10 @@ import {
   DEFAULT_NARRATIVE_PREFERENCES,
   createDefaultDataQuality,
 } from '../narrative';
+import {
+  argumentCheckNode,
+  hasRequiredArgs,
+} from '../nodes/argument-check.node';
 
 const logger = new Logger('HealthCheckFlow');
 
@@ -66,39 +69,37 @@ interface HealthResult {
  * Health Check Flow
  *
  * Steps:
- * 1. check_context: Check if logger is already selected
- * 2. select_logger (conditional): If no logger, prompt selection
+ * 1. fetch_loggers: Fetch available loggers
+ * 2. check_args: Validate required args, prompt if missing (with pre-fill from extraction)
  * 3. analyze_health: Call analyze_inverter_health for 7 days
  * 4. render_report: Render HealthReport component with anomaly table
+ *
+ * Supports proactive argument collection with context-aware prompts.
+ * If router extracted a logger pattern (e.g., "the GoodWe"), it will be pre-selected.
  */
 export function createHealthCheckFlow(
   httpClient: ToolsHttpClient,
   model: ChatGoogleGenerativeAI | ChatAnthropic | ChatOpenAI | ChatOllama,
 ) {
-  // Step 1: Check if logger context exists
-  const checkContextNode = async (
+  // Step 1: Fetch available loggers (always needed for selection or analysis)
+  const fetchLoggersNode = async (
     state: ExplicitFlowState,
   ): Promise<Partial<ExplicitFlowState>> => {
-    logger.debug('Health Check: Checking context');
+    // TODO: DELETE - Debug logging
+    logger.debug('[DEBUG HEALTH_CHECK] === FLOW ENTRY (fetchLoggers) ===');
+    logger.debug('[DEBUG HEALTH_CHECK] Messages count:', state.messages.length);
+    logger.debug(
+      '[DEBUG HEALTH_CHECK] FlowContext:',
+      JSON.stringify(state.flowContext, null, 2),
+    );
+    logger.debug('[DEBUG HEALTH_CHECK] FlowStep:', state.flowStep);
 
-    // If we have a logger ID from routing extraction, we can proceed
-    if (state.flowContext.selectedLoggerId) {
-      logger.debug(
-        `Logger already selected: ${state.flowContext.selectedLoggerId}`,
-      );
-      return { flowStep: 1 };
-    }
+    logger.debug('Health Check: Fetching available loggers');
 
     // Check for "all devices" intent in the user message
     const lastUserMessage = getLastUserMessage(state.messages);
     const wantsAllDevices = ALL_DEVICES_PATTERN.test(lastUserMessage);
 
-    // Need to fetch loggers (for either selection or all-devices analysis)
-    logger.debug(
-      wantsAllDevices
-        ? 'All devices requested, fetching list for bulk analysis'
-        : 'No logger selected, fetching list for selection',
-    );
     const result = await executeTool<LoggersResult>(
       httpClient,
       'list_loggers',
@@ -106,7 +107,6 @@ export function createHealthCheckFlow(
     );
 
     return {
-      flowStep: 1,
       flowContext: {
         ...state.flowContext,
         analyzeAllLoggers: wantsAllDevices,
@@ -118,57 +118,26 @@ export function createHealthCheckFlow(
     };
   };
 
-  // Step 2 (conditional): Prompt logger selection
-  const selectLoggerNode = (
+  // Step 2: Check and collect required arguments with proactive prompting
+  const checkArgsNode = async (
     state: ExplicitFlowState,
-  ): Partial<ExplicitFlowState> => {
-    logger.debug('Health Check: Prompting logger selection');
+  ): Promise<Partial<ExplicitFlowState>> => {
+    logger.debug('Health Check: Checking arguments');
 
+    // Skip argument check if user wants all devices
+    if (state.flowContext.analyzeAllLoggers) {
+      logger.debug('All devices requested, skipping argument check');
+      return { flowStep: 1 };
+    }
+
+    // Get available loggers for pattern resolution and selection
     const loggersResult = state.flowContext.toolResults?.loggers as
       | ToolResponse<LoggersResult>
       | undefined;
-    const options = formatLoggerOptions(
-      loggersResult?.result || { loggers: [] },
-    );
+    const availableLoggers: LoggerInfo[] = loggersResult?.result?.loggers || [];
 
-    const toolCallId = generateToolCallId();
-
-    const aiMessage = new AIMessage({
-      content:
-        "I'll analyze the health of your inverter and check for anomalies. Which logger would you like me to check?",
-      tool_calls: [
-        {
-          id: toolCallId,
-          name: 'request_user_selection',
-          args: createSelectionArgs({
-            prompt: 'Select a logger for health analysis:',
-            options,
-            selectionType: 'single',
-            inputType: 'dropdown',
-            flowHint: {
-              expectedNext: 'Will analyze for anomalies over the past 7 days',
-            },
-          }),
-        },
-      ],
-    });
-
-    return {
-      messages: [aiMessage],
-      flowStep: 2,
-      pendingUiActions: [
-        {
-          toolCallId,
-          toolName: 'request_user_selection',
-          args: createSelectionArgs({
-            prompt: 'Select a logger for health analysis:',
-            options,
-            selectionType: 'single',
-            inputType: 'dropdown',
-          }),
-        },
-      ],
-    };
+    // Use the reusable argument check node with model for persona-aware prompts
+    return argumentCheckNode(state, availableLoggers, model);
   };
 
   // Step 3: Analyze health (single logger or all loggers)
@@ -541,13 +510,14 @@ export function createHealthCheckFlow(
     };
   };
 
-  // Routing function: has logger selected or wants all devices?
-  const hasLogger = (state: ExplicitFlowState): 'proceed' | 'select' => {
-    // If user wants all devices, skip selection
+  // Routing function: has required args or wants all devices?
+  const checkArgsResult = (state: ExplicitFlowState): 'proceed' | 'wait' => {
+    // If user wants all devices, skip argument check
     if (state.flowContext.analyzeAllLoggers) {
       return 'proceed';
     }
-    return state.flowContext.selectedLoggerId ? 'proceed' : 'select';
+    // Use the reusable hasRequiredArgs function
+    return hasRequiredArgs(state);
   };
 
   // Routing function: needs recovery?
@@ -558,17 +528,18 @@ export function createHealthCheckFlow(
   };
 
   // Build the subgraph
+  // Flow: fetch_loggers → check_args → [wait|proceed] → analyze_health → render_report
   const graph = new StateGraph(ExplicitFlowStateAnnotation)
-    .addNode('check_context', checkContextNode)
-    .addNode('select_logger', selectLoggerNode)
+    .addNode('fetch_loggers', fetchLoggersNode)
+    .addNode('check_args', checkArgsNode)
     .addNode('analyze_health', analyzeHealthNode)
     .addNode('render_report', renderReportNode)
-    .addEdge(START, 'check_context')
-    .addConditionalEdges('check_context', hasLogger, {
+    .addEdge(START, 'fetch_loggers')
+    .addEdge('fetch_loggers', 'check_args')
+    .addConditionalEdges('check_args', checkArgsResult, {
       proceed: 'analyze_health',
-      select: 'select_logger',
+      wait: END, // Pause for user input - next turn will re-enter with selection
     })
-    .addEdge('select_logger', END) // Pause for user input - next turn will re-enter with selection
     .addConditionalEdges('analyze_health', needsRecovery, {
       recovery: END, // Trigger recovery subgraph
       continue: 'render_report',

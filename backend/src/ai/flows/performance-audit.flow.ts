@@ -15,12 +15,12 @@ import {
   executeTool,
   generateToolCallId,
   createRenderArgs,
-  createSelectionArgs,
-  formatLoggerOptions,
   computeBestPerformer,
   computeWorstPerformer,
   computeSpreadPercent,
   computeComparisonSeverity,
+  formatLoggerOptions,
+  LoggerInfo,
 } from './flow-utils';
 import {
   NarrativeEngine,
@@ -28,6 +28,10 @@ import {
   DEFAULT_NARRATIVE_PREFERENCES,
   createDefaultDataQuality,
 } from '../narrative';
+import {
+  argumentCheckNode,
+  hasRequiredArgs,
+} from '../nodes/argument-check.node';
 
 const logger = new Logger('PerformanceAuditFlow');
 
@@ -65,22 +69,33 @@ interface ComparisonResult {
  * Performance Audit Flow
  *
  * Steps:
- * 1. discover_loggers: Fetch all available loggers
- * 2. select_loggers: Prompt multi-select (2-5 loggers)
+ * 1. fetch_loggers: Fetch all available loggers
+ * 2. check_args: Validate required args (2+ loggers), prompt if missing with pre-fill
  * 3. compare: Call compare_loggers with selected IDs
  * 4. render_chart: Render ComparisonChart component
+ *
+ * Supports proactive argument collection with context-aware prompts.
+ * If router extracted multiple loggers (e.g., "compare 925 and 926"), they will be pre-selected.
  */
 export function createPerformanceAuditFlow(
   httpClient: ToolsHttpClient,
   model: ChatGoogleGenerativeAI | ChatAnthropic | ChatOpenAI | ChatOllama,
 ) {
-  // Step 1: Discover available loggers
-  const discoverLoggersNode = async (
+  // Step 1: Fetch available loggers
+  const fetchLoggersNode = async (
     state: ExplicitFlowState,
   ): Promise<Partial<ExplicitFlowState>> => {
-    logger.debug('Performance Audit: Discovering loggers');
+    // TODO: DELETE - Debug logging
+    logger.debug('[DEBUG PERFORMANCE] === FLOW ENTRY (fetchLoggers) ===');
+    logger.debug('[DEBUG PERFORMANCE] Messages count:', state.messages.length);
+    logger.debug(
+      '[DEBUG PERFORMANCE] FlowContext:',
+      JSON.stringify(state.flowContext, null, 2),
+    );
+    logger.debug('[DEBUG PERFORMANCE] FlowStep:', state.flowStep);
 
-    const toolCallId = generateToolCallId();
+    logger.debug('Performance Audit: Fetching available loggers');
+
     const result = await executeTool<LoggersResult>(
       httpClient,
       'list_loggers',
@@ -88,7 +103,6 @@ export function createPerformanceAuditFlow(
     );
 
     return {
-      flowStep: 1,
       flowContext: {
         ...state.flowContext,
         toolResults: {
@@ -96,80 +110,23 @@ export function createPerformanceAuditFlow(
           loggers: result,
         },
       },
-      pendingUiActions: [
-        {
-          toolCallId,
-          toolName: 'list_loggers',
-          args: {},
-        },
-      ],
     };
   };
 
-  // Step 2: Prompt multi-logger selection
-  const selectLoggersNode = (
+  // Step 2: Check and collect required arguments with proactive prompting
+  const checkArgsNode = async (
     state: ExplicitFlowState,
-  ): Partial<ExplicitFlowState> => {
-    logger.debug('Performance Audit: Prompting logger selection');
+  ): Promise<Partial<ExplicitFlowState>> => {
+    logger.debug('Performance Audit: Checking arguments');
 
+    // Get available loggers for pattern resolution and selection
     const loggersResult = state.flowContext.toolResults?.loggers as
       | ToolResponse<LoggersResult>
       | undefined;
-    const options = formatLoggerOptions(
-      loggersResult?.result || { loggers: [] },
-    );
+    const availableLoggers: LoggerInfo[] = loggersResult?.result?.loggers || [];
 
-    // Check if we already have loggers selected
-    if (
-      state.flowContext.selectedLoggerIds &&
-      state.flowContext.selectedLoggerIds.length >= 2
-    ) {
-      logger.debug('Loggers already selected, skipping selection');
-      return { flowStep: 2 };
-    }
-
-    const toolCallId = generateToolCallId();
-
-    const aiMessage = new AIMessage({
-      content:
-        "Let's compare performance across your loggers. Please select 2-5 loggers to compare:",
-      tool_calls: [
-        {
-          id: toolCallId,
-          name: 'request_user_selection',
-          args: createSelectionArgs({
-            prompt: 'Select loggers to compare (2-5):',
-            options,
-            selectionType: 'multiple',
-            inputType: 'dropdown',
-            flowHint: {
-              expectedNext: 'Will compare power output across selected loggers',
-              skipOption: {
-                label: 'Compare top 3',
-                action: 'Automatically select the 3 loggers with most data',
-              },
-            },
-          }),
-        },
-      ],
-    });
-
-    return {
-      messages: [aiMessage],
-      flowStep: 2,
-      pendingUiActions: [
-        {
-          toolCallId,
-          toolName: 'request_user_selection',
-          args: createSelectionArgs({
-            prompt: 'Select loggers to compare (2-5):',
-            options,
-            selectionType: 'multiple',
-            inputType: 'dropdown',
-          }),
-        },
-      ],
-    };
+    // Use the reusable argument check node with model for persona-aware prompts
+    return argumentCheckNode(state, availableLoggers, model);
   };
 
   // Step 3: Run comparison
@@ -279,11 +236,74 @@ export function createPerformanceAuditFlow(
     const summary = comparison?.summary || {};
     const bestPerformer = computeBestPerformer(summary);
     const worstPerformer = computeWorstPerformer(summary);
+
+    // FIX #7: Handle edge case where comparison data is incomplete - offer retry selection
+    if (!bestPerformer || !worstPerformer) {
+      logger.warn(
+        'Performance Audit: Unable to compute best/worst performers - empty or incomplete summary',
+      );
+
+      // Get available loggers for retry selection
+      const loggersResult = state.flowContext.toolResults?.loggers as
+        | ToolResponse<{ loggers: LoggerInfo[] }>
+        | undefined;
+      const availableLoggers = loggersResult?.result?.loggers || [];
+
+      const retryToolCallId = generateToolCallId();
+
+      // Create retry message with selection prompt
+      const errorMessage = new AIMessage({
+        content:
+          "I couldn't compare those loggers due to missing or incomplete data for the selected time period. Would you like to try selecting different loggers?",
+        tool_calls: [
+          {
+            id: retryToolCallId,
+            name: 'request_user_selection',
+            args: {
+              prompt: 'Select different loggers to compare:',
+              options: formatLoggerOptions({ loggers: availableLoggers }),
+              selectionType: 'multiple',
+              minCount: 2,
+              maxCount: 5,
+              contextMessage:
+                'The previous selection had incomplete data. Please choose different loggers:',
+            },
+          },
+        ],
+      });
+
+      return {
+        messages: [errorMessage],
+        flowStep: 0, // Reset to argument check
+        flowContext: {
+          ...state.flowContext,
+          selectedLoggerIds: undefined, // Clear previous selection to prevent infinite loop
+          waitingForUserInput: true,
+          currentPromptArg: 'loggerIds',
+        },
+        pendingUiActions: [
+          {
+            toolCallId: retryToolCallId,
+            toolName: 'request_user_selection',
+            args: {
+              prompt: 'Select different loggers to compare:',
+              options: formatLoggerOptions({ loggers: availableLoggers }),
+              selectionType: 'multiple',
+              minCount: 2,
+              maxCount: 5,
+              contextMessage:
+                'The previous selection had incomplete data. Please choose different loggers:',
+            },
+          },
+        ],
+      };
+    }
+
     const spreadPercent = computeSpreadPercent(bestPerformer, worstPerformer);
     const comparisonSeverity = computeComparisonSeverity(spreadPercent);
 
     logger.debug(
-      `Performance Audit: Best=${bestPerformer?.loggerId}, Worst=${worstPerformer?.loggerId}, Spread=${spreadPercent.toFixed(1)}%, Severity=${comparisonSeverity}`,
+      `Performance Audit: Best=${bestPerformer.loggerId}, Worst=${worstPerformer.loggerId}, Spread=${spreadPercent.toFixed(1)}%, Severity=${comparisonSeverity}`,
     );
 
     // Build NarrativeContext for performance audit
@@ -356,12 +376,6 @@ export function createPerformanceAuditFlow(
     };
   };
 
-  // Routing function: has logger selection? (for conditional continue/pause)
-  const hasLoggerSelection = (state: ExplicitFlowState): 'proceed' | 'wait' => {
-    const selectedCount = state.flowContext.selectedLoggerIds?.length ?? 0;
-    return selectedCount >= 2 ? 'proceed' : 'wait';
-  };
-
   // Routing function: needs recovery?
   const needsRecovery = (state: ExplicitFlowState): 'recovery' | 'continue' => {
     return state.flowContext.toolResults?.needsRecovery
@@ -370,16 +384,17 @@ export function createPerformanceAuditFlow(
   };
 
   // Build the subgraph
+  // Flow: fetch_loggers → check_args → [wait|proceed] → compare → render_chart
   const graph = new StateGraph(ExplicitFlowStateAnnotation)
-    .addNode('discover_loggers', discoverLoggersNode)
-    .addNode('select_loggers', selectLoggersNode)
+    .addNode('fetch_loggers', fetchLoggersNode)
+    .addNode('check_args', checkArgsNode)
     .addNode('compare', compareNode)
     .addNode('render_chart', renderChartNode)
-    .addEdge(START, 'discover_loggers')
-    .addEdge('discover_loggers', 'select_loggers')
-    .addConditionalEdges('select_loggers', hasLoggerSelection, {
-      proceed: 'compare', // Has selection, continue to comparison
-      wait: END, // No selection, pause for user input
+    .addEdge(START, 'fetch_loggers')
+    .addEdge('fetch_loggers', 'check_args')
+    .addConditionalEdges('check_args', hasRequiredArgs, {
+      proceed: 'compare', // Has 2+ loggers, continue to comparison
+      wait: END, // Missing loggers, pause for user input
     })
     .addConditionalEdges('compare', needsRecovery, {
       recovery: END, // Trigger recovery subgraph

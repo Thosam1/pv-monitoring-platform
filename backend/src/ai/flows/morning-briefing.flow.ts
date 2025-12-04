@@ -38,14 +38,24 @@ interface DateMismatchInfo {
 }
 
 /**
- * Fleet overview response structure.
+ * Fleet overview response structure (matches Python ai/tools/fleet.py).
  */
 interface FleetOverviewResult {
-  status: { totalPower: number; totalEnergy: number; percentOnline: number };
-  devices: { total: number; online: number; offline: number };
-  offlineLoggers?: string[];
+  status: {
+    totalLoggers: number;
+    activeLoggers: number;
+    percentOnline: number;
+    fleetHealth: string;
+  };
+  production: {
+    currentTotalPowerWatts: number;
+    todayTotalEnergyKwh: number;
+    siteAvgIrradiance: number;
+  };
   timestamp?: string;
   dateMismatch?: DateMismatchInfo;
+  offlineLoggers?: string[];
+  summary?: string;
 }
 
 /**
@@ -73,6 +83,18 @@ export function createMorningBriefingFlow(
   const fleetOverviewNode = async (
     state: ExplicitFlowState,
   ): Promise<Partial<ExplicitFlowState>> => {
+    // TODO: DELETE - Debug logging
+    logger.debug('[DEBUG MORNING_BRIEFING] === FLOW ENTRY (fleetOverview) ===');
+    logger.debug(
+      '[DEBUG MORNING_BRIEFING] Messages count:',
+      state.messages.length,
+    );
+    logger.debug(
+      '[DEBUG MORNING_BRIEFING] FlowContext:',
+      JSON.stringify(state.flowContext, null, 2),
+    );
+    logger.debug('[DEBUG MORNING_BRIEFING] FlowStep:', state.flowStep);
+
     logger.debug('Morning Briefing: Fetching fleet overview');
 
     const toolCallId = generateToolCallId();
@@ -177,9 +199,10 @@ export function createMorningBriefingFlow(
       };
     }
 
-    // No specific loggers to diagnose
+    // No specific loggers to diagnose - preserve context for render step
     return {
       flowStep: 3,
+      flowContext: state.flowContext,
     };
   };
 
@@ -197,26 +220,62 @@ export function createMorningBriefingFlow(
       | ToolResponse<DiagnosisResult>
       | undefined;
 
+    // FIX #5: Early exit if fleet data unavailable - TRIGGER RECOVERY instead of dead-end
+    if (!fleetResult?.result) {
+      logger.warn(
+        `Fleet overview data unavailable: ${fleetResult?.message || 'missing'}`,
+      );
+
+      // Provide helpful guidance instead of generic error
+      const helpfulMessage = new AIMessage({
+        content: `I don't see any solar data in the system yet. To get started:
+
+1. **Upload your data** - Go to the **Upload** section in the dashboard
+2. **Connect your inverters** - Upload CSV or other data files from your solar monitoring system
+3. **Come back here** - Once you have data, I can show you your fleet status, savings, and more!
+
+Would you like me to explain what data formats I can work with?`,
+      });
+
+      return {
+        messages: [helpfulMessage],
+        flowStep: 4,
+        flowContext: {
+          ...state.flowContext,
+          toolResults: {
+            ...state.flowContext.toolResults,
+            needsRecovery: true,
+            recoveryType: 'no_data',
+          },
+        },
+      };
+    }
+
     const toolCallId = generateToolCallId();
 
-    // Extract date mismatch info
-    const fleetData = fleetResult?.result;
-    const dateMismatch = fleetData?.dateMismatch;
+    // Extract date mismatch info - fleetData is now guaranteed to exist
+    const fleetData = fleetResult.result;
+    const dateMismatch = fleetData.dateMismatch;
+
+    // Calculate offline count from total - active
+    const totalLoggers = fleetData?.status?.totalLoggers ?? 0;
+    const activeLoggers = fleetData?.status?.activeLoggers ?? 0;
+    const offlineCount = totalLoggers - activeLoggers;
 
     // Build props for FleetOverview component - include date mismatch info
     const props = {
-      totalPower: fleetData?.status?.totalPower || 0,
-      totalEnergy: fleetData?.status?.totalEnergy || 0,
-      deviceCount: fleetData?.devices?.total || 0,
-      onlineCount: fleetData?.devices?.online || 0,
-      percentOnline: fleetData?.status?.percentOnline || 100,
+      totalPower: (fleetData?.production?.currentTotalPowerWatts ?? 0) / 1000, // Convert W to kW
+      totalEnergy: fleetData?.production?.todayTotalEnergyKwh ?? 0,
+      deviceCount: totalLoggers,
+      onlineCount: activeLoggers,
+      percentOnline: fleetData?.status?.percentOnline ?? 100,
       dataTimestamp: fleetData?.timestamp || null,
       dateMismatch: dateMismatch || null,
       alerts: hasIssues
         ? [
             {
               type: 'warning',
-              message: `${fleetData?.devices?.offline || 0} device(s) offline`,
+              message: `${offlineCount} device(s) offline`,
             },
           ]
         : [],
@@ -227,9 +286,8 @@ export function createMorningBriefingFlow(
     const preferences =
       state.flowContext.narrativePreferences || DEFAULT_NARRATIVE_PREFERENCES;
 
-    // Get offline loggers for temporal comparison
-    const currentOfflineLoggers =
-      (fleetResult?.result?.offlineLoggers as string[]) || [];
+    // Get offline loggers for temporal comparison - fleetData is guaranteed to exist
+    const currentOfflineLoggers = fleetData.offlineLoggers || [];
 
     // Build temporal context from previous state (if available)
     const temporalContext = buildTemporalContext(
@@ -334,20 +392,36 @@ export function createMorningBriefingFlow(
         // Store snapshot for next briefing (session-only persistence)
         previousFleetStatus: statusSnapshot,
       },
-      pendingUiActions: [
-        {
-          toolCallId,
-          toolName: 'render_ui_component',
-          args: createRenderArgs('FleetOverview', props, suggestions),
-        },
-      ],
+      // NOTE: pendingUiActions removed - AIMessage.tool_calls already triggers render_ui_component
+      // Having both caused duplicate messages in frontend
     };
   };
 
   // Routing function: should diagnose issues?
+  // Auto-diagnose when user selects a logger or when offline devices exist
   const shouldDiagnose = (state: ExplicitFlowState): 'diagnose' | 'render' => {
-    const hasIssues = state.flowContext.toolResults?.hasIssues;
-    return hasIssues ? 'diagnose' : 'render';
+    const offlineLoggers =
+      (state.flowContext.toolResults?.offlineLoggers as string[]) || [];
+    const selectedLogger = state.flowContext.selectedLoggerId;
+
+    // If user selected a logger, auto-proceed to diagnosis
+    if (selectedLogger) {
+      logger.debug(
+        `Auto-routing to diagnosis for selected logger: ${selectedLogger}`,
+      );
+      return 'diagnose';
+    }
+
+    // If offline devices exist, diagnose them
+    if (offlineLoggers.length > 0) {
+      logger.debug(
+        `Auto-routing to diagnosis: ${offlineLoggers.length} offline devices`,
+      );
+      return 'diagnose';
+    }
+
+    // No issues - skip to render
+    return 'render';
   };
 
   // Build the subgraph
