@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * NOTE: useComposerRuntime is marked as deprecated in @assistant-ui/react v0.11.x.
+ * The library authors marked these as deprecated to prepare users for v0.12.0,
+ * but the migration is not possible yet because the replacement APIs
+ * (useAssistantApi, useAssistantState) are not available until v0.12.0.
+ * We are waiting for the v0.12.0 release to migrate.
+ * @see https://github.com/assistant-ui/assistant-ui/releases
+ */
 import { makeAssistantToolUI, useComposerRuntime } from '@assistant-ui/react';
 import { SelectionPrompt, type SelectionOption } from '@/components/ai/selection-prompt';
 import { Check, Loader2 } from 'lucide-react';
@@ -96,10 +104,7 @@ export const SelectionTool = makeAssistantToolUI<SelectionToolArgs, string>({
   toolName: 'request_user_selection',
   render: function SelectionToolUI({ args, result, addResult, status }) {
     // Get composer runtime to send messages to backend after selection
-    // Note: useComposerRuntime is deprecated in favor of useAssistantApi() in v0.12+
-    // Current version (v0.11.47) does not have the new API yet
-    // Migration: const api = useAssistantApi(); api.composer().setText(...)
-    const composerRuntime = useComposerRuntime();
+    const composerRuntime = useComposerRuntime(); // NOSONAR - useComposerRuntime deprecated but replacement (useAssistantApi) not available until v0.12.0
 
     // Show completed state if we have a result
     if (result) {

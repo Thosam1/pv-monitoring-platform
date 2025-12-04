@@ -669,9 +669,7 @@ export class LanggraphService {
    * Get or build the graph (lazy initialization).
    */
   private getGraph() {
-    if (!this.graph) {
-      this.graph = this.buildGraph();
-    }
+    this.graph ??= this.buildGraph();
     return this.graph;
   }
 

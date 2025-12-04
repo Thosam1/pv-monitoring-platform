@@ -12,30 +12,40 @@ import {
 
 /**
  * Type guard to check if a message is an AIMessage.
+ * Accepts undefined to handle .at(-1) return type safely.
  */
-export function isAiMessage(msg: BaseMessage): msg is AIMessage {
-  return msg instanceof AIMessage;
+export function isAiMessage(msg: BaseMessage | undefined): msg is AIMessage {
+  return msg !== undefined && msg instanceof AIMessage;
 }
 
 /**
  * Type guard to check if a message is a HumanMessage.
+ * Accepts undefined to handle .at(-1) return type safely.
  */
-export function isHumanMessage(msg: BaseMessage): msg is HumanMessage {
-  return msg instanceof HumanMessage;
+export function isHumanMessage(
+  msg: BaseMessage | undefined,
+): msg is HumanMessage {
+  return msg !== undefined && msg instanceof HumanMessage;
 }
 
 /**
  * Type guard to check if a message is a SystemMessage.
+ * Accepts undefined to handle .at(-1) return type safely.
  */
-export function isSystemMessage(msg: BaseMessage): msg is SystemMessage {
-  return msg instanceof SystemMessage;
+export function isSystemMessage(
+  msg: BaseMessage | undefined,
+): msg is SystemMessage {
+  return msg !== undefined && msg instanceof SystemMessage;
 }
 
 /**
  * Type guard to check if a message is a ToolMessage.
+ * Accepts undefined to handle .at(-1) return type safely.
  */
-export function isToolMessage(msg: BaseMessage): msg is ToolMessage {
-  return msg instanceof ToolMessage;
+export function isToolMessage(
+  msg: BaseMessage | undefined,
+): msg is ToolMessage {
+  return msg !== undefined && msg instanceof ToolMessage;
 }
 
 /**

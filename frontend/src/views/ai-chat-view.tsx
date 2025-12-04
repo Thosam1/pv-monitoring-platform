@@ -7,6 +7,14 @@ import { useState } from 'react';
 import { PanelLeftClose, PanelLeftOpen, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
+/**
+ * NOTE: useAssistantRuntime is marked as deprecated in @assistant-ui/react v0.11.x.
+ * The library authors marked these as deprecated to prepare users for v0.12.0,
+ * but the migration is not possible yet because the replacement APIs
+ * (useAssistantApi, useAssistantState) are not available until v0.12.0.
+ * We are waiting for the v0.12.0 release to migrate.
+ * @see https://github.com/assistant-ui/assistant-ui/releases
+ */
 import { useAssistantRuntime } from '@assistant-ui/react';
 
 export interface AIChatViewProps {
@@ -48,14 +56,11 @@ function ThreadErrorFallback({ error, resetErrorBoundary }: Readonly<FallbackPro
  */
 function AIChatViewInner({ className }: Readonly<{ className?: string }>) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  // Note: useAssistantRuntime is deprecated in favor of useAssistantApi() in v0.12+
-  // Current version (v0.11.47) does not have the new API yet
-  const runtime = useAssistantRuntime();
+  const runtime = useAssistantRuntime(); // NOSONAR - deprecated but replacement not available until v0.12.0
 
   const handleErrorReset = () => {
     // Switch to a new thread when recovering from an error
     try {
-      // Note: runtime.switchToNewThread() is deprecated but replacement API not available in v0.11.47
       runtime.switchToNewThread();
     } catch {
       // If switching fails, just let the error boundary reset

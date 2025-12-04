@@ -164,7 +164,7 @@ export const MOCK_FINANCIAL_SAVINGS = {
   result: {
     energyGenerated: 1250.5,
     savings: 250.1,
-    co2Offset: 1063.0,
+    co2Offset: 1063,
     treesEquivalent: 48,
     period: { start: '2024-12-01', end: '2024-12-31' },
     electricityRate: 0.2,

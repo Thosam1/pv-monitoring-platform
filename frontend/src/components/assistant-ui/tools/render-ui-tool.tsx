@@ -6,9 +6,8 @@ import { MetricCard, MetricCardGrid } from '@/components/ai/metric-card';
 import { StatusBadge, type StatusType } from '@/components/ai/status-badge';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
-import { Loader2 } from 'lucide-react';
-import { useSuggestionClick } from '../hooks/use-suggestion-click';
 import {
+  Loader2,
   Zap,
   DollarSign,
   Leaf,
@@ -20,6 +19,7 @@ import {
   Gauge,
   Sparkles,
 } from 'lucide-react';
+import { useSuggestionClick } from '../hooks/use-suggestion-click';
 
 /**
  * Suggestion item for follow-up actions

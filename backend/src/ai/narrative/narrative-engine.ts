@@ -756,7 +756,7 @@ export class NarrativeEngine {
     if (sentences.length >= 2) {
       return {
         contextMessage: sentences.slice(0, -1).join(' '),
-        prompt: sentences.at(-1),
+        prompt: sentences.at(-1)!, // Safe: sentences.length >= 2 checked
       };
     }
 

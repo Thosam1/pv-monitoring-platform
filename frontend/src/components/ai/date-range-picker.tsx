@@ -309,7 +309,7 @@ export function DateRangePicker({
                 onSelect={handleSingleDateSelect}
                 disabled={disabledDates}
                 defaultMonth={calendarDefaultMonth}
-                initialFocus
+                autoFocus
               />
             ) : (
               <div className="p-0">
@@ -320,7 +320,7 @@ export function DateRangePicker({
                   disabled={disabledDates}
                   defaultMonth={calendarDefaultMonth}
                   numberOfMonths={1}
-                  initialFocus
+                  autoFocus
                 />
                 {selectedRange?.from && (
                   <div className="border-t border-border p-2">

@@ -554,24 +554,26 @@ export function generateDynamicSuggestions(
       const anomalyCount = health?.anomalyCount ?? 0;
 
       if (anomalyCount > 0) {
-        suggestions.push({
-          label: 'Show affected days',
-          action: 'Show power curve for the anomaly dates',
-          priority: 'recommended',
-          reason: `${anomalyCount} anomalies need investigation`,
-          badge: '*',
-          icon: 'chart',
-          toolHint: 'get_power_curve',
-        });
-        suggestions.push({
-          label: 'Check error codes',
-          action: 'Diagnose error codes in metadata',
-          priority: 'recommended',
-          reason: 'May reveal underlying cause',
-          badge: '*',
-          icon: 'settings',
-          toolHint: 'diagnose_error_codes',
-        });
+        suggestions.push(
+          {
+            label: 'Show affected days',
+            action: 'Show power curve for the anomaly dates',
+            priority: 'recommended',
+            reason: `${anomalyCount} anomalies need investigation`,
+            badge: '*',
+            icon: 'chart',
+            toolHint: 'get_power_curve',
+          },
+          {
+            label: 'Check error codes',
+            action: 'Diagnose error codes in metadata',
+            priority: 'recommended',
+            reason: 'May reveal underlying cause',
+            badge: '*',
+            icon: 'settings',
+            toolHint: 'diagnose_error_codes',
+          },
+        );
       } else {
         suggestions.push({
           label: 'Check efficiency',
@@ -628,24 +630,26 @@ export function generateDynamicSuggestions(
     }
 
     case 'get_power_curve': {
-      suggestions.push({
-        label: 'Compare inverters',
-        action: 'Compare with other inverters on this date',
-        priority: 'suggested',
-        reason: 'See relative performance',
-        badge: '>',
-        icon: 'chart',
-        toolHint: 'compare_loggers',
-      });
-      suggestions.push({
-        label: 'Check efficiency',
-        action: 'Calculate efficiency for this date',
-        priority: 'suggested',
-        reason: 'Verify output matches irradiance',
-        badge: '>',
-        icon: 'chart',
-        toolHint: 'calculate_performance_ratio',
-      });
+      suggestions.push(
+        {
+          label: 'Compare inverters',
+          action: 'Compare with other inverters on this date',
+          priority: 'suggested',
+          reason: 'See relative performance',
+          badge: '>',
+          icon: 'chart',
+          toolHint: 'compare_loggers',
+        },
+        {
+          label: 'Check efficiency',
+          action: 'Calculate efficiency for this date',
+          priority: 'suggested',
+          reason: 'Verify output matches irradiance',
+          badge: '>',
+          icon: 'chart',
+          toolHint: 'calculate_performance_ratio',
+        },
+      );
       break;
     }
   }
@@ -1049,6 +1053,6 @@ export function getOverallDataRange(
   const sorted = [...dates].sort((a, b) => a.localeCompare(b));
   return {
     start: sorted[0],
-    end: sorted.at(-1),
+    end: sorted.at(-1)!, // Safe: dates.length > 0 checked above
   };
 }

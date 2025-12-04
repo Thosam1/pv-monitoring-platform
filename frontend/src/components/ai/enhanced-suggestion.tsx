@@ -11,14 +11,9 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type {
-  EnhancedPriority,
-  SuggestionIcon,
-  PriorityBadge,
-} from './suggestion-utils';
-
-// Re-export types for convenience
-export type { EnhancedPriority, SuggestionIcon, PriorityBadge };
+// Re-export types for convenience - use direct export...from syntax
+export type { EnhancedPriority, SuggestionIcon, PriorityBadge } from './suggestion-utils';
+import type { EnhancedPriority, SuggestionIcon } from './suggestion-utils';
 
 /**
  * Props for the EnhancedSuggestion component.

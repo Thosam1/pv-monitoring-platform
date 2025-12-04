@@ -11,7 +11,7 @@ import {
   PromptInputSubmit,
 } from '@/components/ui/ai';
 import { ChatMessage } from './chat-message';
-import { InlineError, type ErrorType } from './chat-error';
+import { InlineError } from './chat-error';
 import { WorkflowCard } from './workflow-card';
 import { cn } from '@/lib/utils';
 import { sanitizeLLMOutput } from '@/lib/text-sanitizer';
@@ -155,37 +155,99 @@ async function parseErrorMessage(response: Response): Promise<string> {
     }
   } catch {
     // If parsing fails, use status code message
-    if (response.status === 503) {
-      errorMsg = 'AI service is unavailable. Please try again later.';
-    } else if (response.status === 500) {
-      errorMsg = 'Server error. Please try again.';
-    } else if (response.status === 400) {
-      errorMsg = 'Invalid request. Please try rephrasing your question.';
-    }
+    errorMsg = getDefaultErrorMessage(response.status, errorMsg);
   }
   return errorMsg;
 }
 
 /**
- * Determine error type and message from an error.
+ * Get default error message based on HTTP status code.
  */
-function classifyError(error: Error & { status?: number }): { type: ErrorType; message: string } {
+function getDefaultErrorMessage(status: number, fallback: string): string {
+  const statusMessages: Record<number, string> = {
+    400: 'Invalid request. Please try rephrasing your question.',
+    500: 'Server error. Please try again.',
+    503: 'AI service is unavailable. Please try again later.',
+  };
+  return statusMessages[status] ?? fallback;
+}
+
+/**
+ * Create user and assistant message pair for chat.
+ */
+function createMessagePair(userMessage: string): { userMsg: Message; assistantMsg: Message } {
+  const userMsg: Message = {
+    id: generateId(),
+    role: 'user',
+    content: userMessage,
+    parts: [{ type: 'text', text: userMessage }],
+  };
+
+  const assistantMsg: Message = {
+    id: generateId(),
+    role: 'assistant',
+    content: '',
+    parts: [],
+  };
+
+  return { userMsg, assistantMsg };
+}
+
+/**
+ * Process SSE stream chunks from response reader.
+ */
+async function processStreamChunks(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  fullText: { value: string },
+  toolCalls: Map<string, ChatPart>,
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
+): Promise<void> {
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (!line.trim() || !line.startsWith('data: ')) continue;
+      const data = line.slice(6);
+      if (data === '[DONE]') continue;
+
+      try {
+        const parsed = JSON.parse(data);
+        processSSEEvent(parsed, fullText, toolCalls, setMessages);
+      } catch {
+        // Ignore parse errors for incomplete chunks
+      }
+    }
+  }
+}
+
+/**
+ * Determine error message from an error.
+ */
+function classifyError(error: Error & { status?: number }): { message: string } {
   if (!navigator.onLine) {
-    return { type: 'network', message: 'Unable to connect. Please check your internet connection.' };
+    return { message: 'Unable to connect. Please check your internet connection.' };
   }
   if (error.message?.includes('fetch') || error.message?.includes('NetworkError')) {
-    return { type: 'network', message: 'Network error. Please check your connection and try again.' };
+    return { message: 'Network error. Please check your connection and try again.' };
   }
   if (error.status === 400) {
-    return { type: 'api', message: error.message || 'Invalid request. Please try rephrasing your question.' };
+    return { message: error.message || 'Invalid request. Please try rephrasing your question.' };
   }
   if (error.status === 503) {
-    return { type: 'api', message: error.message || 'The AI service is temporarily unavailable.' };
+    return { message: error.message || 'The AI service is temporarily unavailable.' };
   }
   if (error.status === 500) {
-    return { type: 'api', message: error.message || 'Server error. Please try again.' };
+    return { message: error.message || 'Server error. Please try again.' };
   }
-  return { type: 'unknown', message: error.message || 'An unexpected error occurred. Please try again.' };
+  return { message: error.message || 'An unexpected error occurred. Please try again.' };
 }
 
 /**
@@ -274,8 +336,6 @@ export function ChatInterface({
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<ChatStatus>('idle');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_errorType, _setErrorType] = useState<ErrorType>('unknown');
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [lastUserMessage, setLastUserMessage] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -318,6 +378,45 @@ export function ChatInterface({
     });
   }, []);
 
+  // Helper to clear the timeout
+  const clearRequestTimeout = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  // Helper to setup request timeout
+  const setupRequestTimeout = useCallback(() => {
+    clearRequestTimeout();
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    abortControllerRef.current = new AbortController();
+
+    timeoutRef.current = setTimeout(() => {
+      abortControllerRef.current?.abort();
+      setStatus('error');
+      setErrorMessage('The request took too long. Please try again.');
+      removeEmptyAssistantMessage();
+      timeoutRef.current = null;
+    }, 30000);
+  }, [clearRequestTimeout, removeEmptyAssistantMessage]);
+
+  // Helper to handle stream errors
+  const handleStreamError = useCallback((error: Error & { status?: number; name?: string }) => {
+    clearRequestTimeout();
+
+    if (error.name === 'AbortError') {
+      if (status !== 'error') setStatus('idle');
+      return;
+    }
+
+    console.error('Chat error:', error);
+    const { message } = classifyError(error);
+    setStatus('error');
+    setErrorMessage(message);
+    removeEmptyAssistantMessage();
+  }, [clearRequestTimeout, status, removeEmptyAssistantMessage]);
+
   // Send message to backend
   const sendMessage = useCallback(async (userMessage: string) => {
     if (!userMessage.trim()) return;
@@ -327,39 +426,14 @@ export function ChatInterface({
     setStatus('idle');
     setErrorMessage(undefined);
 
-    // Create messages
-    const userMsg: Message = {
-      id: generateId(),
-      role: 'user',
-      content: userMessage,
-      parts: [{ type: 'text', text: userMessage }],
-    };
-
-    const assistantMsg: Message = {
-      id: generateId(),
-      role: 'assistant',
-      content: '',
-      parts: [],
-    };
-
+    // Create and add messages
+    const { userMsg, assistantMsg } = createMessagePair(userMessage);
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
     setStatus('submitted');
 
-    // Cleanup and setup abort controller
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (abortControllerRef.current) abortControllerRef.current.abort();
-    abortControllerRef.current = new AbortController();
-
-    // Set up timeout
-    timeoutRef.current = setTimeout(() => {
-      abortControllerRef.current?.abort();
-      setStatus('error');
-      _setErrorType('timeout');
-      setErrorMessage('The request took too long. Please try again.');
-      removeEmptyAssistantMessage();
-      timeoutRef.current = null;
-    }, 30000);
+    // Setup abort controller and timeout
+    setupRequestTimeout();
 
     try {
       const apiMessages = [...messages, userMsg].map((m) => ({
@@ -371,7 +445,7 @@ export function ChatInterface({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: apiMessages }),
-        signal: abortControllerRef.current.signal,
+        signal: abortControllerRef.current?.signal,
       });
 
       if (!response.ok) {
@@ -386,57 +460,16 @@ export function ChatInterface({
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
 
-      const decoder = new TextDecoder();
-      let buffer = '';
       const fullText = { value: '' };
       const toolCalls: Map<string, ChatPart> = new Map();
+      await processStreamChunks(reader, fullText, toolCalls, setMessages);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim() || !line.startsWith('data: ')) continue;
-          const data = line.slice(6);
-          if (data === '[DONE]') continue;
-
-          try {
-            const parsed = JSON.parse(data);
-            processSSEEvent(parsed, fullText, toolCalls, setMessages);
-          } catch {
-            // Ignore parse errors for incomplete chunks
-          }
-        }
-      }
-
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
+      clearRequestTimeout();
       setStatus('idle');
     } catch (error) {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-
-      if ((error as Error).name === 'AbortError') {
-        if (status !== 'error') setStatus('idle');
-        return;
-      }
-
-      console.error('Chat error:', error);
-      const { type, message } = classifyError(error as Error & { status?: number });
-      setStatus('error');
-      _setErrorType(type);
-      setErrorMessage(message);
-      removeEmptyAssistantMessage();
+      handleStreamError(error as Error & { status?: number; name?: string });
     }
-  }, [messages, status, removeEmptyAssistantMessage]);
+  }, [messages, setupRequestTimeout, clearRequestTimeout, handleStreamError]);
 
   // Handle suggestion click with debouncing
   const handleSuggestionClick = useCallback(

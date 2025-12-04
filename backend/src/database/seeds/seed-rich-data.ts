@@ -461,12 +461,13 @@ function getPersonalityName(personality: PersonalityType): string {
 }
 
 // Run the seeder
-seedRichData()
-  .then(() => {
+void (async () => {
+  try {
+    await seedRichData();
     console.log('\nRich demo data seeded successfully!');
     process.exit(0);
-  })
-  .catch((error) => {
+  } catch (error) {
     console.error('Seed failed:', error);
     process.exit(1);
-  });
+  }
+})();

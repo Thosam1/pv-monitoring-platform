@@ -1,6 +1,14 @@
 'use client';
 
 import {useState} from 'react';
+/**
+ * NOTE: useThreadListItem, useThreadListItemRuntime, and useAssistantRuntime are marked
+ * as deprecated in @assistant-ui/react v0.11.x. The library authors marked these as
+ * deprecated to prepare users for v0.12.0, but the migration is not possible yet because
+ * the replacement APIs (useAssistantApi, useAssistantState) are not available until v0.12.0.
+ * We are waiting for the v0.12.0 release to migrate.
+ * @see https://github.com/assistant-ui/assistant-ui/releases
+ */
 import {
     ThreadListPrimitive,
     ThreadListItemPrimitive,
@@ -24,11 +32,9 @@ import {cn} from '@/lib/utils';
  */
 function ThreadListItem() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const threadListItem = useThreadListItem();
-    const threadListItemRuntime = useThreadListItemRuntime();
-    // Note: useAssistantRuntime is deprecated in favor of useAssistantApi() in v0.12+
-    // Current version (v0.11.47) does not have the new API yet
-    const runtime = useAssistantRuntime();
+    const threadListItem = useThreadListItem(); // NOSONAR - deprecated but replacement not available until v0.12.0
+    const threadListItemRuntime = useThreadListItemRuntime(); // NOSONAR - deprecated but replacement not available until v0.12.0
+    const runtime = useAssistantRuntime(); // NOSONAR - deprecated but replacement not available until v0.12.0
 
     const handleRename = () => {
         const newTitle = globalThis.window.prompt('Enter new name:', threadListItem.title || 'New Conversation');
@@ -58,11 +64,9 @@ function ThreadListItem() {
 
                     if (remainingThreads.length > 0) {
                         // Switch to the next available thread
-                        // Note: runtime.threadList is deprecated but replacement API not available in v0.11.47
                         await runtime.threadList.switchToThread(remainingThreads[0]);
                     } else {
                         // No other threads exist - create a new one first
-                        // Note: runtime.threadList is deprecated but replacement API not available in v0.11.47
                         await runtime.threadList.switchToNewThread();
                     }
 

@@ -271,7 +271,7 @@ function detectFreeChatIntentSpecs(message: string): FlowArgumentSpec[] {
 function handleCardinalityMismatch(
   state: ExplicitFlowState,
   selectedCount: number,
-  flowType: string,
+  flowType: FlowType,
   model: ModelType,
 ): Partial<ExplicitFlowState> | null {
   if (selectedCount <= 1 || !SINGLE_LOGGER_FLOWS.has(flowType)) {

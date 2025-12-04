@@ -165,7 +165,7 @@ const defaultComponents = memoizeMarkdownComponents({
     <hr className={cn('my-4 border-border', className)} {...props} />
   ),
   table: ({ className, ...props }) => (
-    <div className="my-4 w-full overflow-x-auto">
+    <div className="my-4 w-full overflow-x-auto" role="region" aria-label="Data table">
       <table
         className={cn('w-full border-collapse text-sm', className)}
         {...props}
@@ -186,6 +186,7 @@ const defaultComponents = memoizeMarkdownComponents({
   ),
   th: ({ className, ...props }) => (
     <th
+      scope="col"
       className={cn(
         'px-3 py-2 text-left font-semibold [&[align=center]]:text-center [&[align=right]]:text-right',
         className

@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * NOTE: useThreadRuntime is marked as deprecated in @assistant-ui/react v0.11.x.
+ * The library authors marked these as deprecated to prepare users for v0.12.0,
+ * but the migration is not possible yet because the replacement APIs
+ * (useAssistantApi, useAssistantState) are not available until v0.12.0.
+ * We are waiting for the v0.12.0 release to migrate.
+ * @see https://github.com/assistant-ui/assistant-ui/releases
+ */
 import {
   ThreadPrimitive,
   ComposerPrimitive,
@@ -71,7 +79,7 @@ const WORKFLOWS = [
  * Empty state component shown when there are no messages.
  */
 function ThreadEmpty() {
-  const runtime = useThreadRuntime();
+  const runtime = useThreadRuntime(); // NOSONAR - deprecated but replacement not available until v0.12.0
 
   const handleWorkflowClick = (prompt: string) => {
     runtime.append({ role: 'user', content: [{ type: 'text', text: prompt }] });

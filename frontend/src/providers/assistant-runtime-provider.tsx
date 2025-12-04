@@ -1,6 +1,14 @@
 'use client';
 
 import { type ReactNode, useMemo, useRef, useEffect } from 'react';
+/**
+ * NOTE: useThreadListItem is marked as deprecated in @assistant-ui/react v0.11.x.
+ * The library authors marked these as deprecated to prepare users for v0.12.0,
+ * but the migration is not possible yet because the replacement APIs
+ * (useAssistantApi, useAssistantState) are not available until v0.12.0.
+ * We are waiting for the v0.12.0 release to migrate.
+ * @see https://github.com/assistant-ui/assistant-ui/releases
+ */
 import {
   AssistantRuntimeProvider,
   useLocalRuntime,
@@ -307,7 +315,7 @@ const localStorageThreadListAdapter: RemoteThreadListAdapter = {
 
   unstable_Provider: ({ children }: { children?: ReactNode }) => {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    const threadListItem = useThreadListItem();
+    const threadListItem = useThreadListItem(); // NOSONAR - deprecated but replacement not available until v0.12.0
     const remoteId = threadListItem.remoteId;
 
     // Update module-level thread ID for the model adapter to access
