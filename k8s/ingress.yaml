@@ -1,0 +1,38 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pv-ingress
+  annotations:
+    # Use the self-signed issuer we defined above
+    cert-manager.io/cluster-issuer: "selfsigned-issuer"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - pv-platform.local  # We will map this in /etc/hosts
+      secretName: pv-tls-cert
+  rules:
+    - host: pv-platform.local
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: pv-backend
+                port:
+                  number: 3000
+          - path: /ai
+            pathType: Prefix
+            backend:
+              service:
+                name: pv-backend
+                port:
+                  number: 3000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pv-frontend
+                port:
+                  number: 8080

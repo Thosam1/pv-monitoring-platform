@@ -7,6 +7,7 @@ import { IngestionModule } from './ingestion/ingestion.module';
 import { MeasurementsModule } from './measurements/measurements.module';
 import { Measurement } from './database/entities/measurement.entity';
 import { AiModule } from './ai/ai.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { AiModule } from './ai/ai.module';
     IngestionModule,
     MeasurementsModule,
     AiModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
