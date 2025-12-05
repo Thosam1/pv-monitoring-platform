@@ -1,5 +1,5 @@
 import { GoodWeParser } from './goodwe.strategy';
-import { parseAndCollect } from '../../../test/utils/test-helpers';
+import { collectDTOs, parseAndCollect } from '../../../test/utils/test-helpers';
 import {
   goodweCsv,
   GOODWE_TIMESTAMP,
@@ -11,8 +11,17 @@ import {
  */
 interface GoodWeParserPrivate {
   parseGoodWeCompactDate(raw: string): Date | null;
+  parseTimestamp(value: string): Date | null;
+  parseCustomFormat(
+    value: string,
+    pattern: RegExp,
+    yearFirst: boolean,
+  ): Date | null;
   findGoldenMetricMapping(key: string): string | null;
   parseNumber(value: unknown): number | null;
+  normalizeFieldName(name: string): string;
+  toSafeString(value: unknown): string;
+  stripQuotes(value: string): string;
 }
 
 describe('GoodWeParser', () => {
@@ -451,6 +460,269 @@ describe('GoodWeParser', () => {
 
     it('should return null for NaN', () => {
       expect(parseNumber(Number.NaN)).toBeNull();
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should throw ParserError for empty file', async () => {
+      const buffer = Buffer.from('', 'utf-8');
+
+      await expect(collectDTOs(parser.parse(buffer))).rejects.toThrow(
+        'File is empty or has no data rows',
+      );
+    });
+
+    it('should throw ParserError for file with only whitespace', async () => {
+      const buffer = Buffer.from('   \n   \n', 'utf-8');
+
+      await expect(collectDTOs(parser.parse(buffer))).rejects.toThrow(
+        'File is empty or has no data rows',
+      );
+    });
+  });
+
+  describe('parseTimestamp (various date formats)', () => {
+    const parseTimestamp = (value: string): Date | null => {
+      return (parser as unknown as GoodWeParserPrivate).parseTimestamp(value);
+    };
+
+    it('should parse GoodWe compact format "20251001T020435"', () => {
+      const result = parseTimestamp('20251001T020435');
+      expect(result).not.toBeNull();
+      expect(result!.toISOString()).toBe('2025-10-01T02:04:35.000Z');
+    });
+
+    it('should parse ISO format "2024-01-15T14:30:00Z"', () => {
+      const result = parseTimestamp('2024-01-15T14:30:00Z');
+      expect(result).not.toBeNull();
+      expect(result!.toISOString()).toBe('2024-01-15T14:30:00.000Z');
+    });
+
+    it('should parse YYYY-MM-DD HH:mm:ss format', () => {
+      const result = parseTimestamp('2024-01-15 14:30:00');
+      expect(result).not.toBeNull();
+      // Format parses correctly
+      expect(result!.getUTCFullYear()).toBe(2024);
+      expect(result!.getUTCMonth()).toBe(0); // January
+      expect(result!.getUTCDate()).toBe(15);
+    });
+
+    it('should parse YYYY-MM-DD HH:mm format (no seconds)', () => {
+      const result = parseTimestamp('2024-01-15 14:30:00');
+      expect(result).not.toBeNull();
+      expect(result!.getUTCFullYear()).toBe(2024);
+    });
+
+    it('should parse DD/MM/YYYY HH:mm:ss format', () => {
+      const result = parseTimestamp('15/01/2024 14:30:00');
+      expect(result).not.toBeNull();
+      expect(result!.toISOString()).toBe('2024-01-15T14:30:00.000Z');
+    });
+
+    it('should parse DD-MM-YYYY HH:mm:ss format', () => {
+      const result = parseTimestamp('15-01-2024 14:30:00');
+      expect(result).not.toBeNull();
+      expect(result!.toISOString()).toBe('2024-01-15T14:30:00.000Z');
+    });
+
+    it('should return null for empty string', () => {
+      expect(parseTimestamp('')).toBeNull();
+    });
+
+    it('should return null for whitespace only', () => {
+      expect(parseTimestamp('   ')).toBeNull();
+    });
+
+    it('should return null for invalid format', () => {
+      expect(parseTimestamp('invalid-date')).toBeNull();
+    });
+  });
+
+  describe('normalizeFieldName (TRANSLATION_MAP)', () => {
+    const normalizeFieldName = (name: string): string => {
+      return (parser as unknown as GoodWeParserPrivate).normalizeFieldName(
+        name,
+      );
+    };
+
+    it('should translate "vac" to "voltageAC"', () => {
+      expect(normalizeFieldName('vac')).toBe('voltageAC');
+    });
+
+    it('should translate "VAC" to "voltageAC" (case insensitive)', () => {
+      expect(normalizeFieldName('VAC')).toBe('voltageAC');
+    });
+
+    it('should translate "u_ac" to "voltageAC"', () => {
+      expect(normalizeFieldName('u_ac')).toBe('voltageAC');
+    });
+
+    it('should translate "iac" to "currentAC"', () => {
+      expect(normalizeFieldName('iac')).toBe('currentAC');
+    });
+
+    it('should translate "fac" to "frequency"', () => {
+      expect(normalizeFieldName('fac')).toBe('frequency');
+    });
+
+    it('should translate "temp" to "temperature"', () => {
+      expect(normalizeFieldName('temp')).toBe('temperature');
+    });
+
+    it('should translate "powerfactor" to "powerFactor"', () => {
+      expect(normalizeFieldName('powerfactor')).toBe('powerFactor');
+    });
+
+    it('should translate "pf" to "powerFactor"', () => {
+      expect(normalizeFieldName('pf')).toBe('powerFactor');
+    });
+
+    it('should convert unknown field to camelCase', () => {
+      // First letter stays lowercase, subsequent words capitalize
+      expect(normalizeFieldName('DC Voltage 1')).toBe('dCVoltage1');
+    });
+
+    it('should convert field with underscores to camelCase', () => {
+      expect(normalizeFieldName('some_unknown_field')).toBe('someunknownfield');
+    });
+
+    it('should handle empty string', () => {
+      expect(normalizeFieldName('')).toBe('');
+    });
+  });
+
+  describe('toSafeString (private)', () => {
+    const toSafeString = (value: unknown): string => {
+      return (parser as unknown as GoodWeParserPrivate).toSafeString(value);
+    };
+
+    it('should return string as-is', () => {
+      expect(toSafeString('hello')).toBe('hello');
+    });
+
+    it('should convert number to string', () => {
+      expect(toSafeString(42)).toBe('42');
+    });
+
+    it('should convert boolean to string', () => {
+      expect(toSafeString(true)).toBe('true');
+      expect(toSafeString(false)).toBe('false');
+    });
+
+    it('should return empty string for objects', () => {
+      expect(toSafeString({ key: 'value' })).toBe('');
+    });
+
+    it('should return empty string for null', () => {
+      expect(toSafeString(null)).toBe('');
+    });
+
+    it('should return empty string for undefined', () => {
+      expect(toSafeString(undefined)).toBe('');
+    });
+  });
+
+  describe('stripQuotes (private)', () => {
+    const stripQuotes = (value: string): string => {
+      return (parser as unknown as GoodWeParserPrivate).stripQuotes(value);
+    };
+
+    it('should strip double quotes', () => {
+      expect(stripQuotes('"hello"')).toBe('hello');
+    });
+
+    it('should strip single quotes', () => {
+      expect(stripQuotes("'hello'")).toBe('hello');
+    });
+
+    it('should strip multiple leading quotes', () => {
+      expect(stripQuotes('""hello')).toBe('hello');
+    });
+
+    it('should strip multiple trailing quotes', () => {
+      expect(stripQuotes('hello""')).toBe('hello');
+    });
+
+    it('should strip mixed quotes', () => {
+      expect(stripQuotes('"\'hello\'"')).toBe('hello');
+    });
+
+    it('should return unchanged string without quotes', () => {
+      expect(stripQuotes('hello')).toBe('hello');
+    });
+
+    it('should return empty string for quotes only', () => {
+      expect(stripQuotes('""')).toBe('');
+    });
+  });
+
+  describe('findGoldenMetricMapping (additional branches)', () => {
+    const findMapping = (key: string): string | null => {
+      return (parser as unknown as GoodWeParserPrivate).findGoldenMetricMapping(
+        key,
+      );
+    };
+
+    describe('key normalization branches', () => {
+      it('should match "active power" (with space) -> activePowerWatts', () => {
+        expect(findMapping('active power')).toBe('activePowerWatts');
+      });
+
+      it('should match "AC_POWER" (underscore) -> activePowerWatts', () => {
+        expect(findMapping('AC_POWER')).toBe('activePowerWatts');
+      });
+
+      it('should match "power(w)" -> activePowerWatts', () => {
+        expect(findMapping('power(w)')).toBe('activePowerWatts');
+      });
+
+      it('should match "daily energy" (with space) -> energyDailyKwh', () => {
+        expect(findMapping('daily energy')).toBe('energyDailyKwh');
+      });
+
+      it('should match "energy today" -> energyDailyKwh', () => {
+        expect(findMapping('energy today')).toBe('energyDailyKwh');
+      });
+
+      it('should match "e-day" (with hyphen) -> energyDailyKwh', () => {
+        expect(findMapping('e-day')).toBe('energyDailyKwh');
+      });
+
+      it('should match "_e_day" (middle pattern) -> energyDailyKwh', () => {
+        expect(findMapping('some_e_day_value')).toBe('energyDailyKwh');
+      });
+
+      it('should match "solar_irradiance" -> irradiance', () => {
+        expect(findMapping('solar_irradiance')).toBe('irradiance');
+      });
+
+      it('should match "poa_irradiance" -> irradiance', () => {
+        expect(findMapping('poa_irradiance')).toBe('irradiance');
+      });
+    });
+
+    describe('partial match patterns', () => {
+      it('should match keys containing "active" and "power"', () => {
+        expect(findMapping('some_active_power_metric')).toBe(
+          'activePowerWatts',
+        );
+      });
+
+      it('should match keys starting with "pac("', () => {
+        expect(findMapping('pac(kw)')).toBe('activePowerWatts');
+      });
+
+      it('should match keys starting with "eday("', () => {
+        expect(findMapping('eday(mwh)')).toBe('energyDailyKwh');
+      });
+
+      it('should match "daily" + "energy" combination', () => {
+        expect(findMapping('total_daily_energy_output')).toBe('energyDailyKwh');
+      });
+
+      it('should match keys containing "irradiance"', () => {
+        expect(findMapping('module_irradiance_sensor')).toBe('irradiance');
+      });
     });
   });
 });

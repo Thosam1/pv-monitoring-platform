@@ -497,4 +497,256 @@ describe('SmartdogParser', () => {
       expect(parseTimestamp('4102444800')).toEqual(new Date(4102444800 * 1000));
     });
   });
+
+  describe('detectFileType (private method)', () => {
+    interface SmartdogParserPrivate {
+      detectFileType(
+        filename: string,
+      ): 'inverter' | 'modbus' | 'onewire' | null;
+    }
+
+    const detectFileType = (
+      filename: string,
+    ): 'inverter' | 'modbus' | 'onewire' | null => {
+      return (parser as unknown as SmartdogParserPrivate).detectFileType(
+        filename,
+      );
+    };
+
+    it('returns "inverter" for inverter filename pattern', () => {
+      expect(detectFileType('B1_A3_S6_global_11_4_2025.txt')).toBe('inverter');
+    });
+
+    it('returns "modbus" for modbustcpsensor filename pattern', () => {
+      expect(
+        detectFileType('modbustcpsensor_1612427023_global_11_8_2025.txt'),
+      ).toBe('modbus');
+    });
+
+    it('returns "onewire" for onewire filename pattern', () => {
+      expect(detectFileType('onewire_1647527200_global_10_2_2025.txt')).toBe(
+        'onewire',
+      );
+    });
+
+    it('returns null for unknown filename pattern', () => {
+      expect(detectFileType('unknown_file.txt')).toBeNull();
+      expect(detectFileType('random.csv')).toBeNull();
+    });
+  });
+
+  describe('extractLoggerId fallback (private methods)', () => {
+    interface SmartdogParserPrivate {
+      extractInverterLoggerId(filename: string): string;
+      extractModbusLoggerId(filename: string): string;
+      extractOnewireLoggerId(filename: string): string;
+    }
+
+    it('returns SMARTDOG_UNKNOWN for non-matching inverter filename', () => {
+      const extractInverterLoggerId = (filename: string): string => {
+        return (
+          parser as unknown as SmartdogParserPrivate
+        ).extractInverterLoggerId(filename);
+      };
+      expect(extractInverterLoggerId('unknown_file.txt')).toBe(
+        'SMARTDOG_UNKNOWN',
+      );
+    });
+
+    it('returns SMARTDOG_SENSOR_UNKNOWN for non-matching modbus filename', () => {
+      const extractModbusLoggerId = (filename: string): string => {
+        return (
+          parser as unknown as SmartdogParserPrivate
+        ).extractModbusLoggerId(filename);
+      };
+      expect(extractModbusLoggerId('unknown_file.txt')).toBe(
+        'SMARTDOG_SENSOR_UNKNOWN',
+      );
+    });
+
+    it('returns SMARTDOG_TEMP_UNKNOWN for non-matching onewire filename', () => {
+      const extractOnewireLoggerId = (filename: string): string => {
+        return (
+          parser as unknown as SmartdogParserPrivate
+        ).extractOnewireLoggerId(filename);
+      };
+      expect(extractOnewireLoggerId('unknown_file.txt')).toBe(
+        'SMARTDOG_TEMP_UNKNOWN',
+      );
+    });
+  });
+
+  describe('parse - Invalid headers and error cases', () => {
+    it('throws error for unknown file type when currentFilename is invalid', async () => {
+      // Manually set currentFilename to something that won't match any pattern
+      // This requires accessing internal state
+      (parser as unknown as { currentFilename: string }).currentFilename =
+        'unknown_pattern.txt';
+
+      const lines = ['timestamp;value', `${SMARTDOG_TIMESTAMP};500;-1`];
+      const buffer = Buffer.from(lines.join('\n'), 'utf-8');
+
+      await expect(
+        (async () => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          for await (const _ of parser.parse(buffer)) {
+            /* consume */
+          }
+        })(),
+      ).rejects.toThrow('Unknown file type');
+    });
+
+    it('throws error for inverter file with invalid header', async () => {
+      parser.canHandle(
+        'B1_A1_S1_global_11_1_2025.txt',
+        'timestamp;address;bus;strings;stringid;pac;pdc;udc;temp\n',
+      );
+
+      // Overwrite currentFilename so detectFileType returns 'inverter'
+      // but provide a file with invalid header content
+      const lines = [
+        'wrong_header;column1;column2', // Invalid header - missing timestamp and pac
+        `${SMARTDOG_TIMESTAMP};1;1`,
+      ];
+      const buffer = Buffer.from(lines.join('\n'), 'utf-8');
+
+      await expect(
+        (async () => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          for await (const _ of parser.parse(buffer)) {
+            /* consume */
+          }
+        })(),
+      ).rejects.toThrow('Invalid inverter header');
+    });
+
+    it('throws error for sensor file with invalid header', async () => {
+      parser.canHandle(
+        'modbustcpsensor_1612427023_global_11_8_2025.txt',
+        'timestamp;value\n',
+      );
+
+      const lines = [
+        'wrong_header;wrong_column', // Invalid header - missing timestamp and value
+        `${SMARTDOG_TIMESTAMP};500`,
+      ];
+      const buffer = Buffer.from(lines.join('\n'), 'utf-8');
+
+      await expect(
+        (async () => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          for await (const _ of parser.parse(buffer)) {
+            /* consume */
+          }
+        })(),
+      ).rejects.toThrow('Invalid sensor header');
+    });
+
+    it('throws error when all sensor rows are invalid', async () => {
+      parser.canHandle(
+        'modbustcpsensor_1612427023_global_11_8_2025.txt',
+        'timestamp;value\n',
+      );
+
+      const lines = [
+        'timestamp;value',
+        'invalid_ts;500;-1', // Invalid timestamp
+        'not_a_number;600;-1', // Invalid timestamp
+      ];
+      const buffer = Buffer.from(lines.join('\n'), 'utf-8');
+
+      await expect(
+        (async () => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          for await (const _ of parser.parse(buffer)) {
+            /* consume */
+          }
+        })(),
+      ).rejects.toThrow('No valid data rows found');
+    });
+
+    it('skips sensor rows with invalid values', async () => {
+      parser.canHandle(
+        'modbustcpsensor_1612427023_global_11_8_2025.txt',
+        'timestamp;value\n',
+      );
+
+      const lines = [
+        'timestamp;value',
+        `${SMARTDOG_TIMESTAMP};invalid_value;-1`, // Invalid value
+        `${SMARTDOG_TIMESTAMP + 300};500;-1`, // Valid
+      ];
+      const buffer = Buffer.from(lines.join('\n'), 'utf-8');
+
+      const results: unknown[] = [];
+      for await (const dto of parser.parse(buffer)) {
+        results.push(dto);
+      }
+
+      expect(results).toHaveLength(1);
+    });
+
+    it('skips sensor rows with insufficient columns', async () => {
+      parser.canHandle(
+        'modbustcpsensor_1612427023_global_11_8_2025.txt',
+        'timestamp;value\n',
+      );
+
+      const lines = [
+        'timestamp;value',
+        `${SMARTDOG_TIMESTAMP}`, // Only 1 column - insufficient
+        `${SMARTDOG_TIMESTAMP + 300};500;-1`, // Valid
+      ];
+      const buffer = Buffer.from(lines.join('\n'), 'utf-8');
+
+      const results: unknown[] = [];
+      for await (const dto of parser.parse(buffer)) {
+        results.push(dto);
+      }
+
+      expect(results).toHaveLength(1);
+    });
+  });
+
+  describe('parseNumber (private method)', () => {
+    interface SmartdogParserPrivate {
+      parseNumber(value: string): number | null;
+    }
+
+    const parseNumber = (value: string): number | null => {
+      return (parser as unknown as SmartdogParserPrivate).parseNumber(value);
+    };
+
+    it('parses valid integer', () => {
+      expect(parseNumber('500')).toBe(500);
+    });
+
+    it('parses valid float', () => {
+      expect(parseNumber('500.5')).toBe(500.5);
+    });
+
+    it('handles comma as decimal separator', () => {
+      expect(parseNumber('500,5')).toBe(500.5);
+    });
+
+    it('returns null for empty string', () => {
+      expect(parseNumber('')).toBeNull();
+    });
+
+    it('returns null for dash', () => {
+      expect(parseNumber('-')).toBeNull();
+    });
+
+    it('returns null for N/A', () => {
+      expect(parseNumber('N/A')).toBeNull();
+    });
+
+    it('returns null for non-numeric value', () => {
+      expect(parseNumber('abc')).toBeNull();
+    });
+
+    it('handles whitespace', () => {
+      expect(parseNumber('  500  ')).toBe(500);
+    });
+  });
 });

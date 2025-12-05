@@ -311,6 +311,284 @@ Uhrzeit;G_M6;G_M10`;
     });
   });
 
+  describe('Invalid Datum handling', () => {
+    it('should handle invalid Datum format (too short)', async () => {
+      const lines = [
+        '[info]',
+        `Anlage=Test Station`,
+        'Datum=2511', // Only 4 digits - invalid
+        '',
+        '[messung]',
+        'Uhrzeit;Intervall;G_M6',
+        ';s;W/m²',
+        '',
+        '[Start]',
+        '12:00:00;900;650',
+      ];
+
+      // Should throw or have no valid rows since Datum is invalid
+      await expect(parseAndCollect(parser, lines)).rejects.toThrow(
+        'No valid data rows found',
+      );
+    });
+
+    it('should handle invalid Datum format (invalid month)', async () => {
+      const lines = [
+        '[info]',
+        `Anlage=Test Station`,
+        'Datum=251306', // Month 13 is invalid
+        '',
+        '[messung]',
+        'Uhrzeit;Intervall;G_M6',
+        ';s;W/m²',
+        '',
+        '[Start]',
+        '12:00:00;900;650',
+      ];
+
+      // Should throw since date components are invalid
+      await expect(parseAndCollect(parser, lines)).rejects.toThrow(
+        'No valid data rows found',
+      );
+    });
+
+    it('should handle invalid Datum format (invalid day)', async () => {
+      const lines = [
+        '[info]',
+        `Anlage=Test Station`,
+        'Datum=251032', // Day 32 is invalid
+        '',
+        '[messung]',
+        'Uhrzeit;Intervall;G_M6',
+        ';s;W/m²',
+        '',
+        '[Start]',
+        '12:00:00;900;650',
+      ];
+
+      // Should throw since date components are invalid
+      await expect(parseAndCollect(parser, lines)).rejects.toThrow(
+        'No valid data rows found',
+      );
+    });
+  });
+
+  describe('Missing Datum handling', () => {
+    it('should skip data rows when Datum is missing', async () => {
+      const lines = [
+        '[info]',
+        `Anlage=Test Station`,
+        // No Datum line
+        '',
+        '[messung]',
+        'Uhrzeit;Intervall;G_M6',
+        ';s;W/m²',
+        '',
+        '[Start]',
+        '12:00:00;900;650',
+      ];
+
+      // Should throw since no valid timestamps can be created
+      await expect(parseAndCollect(parser, lines)).rejects.toThrow(
+        'No valid data rows found',
+      );
+    });
+  });
+
+  describe('normalizeFieldName fallback (private method)', () => {
+    interface MeteoControlParserPrivate {
+      normalizeFieldName(name: string): string;
+    }
+
+    const normalizeFieldName = (name: string): string => {
+      return (
+        parser as unknown as MeteoControlParserPrivate
+      ).normalizeFieldName(name);
+    };
+
+    it('should translate g_m prefix to irradiancePoa', () => {
+      expect(normalizeFieldName('g_m6')).toBe('irradiancePoa6');
+      expect(normalizeFieldName('g_m10')).toBe('irradiancePoa10');
+    });
+
+    it('should translate g_h prefix to irradianceGhi', () => {
+      expect(normalizeFieldName('g_h2')).toBe('irradianceGhi2');
+    });
+
+    it('should translate exact match fields', () => {
+      expect(normalizeFieldName('uac_l1')).toBe('voltageAcPhaseA');
+      expect(normalizeFieldName('fac')).toBe('gridFrequencyHz');
+      expect(normalizeFieldName('riso')).toBe('insulationResistanceKohm');
+    });
+
+    it('should convert unknown fields to camelCase', () => {
+      expect(normalizeFieldName('unknown_field')).toBe('unknownField');
+      expect(normalizeFieldName('some_other_value')).toBe('someOtherValue');
+    });
+
+    it('should handle empty string', () => {
+      expect(normalizeFieldName('')).toBe('');
+    });
+
+    it('should handle single word', () => {
+      expect(normalizeFieldName('voltage')).toBe('voltage');
+    });
+  });
+
+  describe('extractLoggerId fallback (private method)', () => {
+    interface MeteoControlParserPrivate {
+      extractLoggerId(
+        headers: string[],
+        values: string[],
+        fallbackLoggerId: string,
+        fileType: 'analog' | 'inverter',
+      ): string;
+    }
+
+    const extractLoggerId = (
+      headers: string[],
+      values: string[],
+      fallbackLoggerId: string,
+      fileType: 'analog' | 'inverter',
+    ): string => {
+      return (parser as unknown as MeteoControlParserPrivate).extractLoggerId(
+        headers,
+        values,
+        fallbackLoggerId,
+        fileType,
+      );
+    };
+
+    it('should return fallback for analog file type', () => {
+      const result = extractLoggerId(
+        ['uhrzeit', 'g_m6'],
+        ['12:00:00', '650'],
+        'FALLBACK_ID',
+        'analog',
+      );
+      expect(result).toBe('FALLBACK_ID');
+    });
+
+    it('should return serial number for inverter file type', () => {
+      const result = extractLoggerId(
+        ['uhrzeit', 'serien nummer', 'pac'],
+        ['12:00:00', 'INV123', '5.0'],
+        'FALLBACK_ID',
+        'inverter',
+      );
+      expect(result).toBe('INV123');
+    });
+
+    it('should return fallback when inverter serial is empty', () => {
+      const result = extractLoggerId(
+        ['uhrzeit', 'serien nummer', 'pac'],
+        ['12:00:00', '', '5.0'],
+        'FALLBACK_ID',
+        'inverter',
+      );
+      expect(result).toBe('FALLBACK_ID');
+    });
+
+    it('should return fallback when serien nummer column is missing', () => {
+      const result = extractLoggerId(
+        ['uhrzeit', 'pac'],
+        ['12:00:00', '5.0'],
+        'FALLBACK_ID',
+        'inverter',
+      );
+      expect(result).toBe('FALLBACK_ID');
+    });
+  });
+
+  describe('buildTimestamp edge cases (private method)', () => {
+    interface MeteoControlParserPrivate {
+      buildTimestamp(
+        date: { year: number; month: number; day: number },
+        time: string,
+      ): Date | null;
+    }
+
+    const buildTimestamp = (
+      date: { year: number; month: number; day: number },
+      time: string,
+    ): Date | null => {
+      return (parser as unknown as MeteoControlParserPrivate).buildTimestamp(
+        date,
+        time,
+      );
+    };
+
+    it('should return null for invalid time format', () => {
+      const date = { year: 2025, month: 10, day: 6 };
+      expect(buildTimestamp(date, '12:00')).toBeNull(); // Missing seconds
+      expect(buildTimestamp(date, 'invalid')).toBeNull();
+      expect(buildTimestamp(date, '')).toBeNull();
+    });
+
+    it('should return null for invalid hour (> 24)', () => {
+      const date = { year: 2025, month: 10, day: 6 };
+      expect(buildTimestamp(date, '25:00:00')).toBeNull();
+    });
+
+    it('should return null for invalid minute (> 59)', () => {
+      const date = { year: 2025, month: 10, day: 6 };
+      expect(buildTimestamp(date, '12:60:00')).toBeNull();
+    });
+
+    it('should return null for invalid second (> 59)', () => {
+      const date = { year: 2025, month: 10, day: 6 };
+      expect(buildTimestamp(date, '12:00:60')).toBeNull();
+    });
+  });
+
+  describe('Empty row handling', () => {
+    it('should handle rows with empty values', async () => {
+      const lines = [
+        '[info]',
+        `Anlage=Test Station`,
+        'Datum=251106',
+        '',
+        '[messung]',
+        'Uhrzeit;Intervall;G_M6',
+        ';s;W/m²',
+        '',
+        '[Start]',
+        ';900;', // Empty timestamp and value
+        '12:00:00;900;650', // Valid row
+      ];
+
+      const results = await parseAndCollect(parser, lines);
+
+      // Should have 1 valid row (the one with timestamp)
+      expect(results).toHaveLength(1);
+      expect(results[0].irradiance).toBe(650);
+    });
+  });
+
+  describe('Lines in INITIAL state', () => {
+    it('should ignore lines before [info] section', async () => {
+      const lines = [
+        'This is a comment line',
+        'Another ignored line',
+        '[info]',
+        `Anlage=Test Station`,
+        'Datum=251106',
+        '',
+        '[messung]',
+        'Uhrzeit;Intervall;G_M6',
+        ';s;W/m²',
+        '',
+        '[Start]',
+        '12:00:00;900;650',
+      ];
+
+      const results = await parseAndCollect(parser, lines);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].irradiance).toBe(650);
+    });
+  });
+
   // ===== delta_inverter Tests (Phase 2) =====
 
   describe('delta_inverter: File Type Detection', () => {

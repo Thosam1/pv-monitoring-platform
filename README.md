@@ -1,6 +1,15 @@
+<div align="center">
+
 # PV Monitoring Platform
 
 High-throughput solar data ingestion and AI-powered analytics platform for photovoltaic inverters and meteo stations.
+
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Thosam1_pv-monitoring-platform&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Thosam1_pv-monitoring-platform)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=Thosam1_pv-monitoring-platform&metric=coverage)](https://sonarcloud.io/summary/new_code?id=Thosam1_pv-monitoring-platform)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=Thosam1_pv-monitoring-platform&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=Thosam1_pv-monitoring-platform)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=Thosam1_pv-monitoring-platform&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=Thosam1_pv-monitoring-platform)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=Thosam1_pv-monitoring-platform&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=Thosam1_pv-monitoring-platform)
+</div>
 
 ## Architecture
 
