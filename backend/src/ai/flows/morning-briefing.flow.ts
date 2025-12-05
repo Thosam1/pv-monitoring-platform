@@ -379,8 +379,13 @@ Would you like me to explain what data formats I can work with?`,
         // Store snapshot for next briefing (session-only persistence)
         previousFleetStatus: statusSnapshot,
       },
-      // NOTE: pendingUiActions removed - AIMessage.tool_calls already triggers render_ui_component
-      // Having both caused duplicate messages in frontend
+      pendingUiActions: [
+        {
+          toolCallId,
+          toolName: 'render_ui_component',
+          args: renderArgs,
+        },
+      ],
     };
   };
 
