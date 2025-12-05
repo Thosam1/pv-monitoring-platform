@@ -51,3 +51,33 @@ coverage/
 
 # Local context/notes
 context/
+
+# Kubernetes secrets (explicit)
+k8s/secrets.yaml
+
+# Python testing/linting caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Additional Python environments
+venv/
+env/
+
+# Additional IDE patterns
+*.swo
+*~
+.eslintcache
+
+# Editor backup files
+*.bak
+*.orig
+
+# macOS additional
+.AppleDouble
+.LSOverride
+
+# Test artifacts
+.nyc_output/
+junit.xml
+test-results/

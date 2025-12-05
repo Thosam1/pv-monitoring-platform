@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pv-backend
+  labels:
+    app: pv-platform
+    component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pv-platform
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: pv-platform
+        component: backend
+    spec:
+      containers:
+        - name: backend
+          # Replace with your actual image
+          image: pv-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DB_HOST
+              value: "pv-db"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: pv-secrets
+                  key: POSTGRES_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pv-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: pv-secrets
+                  key: POSTGRES_DB
+            - name: AI_PROVIDER
+              value: "gemini"
+            - name: GOOGLE_GENERATIVE_AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pv-secrets
+                  key: GOOGLE_GENERATIVE_AI_API_KEY
+            - name: GEMINI_MODEL
+              value: "gemini-2.5-flash"
+            - name: MCP_SERVER_URL
+              value: "http://pv-ai-service:4000"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pv-backend
+spec:
+  ports:
+    - port: 3000
+  selector:
+    app: pv-platform
+    component: backend

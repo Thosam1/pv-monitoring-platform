@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pv-ai-service
+  labels:
+    app: pv-platform
+    component: ai-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pv-platform
+      component: ai-service
+  template:
+    metadata:
+      labels:
+        app: pv-platform
+        component: ai-service
+    spec:
+      containers:
+        - name: ai-service
+          # Replace with your actual image name (e.g., ghcr.io/youruser/pv-ai:latest)
+          image: pv-ai-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4000
+          env:
+            # Connects to the database service (uses SOLAR_ prefix per ai/config.py)
+            - name: SOLAR_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pv-secrets
+                  key: SOLAR_DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pv-ai-service
+spec:
+  ports:
+    - port: 4000
+  selector:
+    app: pv-platform
+    component: ai-service

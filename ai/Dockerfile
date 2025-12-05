@@ -1,33 +1,26 @@
 FROM python:3.12-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies for psycopg2 and uv
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Install uv
-RUN pip install uv
-
-# Copy project files for dependency resolution
+# Copy dependency files
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies (without dev dependencies)
-RUN uv sync --frozen --no-dev
+# Install dependencies
+RUN uv sync --frozen --no-cache
 
-# Copy application code
+# Copy app code
 COPY . .
 
-# Expose the HTTP API port
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
 EXPOSE 4000
 
-# Health check - use HTTP API endpoint
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:4000/api/health || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:4000/api/health || exit 1
 
-# Run the HTTP API server
+# Run server
 CMD ["uv", "run", "python", "server.py"]
