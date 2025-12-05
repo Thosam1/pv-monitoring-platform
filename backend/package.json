@@ -20,7 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:ai": "jest --testPathPatterns='src/ai/.*\\.spec\\.ts'",
     "test:ai:unit": "jest --testPathPatterns='src/ai/.*\\.spec\\.ts' --testPathIgnorePatterns='integration'",
-    "test:ai:integration": "TEST_AI_PROVIDER=ollama jest --testPathPatterns='integration\\.spec\\.ts'"
+    "test:ai:integration": "TEST_AI_PROVIDER=ollama jest --testPathPatterns='integration\\.spec\\.ts'",
+    "seed:demo": "npx ts-node src/database/seeds/seed-demo-data.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.50",

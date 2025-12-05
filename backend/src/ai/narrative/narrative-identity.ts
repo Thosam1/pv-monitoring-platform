@@ -4,6 +4,7 @@
  */
 
 import { NarrativeBranch } from './narrative-branching';
+import { getCurrentDate } from '../utils/date-utils';
 
 /**
  * Core agent identity - who is speaking.
@@ -178,19 +179,20 @@ export function getTimeOfDayFromHour(hour: number): TimeOfDay {
  */
 export function getCurrentHourInTimezone(timezone?: string): number {
   try {
+    const now = getCurrentDate(); // Respects DEMO_DATE if set
     if (!timezone) {
-      return new Date().getUTCHours();
+      return now.getUTCHours();
     }
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       hour: 'numeric',
       hour12: false,
     });
-    const hourStr = formatter.format(new Date());
+    const hourStr = formatter.format(now);
     return Number.parseInt(hourStr, 10);
   } catch {
     // Invalid timezone, fall back to UTC
-    return new Date().getUTCHours();
+    return getCurrentDate().getUTCHours();
   }
 }
 

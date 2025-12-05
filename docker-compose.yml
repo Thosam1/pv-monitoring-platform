@@ -34,6 +34,8 @@ services:
     environment:
       SOLAR_DATABASE_URL: postgresql://admin:admin@postgres:5432/pv_db
       SOLAR_MCP_TRANSPORT: http
+      # Demo mode: override current time for presentations
+      SOLAR_DEMO_DATE: "2025-12-05T17:00:00"
     depends_on:
       postgres:
         condition: service_healthy

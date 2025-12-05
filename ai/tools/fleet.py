@@ -3,12 +3,11 @@
 Provides tools for site-wide aggregation and fleet status.
 """
 
-from datetime import datetime, timezone
 from typing import Optional
 
 import pandas as pd
 
-from database import engine, get_anchor_date
+from database import engine, get_anchor_date, get_current_datetime
 from models.context import (
     build_next_step,
     build_operational_insight,
@@ -104,7 +103,7 @@ def get_fleet_overview() -> dict:
 
     # Use anchor date (latest data timestamp) instead of current time
     anchor = get_anchor_date()
-    current_date = datetime.now(timezone.utc)
+    current_date = get_current_datetime()  # Respects SOLAR_DEMO_DATE if set
 
     # Detect date mismatch between current date and anchor date
     anchor_date_only = anchor.date()

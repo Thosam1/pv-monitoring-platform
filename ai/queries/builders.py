@@ -8,7 +8,7 @@ TIME-AGNOSTIC: Uses anchor date (MAX timestamp in DB) instead of NOW() for demo 
 
 from typing import Any
 
-from database import get_anchor_date_str
+from database import get_anchor_date_str, get_anchor_timestamp_str
 
 # Column name mapping (camelCase for TypeORM compatibility)
 COLUMNS = {
@@ -247,11 +247,14 @@ def build_error_scan_query() -> tuple[str, dict[str, Any]]:
 def build_fleet_power_query() -> str:
     """Query for fleet real-time power status.
 
-    Uses anchor date (latest data) instead of NOW() for time-agnostic operation.
+    Uses anchor timestamp (latest data) instead of NOW() for time-agnostic operation.
     Changed from 15 minutes to 2 hours window to handle sparse data sampling.
     Also uses subquery to get the latest reading per logger for accurate power sum.
+
+    IMPORTANT: Uses get_anchor_timestamp_str() (full timestamp) not get_anchor_date_str()
+    (date only). The date-only version truncates to midnight, breaking the 2-hour window.
     """
-    anchor_date = get_anchor_date_str()
+    anchor_ts = get_anchor_timestamp_str()
     return f"""
         WITH latest_readings AS (
             SELECT DISTINCT ON ({col("logger_id")})
@@ -260,8 +263,8 @@ def build_fleet_power_query() -> str:
                 {col("irradiance")},
                 {col("timestamp")}
             FROM measurements
-            WHERE {col("timestamp")} >= ('{anchor_date}'::timestamp - INTERVAL '2 hours')
-              AND {col("timestamp")} <= '{anchor_date}'::timestamp
+            WHERE {col("timestamp")} >= ('{anchor_ts}'::timestamp - INTERVAL '2 hours')
+              AND {col("timestamp")} <= '{anchor_ts}'::timestamp
             ORDER BY {col("logger_id")}, {col("timestamp")} DESC
         )
         SELECT

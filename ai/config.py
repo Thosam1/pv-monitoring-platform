@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     Example: SOLAR_DATABASE_URL="postgresql://user:pass@host/db"
     """
 
+    # Demo mode - set to override current time (e.g., "2025-12-05T12:00:00")
+    # Useful for presenting demo data as "live" instead of "historical"
+    demo_date: str | None = None
+
     # Database
     database_url: str = "postgresql://admin:admin@localhost:5432/pv_db"
     db_pool_size: int = 5

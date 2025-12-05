@@ -146,8 +146,44 @@ def get_anchor_date_str() -> str:
     return get_anchor_date().strftime("%Y-%m-%d")
 
 
+def get_anchor_timestamp_str() -> str:
+    """Get the anchor date as a full timestamp string (YYYY-MM-DD HH:MM:SS).
+
+    Use this for queries requiring precise time windows (e.g., fleet power status).
+    The date-only version truncates to midnight, which breaks 2-hour window queries.
+
+    Returns:
+        Full timestamp string suitable for SQL queries
+    """
+    return get_anchor_date().strftime("%Y-%m-%d %H:%M:%S")
+
+
 def clear_anchor_cache() -> None:
     """Clear the anchor date cache (useful after seeding new data)."""
     global _anchor_date_cache
     _anchor_date_cache = None
     logger.info("database.anchor_date.cache_cleared")
+
+
+def get_current_datetime() -> datetime:
+    """Get the current datetime, or demo datetime if SOLAR_DEMO_DATE is set.
+
+    This allows demos to show data as "live" instead of "historical" by
+    setting SOLAR_DEMO_DATE to match the anchor date of the demo data.
+
+    Example: SOLAR_DEMO_DATE="2025-12-05T12:00:00"
+
+    Returns:
+        Current datetime (real or mocked for demo)
+    """
+    if settings.demo_date:
+        try:
+            # Try parsing with timezone
+            demo_dt = datetime.fromisoformat(settings.demo_date)
+            if demo_dt.tzinfo is None:
+                demo_dt = demo_dt.replace(tzinfo=timezone.utc)
+            logger.debug("database.demo_mode", demo_date=demo_dt.isoformat())
+            return demo_dt
+        except ValueError as e:
+            logger.warning("database.demo_date.invalid", error=str(e), value=settings.demo_date)
+    return datetime.now(timezone.utc)
