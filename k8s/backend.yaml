@@ -51,6 +51,8 @@ spec:
                 secretKeyRef:
                   name: pv-secrets
                   key: GOOGLE_GENERATIVE_AI_API_KEY
+            - name: GEMINI_MODEL
+              value: "gemini-2.5-flash"
             - name: MCP_SERVER_URL
               value: "http://pv-ai-service:4000"
           readinessProbe:
